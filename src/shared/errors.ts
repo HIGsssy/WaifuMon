@@ -1117,20 +1117,6 @@ export function isDeadlockError(err: unknown): boolean {
 }
 
 /**
- * True when a transaction gave way to another over a row lock: a deadlock
- * victim (`40P01`) or a `lock_timeout` it set for itself (`55P03`). Either
- * way it wrote nothing and may be run again.
- */
-export function isLockContentionError(err: unknown): boolean {
-  if (err && typeof err === 'object') {
-    const e = err as { code?: unknown; cause?: unknown };
-    if (e.code === '40P01' || e.code === '55P03') return true;
-    if (e.cause) return isLockContentionError(e.cause);
-  }
-  return false;
-}
-
-/**
  * The name of the unique constraint a Postgres error violated, or null when
  * the error is not a unique violation. For a table with more than one unique
  * rule, where the caller has to know *which* rule refused it.
@@ -1891,9 +1877,9 @@ export class DungeonCaptureQuoteChangedError extends AppError {
 }
 
 /**
- * A capture or rescue step kept meeting another transaction on the player's
- * rows (a hunted capture, an item use) and gave way each time. Nothing was
- * spent or decided; the same press works once the other finishes.
+ * A dungeon step was chosen as a deadlock victim on every attempt it was
+ * given. Each time Postgres rolled it back whole, so nothing was spent or
+ * decided; the same press works once the other activity finishes.
  */
 export class DungeonStepContendedError extends AppError {
   constructor(readonly runId: number, cause?: unknown) {

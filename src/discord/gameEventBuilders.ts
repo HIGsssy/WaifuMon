@@ -10,6 +10,7 @@ import type { AppearanceUnlockRef } from '../modules/appearance/appearanceServic
 import { crossedAffectionStage } from '../modules/collection/affectionStages';
 import type { CareTickSummary } from '../modules/care/careService';
 import type { CaptureAttemptResult } from '../modules/capture/captureService';
+import type { DungeonEncounterReceipt } from '../modules/dungeons/dungeonRunService';
 import type { HuntResult } from '../modules/hunt/huntService';
 import type { CareExitReason, GameEventDescriptor } from '../modules/events/gameEvents';
 import { gameEvent } from '../modules/events/gameEvents';
@@ -398,5 +399,53 @@ export async function captureDescriptors(
     }
   }
 
+  return out;
+}
+
+/**
+ * Everything one committed dungeon capture attempt or rescue produced, by the
+ * rules {@link captureDescriptors} applies to a hunted capture: a success, an
+ * escape (never a resisted attempt), level-ups, day-one appearances and a
+ * completed collection. A direct rescue is not a capture, so it has no capture
+ * line — only what follows from gaining her. A replayed rescue wrote nothing
+ * and narrates nothing.
+ */
+export async function dungeonEncounterDescriptors(
+  ctx: AppContext,
+  prov: Provisioned,
+  receipt: DungeonEncounterReceipt,
+): Promise<GameEventDescriptor[]> {
+  if (receipt.type === 'rescue_grant' && receipt.replayed) return [];
+  const out: GameEventDescriptor[] = [];
+  const acquired = receipt.acquired;
+  if (receipt.type === 'capture_attempt') {
+    const rarity = (acquired?.rarity ?? '') as Rarity;
+    if (receipt.success && acquired) {
+      const rich = rarityAtLeast(rarity, ctx.content.tables.capture.announceMinRarity);
+      out.push(gameEvent(
+        'PLAYER_CAPTURE_SUCCESS',
+        { speciesName: acquired.name, rarity, isDuplicate: acquired.isDuplicate, waifuId: acquired.waifuId },
+        rich ? 'major' : 'normal',
+      ));
+    } else if (receipt.outcome === 'escape') {
+      const name = ctx.content.species.find((s) => s.slug === receipt.species);
+      if (name) out.push(gameEvent('PLAYER_CAPTURE_FAILED', { speciesName: name.name, rarity: name.rarity as Rarity, attempts: receipt.attemptNumber ?? 0 }));
+    }
+  }
+  out.push(...levelUpDescriptors(receipt.levelUps));
+  const unlocks = receipt.newAppearances ?? [];
+  if (unlocks.length > 0 && acquired) {
+    out.push(...appearanceUnlockDescriptors(unlocks, await ownedWaifuName(ctx, prov.playerId, acquired.waifuId)));
+  }
+  if (acquired?.isNewDex) {
+    try {
+      const dex = await ctx.services.collection.getDexStats(prov.playerId);
+      if (dex.totalSpecies > 0 && dex.distinctSpecies >= dex.totalSpecies) {
+        out.push(gameEvent('COLLECTION_COMPLETED', { distinctSpecies: dex.distinctSpecies, totalSpecies: dex.totalSpecies }));
+      }
+    } catch (err) {
+      ctx.logger.warn({ err, playerId: prov.playerId }, 'dex-completion check failed');
+    }
+  }
   return out;
 }

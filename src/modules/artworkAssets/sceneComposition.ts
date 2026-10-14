@@ -84,7 +84,12 @@ export interface SceneEnvironmentalSprite { layer: SceneLayer; placement: Sprite
 export interface SceneRequest {
   environmentalSprites?: readonly SceneEnvironmentalSprite[] | undefined;
   background: SceneLayer;
-  sprite?: { layer: SceneLayer; placement: SpritePlacement } | null;
+  /**
+   * The scene's actor at its authored placement: an enemy, or a WaifuMon met
+   * in a dungeon. `mirror` flips it inside its box, as an environmental
+   * sprite's does; absent means as drawn.
+   */
+  sprite?: { layer: SceneLayer; placement: SpritePlacement; mirror?: boolean } | null;
   /**
    * The player's Buddy, drawn in the reserved left side under the enemy. No
    * placement: where she stands is the compositor's. `mirror` flips her
@@ -133,13 +138,14 @@ export interface SceneCompositionService {
 export function sceneCacheKey(request: SceneRequest): string {
   const output = request.output ?? SCENE_OUTPUT;
   const sprite = request.sprite
-    ? { hash: request.sprite.layer.hash, placement: SpritePlacementSchema.parse(request.sprite.placement) }
+    ? { hash: request.sprite.layer.hash, placement: SpritePlacementSchema.parse(request.sprite.placement), mirror: request.sprite.mirror === true }
     : null;
   const identity: unknown[] = [
     'scene',
     SCENE_RENDERER_VERSION,
     request.background.hash,
-    sprite && [sprite.hash, sprite.placement.anchor, sprite.placement.scaleBasisPoints, sprite.placement.offsetX, sprite.placement.offsetY],
+    // 'mirrored' only when set, so an unmirrored actor keeps the key it always had.
+    sprite && [sprite.hash, sprite.placement.anchor, sprite.placement.scaleBasisPoints, sprite.placement.offsetX, sprite.placement.offsetY, ...(sprite.mirror ? ['mirrored'] : [])],
     [output.width, output.height],
     SCENE_CONTENT_TYPE,
   ];
@@ -168,7 +174,7 @@ export function sceneCacheKey(request: SceneRequest): string {
 export async function renderScene(input: {
   background: Buffer;
   environmentalSprites?: readonly { bytes: Buffer; placement: SpritePlacement; mirror: boolean; visualLayer: 'background' | 'foreground' }[];
-  sprite?: { bytes: Buffer; placement: SpritePlacement } | null;
+  sprite?: { bytes: Buffer; placement: SpritePlacement; mirror?: boolean } | null;
   playerBuddy?: { bytes: Buffer; mirror?: boolean } | null;
   output?: SceneOutputSpec;
 }): Promise<Buffer> {
@@ -209,7 +215,7 @@ export async function renderScene(input: {
   }
   if (input.sprite) {
     const { placement } = input.sprite;
-    layers.push(await overlay(input.sprite.bytes, (source) => layoutSprite(source, placement, output)));
+    layers.push(await overlay(input.sprite.bytes, (source) => layoutSprite(source, placement, output), input.sprite.mirror === true));
   }
   for (const sprite of input.environmentalSprites ?? []) if (sprite.visualLayer === 'foreground') {
     layers.push(await overlay(sprite.bytes, (source) => layoutSprite(source, sprite.placement, output), sprite.mirror));
@@ -250,11 +256,11 @@ export function createSceneCompositionService(deps: SceneCompositionDeps): Scene
 
     const background = await request.background.load();
     if (!background) return null;
-    let sprite: { bytes: Buffer; placement: SpritePlacement } | null = null;
+    let sprite: { bytes: Buffer; placement: SpritePlacement; mirror: boolean } | null = null;
     if (request.sprite) {
       const bytes = await request.sprite.layer.load();
       if (!bytes) return null;
-      sprite = { bytes, placement: SpritePlacementSchema.parse(request.sprite.placement) };
+      sprite = { bytes, placement: SpritePlacementSchema.parse(request.sprite.placement), mirror: request.sprite.mirror === true };
     }
 
     let playerBuddy: { bytes: Buffer; mirror: boolean } | null = null;

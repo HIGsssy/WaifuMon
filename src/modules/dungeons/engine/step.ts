@@ -732,7 +732,8 @@ export function stepDungeon(
     case 'select_item':
     case 'capture':
     case 'rescue':
-    case 'leave_encounter': {
+    case 'leave_encounter':
+    case 'dismiss_encounter': {
       const at = currentAction(w.state, ctx.definition);
       if (!at || !isEncounterAction(at.action)) return refused(state, 'encounter_not_offered');
       const decision = decideEncounterInput(w.state, at.action, input, ctx, rng);

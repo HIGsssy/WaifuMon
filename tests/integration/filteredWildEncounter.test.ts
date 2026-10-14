@@ -279,7 +279,12 @@ describe('legacy and specific shapes are unchanged', () => {
     await seed({ type: T });
     const { resolution } = await huntIn('twin-peeks');
     expect(resolution.wildEncounter?.status).toBe('created');
-    expect([valleyLr.slug, valleyN.slug, peaksLr.slug]).toContain(
+    // Every species the hunt draw can reach from Twin Peeks, fallbacks
+    // included: its own pool (peaksLr), the starting region's bucket (valleyLr,
+    // valleyN), and — when the rarity roll lands on UR, which neither pool
+    // holds — the global non-exclusive fallback (globalUr). That last one is
+    // about 1.6% of draws, so leaving it out made this fail once in sixty runs.
+    expect([valleyLr.slug, valleyN.slug, peaksLr.slug, globalUr.slug]).toContain(
       resolution.wildEncounter?.speciesSlug,
     );
   });

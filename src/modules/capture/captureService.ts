@@ -37,6 +37,7 @@ import {
   captureAttempts,
   encounters,
   items,
+  players,
   playerWaifus,
   species,
   type CaptureAttemptRow,
@@ -837,6 +838,27 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     return max > 0 && chargesNow < max;
   }
 
+  /**
+   * Take the player's row before anything else a hunted capture locks.
+   *
+   * A capture attempt ends by writing the player's XP, and on the way there
+   * its inserts key-share that same row — so it always needed the player row;
+   * it used to reach it last, after the encounter, the charm and the Microdose
+   * charge. A hunt takes the player row first and the encounter after it, and
+   * a dungeon capture takes the player row first and the charm after it. Met
+   * mid-flight, each side held what the other was waiting for, and Postgres
+   * had to abort one of them.
+   *
+   * Taking the row up front makes the order `players → encounter → charm →
+   * effect → copy → quests` here, which is a suffix of the hunt's and the
+   * dungeon's. The three now queue on the player and cannot deadlock one
+   * another. Nothing about what the attempt reads, rolls, spends or grants
+   * changes: this is the lock `grantXp` took anyway, taken earlier.
+   */
+  async function lockPlayerForCapture(tx: DbOrTx, playerId: number): Promise<void> {
+    await tx.select({ id: players.id }).from(players).where(eq(players.id, playerId)).for('update');
+  }
+
   /** Active encounter + species, or a thrown domain error. Read-only. */
   async function loadActiveEncounter(
     playerId: number,
@@ -1446,6 +1468,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         | { kind: 'used'; encounter: EncounterRow; species: SpeciesRow; item: ItemRow; use: ItemUseResult };
 
       const outcome = await db.transaction(async (tx): Promise<TxResult> => {
+        await lockPlayerForCapture(tx, playerId);
         // Same lock the capture commit takes: two clicks serialize here, and
         // the second sees the state the first left behind.
         const [encounter] = await tx
@@ -1540,6 +1563,7 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
         | { kind: 'result'; value: CaptureAttemptResult };
 
       const outcome = await db.transaction(async (tx): Promise<TxResult> => {
+        await lockPlayerForCapture(tx, playerId);
         const [encounter] = await tx
           .select()
           .from(encounters)

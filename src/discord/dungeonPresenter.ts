@@ -21,6 +21,11 @@
  *   dg|act|<runId>|<step>|<code>    the pending action: a = advance, d = decline
  *   dg|mv|<runId>|<step>|<connId>   take a connection
  *   dg|ev|<runId>|<step>|<choiceId> answer the offered event with one of its choices
+ *   dg|ci|<runId>|<step>            choose the capture charm (select menu; the value is the item slug)
+ *   dg|cap|<runId>|<step>           attempt a capture with the chosen charm
+ *   dg|res|<runId>|<step>           carry out a direct rescue
+ *   dg|cl|<runId>|<step>            leave the offered WaifuMon
+ *   dg|cu|<runId>|<step>            move on from a WaifuMon who can no longer be had (never spends or grants)
  *   dg|exq|<runId>                  extraction confirmation
  *   dg|ex|<runId>|<step>            extract
  *   dg|abq|<runId>                  abandon confirmation
@@ -29,8 +34,10 @@
  * `<step>` is the run's step when the button was drawn. The service refuses an
  * input whose step is not the run's current one, so a stale or double-clicked
  * button changes nothing. Old step-less abandon buttons reopen confirmation.
+ * A charm is never named in a button: Capture uses the selection stored on
+ * the run, so a button cannot spend an item the player did not choose.
  */
-import { ActionRowBuilder, type AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, embedLength } from 'discord.js';
+import { ActionRowBuilder, type AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder, embedLength } from 'discord.js';
 import { BASIS_POINTS, type DungeonActionType } from '../modules/dungeons/content/dungeonDefinition';
 import type { DungeonDailyAllowance } from '../modules/dungeons/dungeonAllowanceService';
 import { fighterModifiers, type DungeonFighter } from '../modules/dungeons/dungeonFighter';
@@ -39,12 +46,15 @@ import type {
   DungeonCard,
   DungeonCurrencyView,
   DungeonDetailView,
+  DungeonEncounterReceipt,
+  DungeonEncounterResultView,
   DungeonHomeView,
   DungeonRunView,
   DungeonSecuredReward,
   DungeonSettlement,
 } from '../modules/dungeons/dungeonRunService';
-import type { DungeonRecentEntry, DungeonWaveResult } from '../modules/dungeons/engine/types';
+import type { DungeonEncounterUnavailableReason, DungeonRecentEntry, DungeonWaveResult } from '../modules/dungeons/engine/types';
+import type { DungeonEncounterView } from '../modules/dungeons/engine/encounters';
 import { settleCurrency } from '../modules/dungeons/engine/rewards';
 import type { DungeonEventChoiceView, DungeonEventView } from '../modules/dungeons/engine/events';
 import type { DungeonActionView, DungeonConnectionView } from '../modules/dungeons/engine/view';
@@ -53,6 +63,7 @@ import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../modules/equipment/vocabu
 import { formatProgressionAmount } from '../modules/progressionCurrency/progressionCurrencyService';
 import { blockerLine, modifiersLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
 import type { SessionPayload } from './ephemeralSession';
+import { formatChancePercent } from './rollFormat';
 import { EMPTY_SLOT, SLOT_EMOJI, formatMultiplier } from './equipmentPresenter';
 import { buildCustomId } from './types';
 
@@ -70,6 +81,13 @@ export const RUN_OVER_NOTICE = 'That run is over — here’s how it ended.';
 export const NOT_EXTRACTABLE_NOTICE = 'You can’t extract from here.';
 export const CHOICE_UNAVAILABLE_NOTICE = 'That choice isn’t available right now — here’s where you are.';
 export const CHOICE_REQUIRED_NOTICE = 'Pick one of the choices below.';
+export const CAPTURE_ITEM_REQUIRED_NOTICE = 'Choose a capture charm first.';
+export const CAPTURE_ITEM_UNAVAILABLE_NOTICE = 'That charm can’t be used on her right now. Nothing was spent — choose another.';
+export const ENCOUNTER_NOT_OFFERED_NOTICE = 'She isn’t waiting for you any more — here’s where you are.';
+export const ENCOUNTER_STILL_HERE_NOTICE = 'She’s still here after all — here’s what you can do.';
+/** The promise an encounter screen makes about charms. The wording is deliberate: do not soften it. */
+export const CHARM_SPENT_PER_ATTEMPT = 'Each attempt uses one charm, whether or not she is caught.';
+export const NO_USABLE_CHARM = 'You have no capture charm that works on her here.';
 /** The promise a screen makes about an item a choice spends. The wording is deliberate: do not soften it. */
 export const CONSUMED_WHEN_SELECTED = 'Consumed when selected.';
 export const CONSUMED_EVEN_IF_CHECK_FAILS = 'Consumed when selected, even if the check fails.';
@@ -99,6 +117,13 @@ export const dgId = {
   extract: (runId: number, step: number) => buildCustomId('dg', 'ex', String(runId), String(step)),
   abandonConfirm: (runId: number) => buildCustomId('dg', 'abq', String(runId)),
   abandon: (runId: number, step?: number) => buildCustomId('dg', 'ab', String(runId), ...(step === undefined ? [] : [String(step)])),
+  /** The charm select menu. The chosen item slug travels as the menu's value, never in an id. */
+  charm: (runId: number, step: number) => buildCustomId('dg', 'ci', String(runId), String(step)),
+  capture: (runId: number, step: number) => buildCustomId('dg', 'cap', String(runId), String(step)),
+  rescue: (runId: number, step: number) => buildCustomId('dg', 'res', String(runId), String(step)),
+  leaveEncounter: (runId: number, step: number) => buildCustomId('dg', 'cl', String(runId), String(step)),
+  /** An encounter whose WaifuMon can no longer be had: resolves it as unavailable, never spends or grants. */
+  encounterGone: (runId: number, step: number) => buildCustomId('dg', 'cu', String(runId), String(step)),
 };
 
 const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
@@ -110,7 +135,7 @@ const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
   leave: 'Way on',
   reward: 'Cache',
   event: 'Event',
-  wild_encounter: 'Encounter',
+  wild_encounter: 'A wild WaifuMon',
   rescue: 'Rescue',
 };
 const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
@@ -122,8 +147,8 @@ const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   leave: '🚪',
   reward: '🎁',
   event: '❔',
-  wild_encounter: '❔',
-  rescue: '❔',
+  wild_encounter: '🌸',
+  rescue: '🔓',
 };
 /** The button that carries out a pending action, when its author wrote no label. */
 const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
@@ -136,11 +161,13 @@ const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
   reward: 'Open',
   // Never drawn: an event's buttons are its choices (`eventButtons`).
   event: 'Continue',
-  // Labels only: encounter controls and screens belong to P4C1.
+  // Never drawn: an offered encounter has its own controls (`encounterRows`).
   wild_encounter: 'Continue',
   rescue: 'Continue',
 };
 
+/** Discord: at most 25 options in a select menu. */
+const MAX_SELECT_OPTIONS = 25;
 /** Discord: five buttons to a row, five rows to a message. Three rows are the connections'. */
 const BUTTONS_PER_ROW = 5;
 const CONNECTION_ROWS = 3;
@@ -148,6 +175,8 @@ const MAX_CONNECTION_BUTTONS = BUTTONS_PER_ROW * CONNECTION_ROWS;
 /** Wave results shown in full after a step that fought several. */
 const MAX_WAVE_FIELDS = 3;
 const EMBED_TOTAL_LIMIT = 6000;
+
+type Row = ActionRowBuilder<ButtonBuilder> | ActionRowBuilder<StringSelectMenuBuilder>;
 
 function row(...components: ButtonBuilder[]): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(...components);
@@ -393,6 +422,14 @@ export interface DungeonScreenOptions {
   itemName(slug: string): string;
   art?: TrialArt;
   status?: string | null;
+  /**
+   * The capture attempt or rescue this very press committed, from the
+   * service's result. Present only on the screen painted for that press:
+   * a resumed or repainted screen has none, and says only what the run stored.
+   */
+  encounterReceipts?: readonly DungeonEncounterReceipt[];
+  /** Rows the caller adds above the navigation row, e.g. the duplicate-conversion prompt. */
+  extraRows?: readonly ActionRowBuilder<ButtonBuilder>[];
 }
 
 /** The home: the active run when there is one, otherwise the dungeons open here. */
@@ -623,6 +660,17 @@ function recentBlock(view: DungeonRunView, opts: DungeonScreenOptions): { lines:
       case 'event_nothing':
         if (entry.text) lines.push(`_${truncate(entry.text, 200)}_`);
         break;
+      case 'encounter': {
+        const told = view.latestEncounters?.find((e) => e.roomId === entry.roomId && e.actionId === entry.actionId);
+        // A pool that drew no one is the author's quiet line, as an empty event pool is.
+        if (entry.outcome === 'nothing') {
+          if (entry.text) lines.push(`_${truncate(entry.text, 200)}_`);
+          break;
+        }
+        const receipt = opts.encounterReceipts?.find((r) => r.roomId === entry.roomId && r.actionId === entry.actionId);
+        fields.push(encounterResultField(view, entry, told, receipt, opts.itemName));
+        break;
+      }
       case 'event': {
         const told = view.latestEvents?.find((e) => e.roomId === entry.roomId && e.actionId === entry.actionId);
         const label = truncate(told?.choiceLabel ?? 'Your choice', 60);
@@ -677,6 +725,183 @@ function recentBlock(view: DungeonRunView, opts: DungeonScreenOptions): { lines:
   const omitted = Math.max(0, otherFields.length - 8);
   if (omitted) lines.push(`and ${omitted} more activity results`);
   return { lines, fields: [...otherFields.slice(0, 8), ...rewardFields] };
+}
+
+// ── encounters ──────────────────────────────────────────────────────────────
+
+/** The marks an encounter's fields start with; `fitEmbed` never shortens them. */
+const ENCOUNTER_MARKS = ['🎯', '🔓', '💖', '😤', '💨', '👋', '🚫'] as const;
+
+/** Why she cannot be had, in player words. Never the internal reason code. */
+const UNAVAILABLE_REASON: Readonly<Record<DungeonEncounterUnavailableReason, string>> = {
+  missing: 'She can’t be found any more.',
+  disabled: 'She can’t be found any more.',
+  not_permitted: 'She can’t be taken from this dungeon.',
+  player_limit: 'You’ve already taken as many of her from this dungeon as you can.',
+  direct_not_permitted: 'She can’t be rescued here.',
+  direct_limit_missing: 'She can’t be rescued here.',
+};
+
+function unavailableReasonLine(reason: string | null | undefined): string {
+  return (reason && UNAVAILABLE_REASON[reason as DungeonEncounterUnavailableReason]) || 'She can’t join you right now.';
+}
+
+function nameWithRarity(name: string, rarity: string | null | undefined): string {
+  return rarity ? `${name} (${rarity})` : name;
+}
+
+/** A selected charm the player can still use, with the service's quote; null when there is none. */
+function selectedCharm(encounter: DungeonEncounterView): DungeonEncounterView['items'][number] | null {
+  return encounter.items.find((i) => i.item === encounter.selectedItem) ?? null;
+}
+
+function chanceText(charm: { guaranteed: boolean; chance: number }): string {
+  return charm.guaranteed ? 'guaranteed capture' : `${formatChancePercent(charm.chance)} capture chance`;
+}
+
+/** The offered WaifuMon, for the description: who, how rare, and the author's introduction. */
+function encounterBrief(action: DungeonActionView, encounter: DungeonEncounterView): string {
+  const heading = `${ACTION_EMOJI[action.type]} **${truncate(action.label || ACTION_HEADING[action.type], 100)}**`;
+  return [
+    heading,
+    `**${truncate(encounter.name, 100)}**${encounter.rarity ? ` · ${encounter.rarity}` : ''}`,
+    encounter.intro ? truncate(encounter.intro, 600) : null,
+  ].filter((l): l is string => l != null).join('\n');
+}
+
+/**
+ * What the player can do about her, and at what cost. The cost line is a
+ * field rather than prose so that a full embed shortens the room text first.
+ */
+function encounterFields(encounter: DungeonEncounterView, itemName: (slug: string) => string): Field[] {
+  if (!encounter.available) {
+    return [{ name: '🚫 She can’t join you', value: `${unavailableReasonLine(encounter.unavailableReason)}\nContinue to move on. Nothing will be spent.` }];
+  }
+  if (encounter.mode === 'direct') {
+    return [{ name: '🔓 Rescue', value: 'No charm and no roll: free her and she joins your collection.' }];
+  }
+  const lines = [`Attempts left: **${encounter.attemptsLeft}**`];
+  const chosen = selectedCharm(encounter);
+  if (encounter.items.length === 0) {
+    lines.push(
+      NO_USABLE_CHARM,
+      'A charm only works on the rarities it is made for, and this encounter may allow only some charms. You can get one elsewhere and come back — she will wait.',
+    );
+  } else if (chosen) {
+    lines.push(`Charm: **${itemLabel(chosen.item, itemName)}** — **${chanceText(chosen)}**`);
+  } else if (encounter.selectedItem) {
+    lines.push('Your chosen charm can’t be used any more — choose another below.');
+  } else {
+    lines.push('Choose a charm below to see your chance, then Capture.');
+  }
+  lines.push(`**${CHARM_SPENT_PER_ATTEMPT}**`);
+  return [{ name: '🎯 Capture', value: truncate(lines.join('\n'), 1024) }];
+}
+
+/** The charm menu, Capture and Leave — or the one control that applies. */
+function encounterRows(view: DungeonRunView, action: DungeonActionView, encounter: DungeonEncounterView, itemName: (slug: string) => string): Row[] {
+  const leave = button(dgId.leaveEncounter(view.id, view.step), 'Leave her', ButtonStyle.Secondary, '👋');
+  if (!encounter.available) {
+    // Never Capture or Rescue: should she be obtainable again by the press, it is refused and changes nothing.
+    return [row(button(dgId.encounterGone(view.id, view.step), 'Continue', ButtonStyle.Primary))];
+  }
+  if (encounter.mode === 'direct') {
+    return [row(button(dgId.rescue(view.id, view.step), action.label || 'Rescue her', ButtonStyle.Success, '🔓'), leave)];
+  }
+  if (encounter.items.length === 0) return [row(leave)];
+  const chosen = selectedCharm(encounter);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(dgId.charm(view.id, view.step))
+    .setPlaceholder('Choose a capture charm…')
+    .addOptions(encounter.items.slice(0, MAX_SELECT_OPTIONS).map((charm) => ({
+      label: truncate(`${itemLabel(charm.item, itemName)} ×${charm.owned}`, 100),
+      value: charm.item,
+      description: truncate(`${charm.guaranteed ? 'Guaranteed capture' : `Capture chance: ${formatChancePercent(charm.chance)}`} · used on Capture`, 100),
+      default: charm.item === chosen?.item,
+    })));
+  const capture = button(
+    dgId.capture(view.id, view.step),
+    chosen ? `Capture — ${itemLabel(chosen.item, itemName)}` : 'Capture',
+    ButtonStyle.Success,
+    '🎯',
+  ).setDisabled(chosen == null);
+  return [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu), row(capture, leave)];
+}
+
+function xpLines(receipt: DungeonEncounterReceipt | undefined): string[] {
+  if (!receipt) return [];
+  const lines: string[] = [];
+  if (receipt.xpGranted > 0) lines.push(`+${receipt.xpGranted} XP${receipt.acquired?.isNewDex ? ' (incl. new dex)' : ''}`);
+  for (const l of receipt.levelUps) lines.push(`⬆️ **Level ${l.toLevel}!**${l.rewardLabels.length ? ` — ${l.rewardLabels.join(', ')}` : ''}`);
+  return lines;
+}
+
+/** The charm an attempt used and the chance it was quoted, from the committed receipt. */
+function attemptLines(receipt: DungeonEncounterReceipt | undefined, itemName: (slug: string) => string): string[] {
+  if (receipt?.type !== 'capture_attempt') return [];
+  const lines = [`Used **${itemLabel(receipt.item, itemName)}** — ${receipt.guaranteed ? 'guaranteed capture' : `${formatChancePercent(receipt.chance)} chance`}.`];
+  if (receipt.microdose) {
+    const name = receipt.microdose.sourceItemSlug ? itemLabel(receipt.microdose.sourceItemSlug, itemName) : 'Capture boost';
+    lines.push(receipt.microdose.chargesRemaining > 0
+      ? `${name}: 1 charge used — **${receipt.microdose.chargesRemaining}** left.`
+      : `${name}: last charge used — the effect has worn off.`);
+  }
+  return lines;
+}
+
+/** One encounter result of the latest step. Only committed facts: the stored outcome, and this press's receipt when there is one. */
+function encounterResultField(
+  view: DungeonRunView,
+  entry: Extract<DungeonRecentEntry, { kind: 'encounter' }>,
+  told: DungeonEncounterResultView | undefined,
+  receipt: DungeonEncounterReceipt | undefined,
+  itemName: (slug: string) => string,
+): Field {
+  const acquired = receipt?.acquired ?? null;
+  const name = truncate(acquired?.name ?? told?.name ?? 'The WaifuMon', 100);
+  const rarity = acquired?.rarity ?? told?.rarity ?? null;
+  const authored = entry.text ? truncate(entry.text, 400) : null;
+  const collection = acquired
+    ? [acquired.isNewDex ? '✨ New to your collection!' : acquired.isDuplicate ? 'You already have her — this one is a duplicate.' : null]
+    : [];
+  let heading: string;
+  let body: (string | null)[];
+  switch (entry.outcome) {
+    case 'failure': {
+      const left = view.core.action?.encounter?.attemptsLeft;
+      heading = `😤 ${name} broke free`;
+      body = [
+        ...attemptLines(receipt, itemName),
+        left === undefined ? 'She is still here.' : `She is still here — **${left}** attempt${left === 1 ? '' : 's'} left.`,
+        ...xpLines(receipt),
+      ];
+      break;
+    }
+    case 'captured':
+      heading = `💖 You captured ${nameWithRarity(name, rarity)}!`;
+      body = [authored, ...attemptLines(receipt, itemName), ...collection, ...xpLines(receipt)];
+      break;
+    case 'rescued':
+      heading = `🔓 You rescued ${nameWithRarity(name, rarity)}!`;
+      body = [authored, ...attemptLines(receipt, itemName), ...collection, ...xpLines(receipt)];
+      break;
+    case 'escaped':
+      heading = `💨 ${name} escaped`;
+      body = [authored ?? 'She slipped away.', ...attemptLines(receipt, itemName), ...xpLines(receipt)];
+      break;
+    case 'left':
+      heading = `👋 You left ${name}`;
+      body = [authored ?? 'You move on without her.'];
+      break;
+    default:
+      heading = `🚫 ${name} can’t join you`;
+      body = [unavailableReasonLine(told?.unavailableReason), authored];
+      break;
+  }
+  return {
+    name: truncate(heading, 256),
+    value: truncate(body.filter((l): l is string => l != null && l !== '').join('\n'), 1024) || '—',
+  };
 }
 
 function isFight(action: DungeonActionView): boolean {
@@ -843,7 +1068,7 @@ function fitEmbed(embed: EmbedBuilder): void {
   if (description) embed.setDescription(truncate(description, Math.max(1, description.length - over)));
   over = embedLength(embed.data) - EMBED_TOTAL_LIMIT;
   const fields = embed.data.fields ?? [];
-  const important = (name: string) => name.startsWith('🎁') || name.startsWith(CHOICE_OPEN) || name.startsWith(CHOICE_CLOSED) || ['At Risk', 'Result', 'Kept', 'Kept — yours to keep', 'Secured', 'Secured — yours to keep', 'Currency risk'].includes(name);
+  const important = (name: string) => name.startsWith('🎁') || name.startsWith(CHOICE_OPEN) || name.startsWith(CHOICE_CLOSED) || ENCOUNTER_MARKS.some((mark) => name.startsWith(mark)) || ['At Risk', 'Result', 'Kept', 'Kept — yours to keep', 'Secured', 'Secured — yours to keep', 'Currency risk'].includes(name);
   for (const field of [...fields].reverse().filter((f) => !important(f.name))) {
     if (over <= 0) break;
     const length = Math.max(1, field.value.length - over);
@@ -890,7 +1115,9 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   } else {
     if (core.room.description) body.push(`_${truncate(core.room.description, 1000)}_`, '');
     if (core.phase === 'action' && core.action) {
-      body.push(core.action.event ? eventBrief(core.action.event) : actionBrief(core.action));
+      body.push(core.action.event
+        ? eventBrief(core.action.event)
+        : core.action.encounter ? encounterBrief(core.action, core.action.encounter) : actionBrief(core.action));
     } else if (core.stuck) {
       body.push('⚠️ **There is no way forward from here.** Nothing is left to do in this room, no way out of it is open and you cannot extract — abandoning the run is all that is left.');
     } else if (shown.some((c) => c.open)) {
@@ -902,6 +1129,7 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   embed.setDescription(truncate(body.join('\n').trim() || '—', 4096));
   embed.addFields(...latest.fields);
   if (!over && core.action?.event) embed.addFields(...eventChoiceFields(view, core.action.event, opts.itemName));
+  if (!over && core.action?.encounter) embed.addFields(...encounterFields(core.action.encounter, opts.itemName));
 
   embed.addFields({ name: truncate(view.fighter.name, 200), value: fighterBlock(view.fighter, core.hp, core.maxHp), inline: true });
   if (over) {
@@ -946,11 +1174,13 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   const art = opts.art ?? {};
   applyArt(embed, art);
 
-  const components: ActionRowBuilder<ButtonBuilder>[] = [];
+  const components: Row[] = [];
   if (over) {
-    components.push(row(homeButton('Delve Again'), menuButton()));
+    components.push(...(opts.extraRows ?? []), row(homeButton('Delve Again'), menuButton()));
   } else {
-    if (core.phase === 'action' && core.action) {
+    if (core.phase === 'action' && core.action?.encounter) {
+      components.push(...encounterRows(view, core.action, core.action.encounter, opts.itemName));
+    } else if (core.phase === 'action' && core.action) {
       components.push(row(...actionButtons(view, core.action)));
     } else {
       for (const group of chunk(buttoned, BUTTONS_PER_ROW)) components.push(row(...group.map((c) => connectionButton(view, c))));
@@ -958,7 +1188,7 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
     const last: ButtonBuilder[] = [];
     if (core.canExtract) last.push(button(dgId.extractConfirm(view.id), 'Extract', ButtonStyle.Success, '🚪'));
     last.push(button(dgId.abandonConfirm(view.id), 'Abandon', core.stuck ? ButtonStyle.Danger : ButtonStyle.Secondary), menuButton());
-    components.push(row(...last));
+    components.push(...(opts.extraRows ?? []), row(...last));
   }
   return { content: truncate(opts.status ?? '', 2000), embeds: [embed], components, files: files(art) };
 }
@@ -979,6 +1209,14 @@ export function actionNotice(result: Pick<DungeonActionResult, 'status' | 'refus
       return CHOICE_UNAVAILABLE_NOTICE;
     case 'choice_required':
       return CHOICE_REQUIRED_NOTICE;
+    case 'capture_item_required':
+      return CAPTURE_ITEM_REQUIRED_NOTICE;
+    case 'capture_item_unavailable':
+      return CAPTURE_ITEM_UNAVAILABLE_NOTICE;
+    case 'encounter_not_offered':
+      return ENCOUNTER_NOT_OFFERED_NOTICE;
+    case 'encounter_available':
+      return ENCOUNTER_STILL_HERE_NOTICE;
     default:
       return STALE_NOTICE;
   }

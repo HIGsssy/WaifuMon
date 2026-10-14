@@ -12,10 +12,23 @@
  * service refuses it as `stale`, changes nothing, and the run is repainted as
  * it now stands. Abandon confirmations also carry the quoted step; older
  * step-less buttons reopen a current confirmation without settling.
+ *
+ * Encounters (`ci`, `cap`, `res`, `cl`, `cu`) follow the same rule. What a
+ * capture or rescue *did* — the card, the XP, the rare-capture announcement,
+ * the Activity Feed, appearance toasts — comes only from the receipts of the
+ * press that committed it, and is sent only after the service's transaction
+ * has returned. A stale press, a repaint or a resumed run has no receipts, so
+ * nothing one-time is ever sent twice; a rolled-back step throws and sends
+ * nothing at all.
  */
-import type { ButtonInteraction } from 'discord.js';
-import { ownedArtworkImage } from '../assets/attachRenderedCard';
-import { dungeonRunSceneArtwork, dungeonZoneArtwork } from '../dungeonArtwork';
+import type { ActionRowBuilder, ButtonBuilder, ButtonInteraction, StringSelectMenuInteraction } from 'discord.js';
+import { ownedArtworkImage, ownedCardImage } from '../assets/attachRenderedCard';
+import { postAppearanceUnlockToasts } from '../appearanceToast';
+import { dungeonRunSceneArtwork, dungeonZoneArtwork, speciesArtwork } from '../dungeonArtwork';
+import { emitEvents } from '../gameEventEmitter';
+import { dungeonEncounterDescriptors } from '../gameEventBuilders';
+import { duplicatePromptComponents } from './waifumonCollection';
+import { sendRareAnnouncement } from './waifumonHunt';
 import type { TrialArt, TrialArtwork } from '../combatTrialPresenter';
 import {
   RUN_ACTIVE_NOTICE,
@@ -32,17 +45,21 @@ import {
 } from '../dungeonPresenter';
 import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
 import type { AppContext, Provisioned } from '../types';
-import type { DungeonRunService, DungeonRunView } from '../../modules/dungeons/dungeonRunService';
+import type { DungeonEncounterReceipt, DungeonRunService, DungeonRunView } from '../../modules/dungeons/dungeonRunService';
 import type { DungeonInput } from '../../modules/dungeons/engine/types';
 import {
   AppError,
   CombatBuddyRequiredError,
   CombatLoadoutIncompleteError,
+  DungeonCaptureItemUnavailableError,
+  DungeonCaptureQuoteChangedError,
   DungeonDailyLimitError,
+  DungeonEncounterSpeciesUnavailableError,
   DungeonEventItemUnavailableError,
   DungeonInvalidError,
   DungeonRunActiveError,
   DungeonRunNotFoundError,
+  DungeonStepContendedError,
   DungeonUnavailableError,
   FeatureLockedError,
 } from '../../shared/errors';
@@ -54,6 +71,10 @@ const STEP_PATTERN = /^\d{1,7}$/;
 const CONNECTION_ID_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
 const CONNECTION_ID_MAX_LENGTH = 40;
 const DUNGEON_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
+const ITEM_SLUG_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
+const ITEM_SLUG_MAX_LENGTH = 64;
+
+type DungeonInteraction = ButtonInteraction | StringSelectMenuInteraction;
 
 /**
  * The run's *snapshotted* Buddy, by the copy the run started with — not
@@ -89,16 +110,58 @@ function options(ctx: AppContext, art: TrialArt, status?: string | null, pinnedI
   };
 }
 
-async function runArt(ctx: AppContext, playerId: number, view: DungeonRunView): Promise<TrialArt> {
+/** The copy a capture or rescue just created, as her card (else the look she wears). Null on any failure. */
+async function acquiredArtwork(ctx: AppContext, playerId: number, waifuId: number): Promise<TrialArtwork | null> {
+  if (!ctx.services.collection) return null;
+  try {
+    return await ownedCardImage(ctx, await ctx.services.collection.getOwned(playerId, waifuId));
+  } catch (err) {
+    ctx.logger.warn({ err, playerId, waifuId }, 'dungeons: acquired WaifuMon artwork unavailable');
+    return null;
+  }
+}
+
+/**
+ * The picture for the step a WaifuMon was caught or rescued on: her new
+ * card when this press made her, her standard artwork on a later repaint.
+ * Null when the step gained no one, or the run is already offering another
+ * WaifuMon (who is then the picture's subject) — and, on a repaint, when a
+ * fight is waiting, whose enemy is.
+ */
+async function acquiredScene(
+  ctx: AppContext,
+  playerId: number,
+  view: DungeonRunView,
+  receipts: readonly DungeonEncounterReceipt[],
+): Promise<TrialArtwork | null> {
+  if (view.encounterActor) return null;
+  const made = receipts.find((r) => r.acquired && (r.type === 'rescue_grant' || r.success));
+  if (made?.acquired) return acquiredArtwork(ctx, playerId, made.acquired.waifuId);
+  const told = view.latestEncounters?.find((e) => e.outcome === 'captured' || e.outcome === 'rescued');
+  return told && !view.enemy ? speciesArtwork(ctx, told.species) : null;
+}
+
+async function runArt(ctx: AppContext, playerId: number, view: DungeonRunView, receipts: readonly DungeonEncounterReceipt[] = []): Promise<TrialArt> {
   // The scene and its precedence are `dungeonArtwork.ts`; the Buddy is the thumbnail.
   return {
-    scene: await dungeonRunSceneArtwork(ctx, view),
+    scene: (await acquiredScene(ctx, playerId, view, receipts)) ?? await dungeonRunSceneArtwork(ctx, view),
     buddy: await fighterArtwork(ctx, playerId, view.fighter.waifuId),
   };
 }
 
-async function runScreen(ctx: AppContext, playerId: number, view: DungeonRunView, status?: string | null) {
-  return buildRunScreen(view, options(ctx, await runArt(ctx, playerId, view), status, { ...view.rewardItemNames, ...view.eventItemNames }));
+async function runScreen(
+  ctx: AppContext,
+  playerId: number,
+  view: DungeonRunView,
+  status?: string | null,
+  extra: { receipts?: readonly DungeonEncounterReceipt[]; extraRows?: ActionRowBuilder<ButtonBuilder>[] } = {},
+) {
+  const opts = options(ctx, await runArt(ctx, playerId, view, extra.receipts), status, { ...view.rewardItemNames, ...view.eventItemNames });
+  return buildRunScreen(view, {
+    ...opts,
+    ...(extra.receipts?.length ? { encounterReceipts: extra.receipts } : {}),
+    ...(extra.extraRows?.length ? { extraRows: extra.extraRows } : {}),
+  });
 }
 
 async function homeScreen(ctx: AppContext, service: DungeonRunService, playerId: number, status?: string | null) {
@@ -133,7 +196,7 @@ async function detailScreen(
  */
 async function run(
   ctx: AppContext,
-  interaction: ButtonInteraction,
+  interaction: DungeonInteraction,
   prov: Provisioned,
   action: (service: DungeonRunService) => Promise<SessionPayload | string>,
   recover: { dungeonKey?: string } = {},
@@ -300,6 +363,142 @@ export async function handleDungeonChoose(ctx: AppContext, i: ButtonInteraction,
       return runScreen(ctx, prov.playerId, await s.run(prov.playerId, parsed.runId), err.userMessage);
     }
   });
+}
+
+// ── encounters ──────────────────────────────────────────────────────────────
+
+/**
+ * Refusals that roll an encounter step back whole: a charm gone or no longer
+ * eligible, a species that stopped being obtainable, odds that moved under
+ * the step, or a deadlock that outlasted the retries. Nothing was spent; the
+ * run is repainted as it stands with the service's own words.
+ */
+function isEncounterRollback(err: unknown): err is DungeonCaptureItemUnavailableError | DungeonEncounterSpeciesUnavailableError | DungeonCaptureQuoteChangedError | DungeonStepContendedError {
+  return err instanceof DungeonCaptureItemUnavailableError || err instanceof DungeonEncounterSpeciesUnavailableError ||
+    err instanceof DungeonCaptureQuoteChangedError || err instanceof DungeonStepContendedError;
+}
+
+/** The Keep / Convert prompt for a duplicate this press created, as a hunt offers it. Never throws. */
+async function duplicateRows(ctx: AppContext, playerId: number, receipts: readonly DungeonEncounterReceipt[]): Promise<ActionRowBuilder<ButtonBuilder>[]> {
+  const dup = receipts.find((r) => r.acquired?.isDuplicate && !(r.type === 'rescue_grant' && r.replayed));
+  if (!dup?.acquired || !ctx.services.collection) return [];
+  try {
+    const preview = await ctx.services.collection.previewConversionEssence(playerId, dup.acquired.rarity, 'convert');
+    return [duplicatePromptComponents(dup.acquired.waifuId, preview)];
+  } catch (err) {
+    ctx.logger.warn({ err, playerId, waifuId: dup.acquired.waifuId }, 'dungeons: duplicate prompt unavailable');
+    return [];
+  }
+}
+
+/**
+ * After commit, once per committed receipt: the session board, the SR+
+ * rare-capture announcement (captures only, by the hunt's own rules), the
+ * Activity Feed and appearance toasts. A replayed rescue wrote nothing and
+ * sends nothing. Never throws — the player already has their result.
+ */
+async function afterEncounter(ctx: AppContext, interaction: DungeonInteraction, prov: Provisioned, receipts: readonly DungeonEncounterReceipt[]): Promise<void> {
+  for (const receipt of receipts) {
+    if (receipt.type === 'rescue_grant' && receipt.replayed) continue;
+    try {
+      const channelId = interaction.channelId;
+      if (channelId && ctx.services.session) {
+        const session = await ctx.services.session.ensureSession(prov.guildDbId, prov.playerId, channelId);
+        if (receipt.type === 'capture_attempt' && receipt.success && receipt.acquired) {
+          await ctx.services.session.recordEvent(session.id, { type: 'capture', speciesName: receipt.acquired.name, rarity: receipt.acquired.rarity });
+        } else if (receipt.type === 'capture_attempt' && receipt.outcome === 'escape') {
+          const escaped = ctx.content.species.find((sp) => sp.slug === receipt.species);
+          if (escaped) await ctx.services.session.recordEvent(session.id, { type: 'escape', speciesName: escaped.name });
+        }
+        for (const lu of receipt.levelUps) await ctx.services.session.recordEvent(session.id, { type: 'levelup', toLevel: lu.toLevel });
+      }
+      if (receipt.type === 'capture_attempt' && receipt.success && receipt.acquired && interaction.isButton()) {
+        const entry = await ctx.services.collection.getOwned(prov.playerId, receipt.acquired.waifuId);
+        await sendRareAnnouncement(ctx, interaction, entry.species, `<@${interaction.user.id}>`, receipt.acquired.isDuplicate, entry.waifu);
+      }
+      await emitEvents(ctx, interaction, prov, await dungeonEncounterDescriptors(ctx, prov, receipt));
+      if (receipt.acquired && receipt.newAppearances?.length) {
+        await postAppearanceUnlockToasts(ctx, interaction, receipt.newAppearances, receipt.acquired.name, prov.playerId);
+      }
+    } catch (err) {
+      ctx.logger.warn({ err, tag: 'dungeons/encounter-post-commit', playerId: prov.playerId }, 'dungeon encounter notification failed');
+    }
+  }
+}
+
+/**
+ * One encounter input under the step guard. The screen is painted from the
+ * committed result; notifications follow it, and only for what committed.
+ */
+async function encounterStep(
+  ctx: AppContext,
+  interaction: DungeonInteraction,
+  prov: Provisioned,
+  target: { runId: number; step: number },
+  input: Extract<DungeonInput, { type: 'select_item' | 'capture' | 'rescue' | 'leave_encounter' | 'dismiss_encounter' }>,
+): Promise<void> {
+  let committed: DungeonEncounterReceipt[] = [];
+  try {
+    await run(ctx, interaction, prov, async (s) => {
+      try {
+        const result = await s.act(prov.playerId, target.runId, { ...input, expectedStep: target.step });
+        committed = result.status === 'applied' ? (result.encounterReceipts ?? []) : [];
+        return await runScreen(ctx, prov.playerId, result.run, actionNotice(result), { receipts: committed, extraRows: await duplicateRows(ctx, prov.playerId, committed) });
+      } catch (err) {
+        if (!isEncounterRollback(err)) throw err;
+        return runScreen(ctx, prov.playerId, await s.run(prov.playerId, target.runId), err.userMessage);
+      }
+    });
+  } finally {
+    // Committed whatever happened to the paint: what it did is still announced.
+    if (committed.length > 0) await afterEncounter(ctx, interaction, prov, committed);
+  }
+}
+
+/** `dg|ci|<runId>|<step>` (select menu) — choose the charm the next Capture uses. Spends nothing. */
+export async function handleDungeonCharm(ctx: AppContext, i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 0);
+  const item = i.values?.[0];
+  if (!parsed || !item || i.values.length !== 1 || item.length > ITEM_SLUG_MAX_LENGTH || !ITEM_SLUG_PATTERN.test(item)) {
+    return respondEphemeral(i, MALFORMED);
+  }
+  return encounterStep(ctx, i, prov, parsed, { type: 'select_item', item });
+}
+
+/** `dg|cap|<runId>|<step>` — one capture attempt with the charm stored on the run. */
+export async function handleDungeonCapture(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 0);
+  if (!parsed) return respondEphemeral(i, MALFORMED);
+  return encounterStep(ctx, i, prov, parsed, { type: 'capture' });
+}
+
+/** `dg|res|<runId>|<step>` — a direct rescue: no charm, no roll. */
+export async function handleDungeonRescue(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 0);
+  if (!parsed) return respondEphemeral(i, MALFORMED);
+  return encounterStep(ctx, i, prov, parsed, { type: 'rescue' });
+}
+
+/** `dg|cl|<runId>|<step>` — leave her. Resolves the encounter as `left`. */
+export async function handleDungeonLeaveEncounter(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 0);
+  if (!parsed) return respondEphemeral(i, MALFORMED);
+  return encounterStep(ctx, i, prov, parsed, { type: 'leave_encounter' });
+}
+
+/**
+ * `dg|cu|<runId>|<step>` — move on from a WaifuMon (wild, capture-mode or
+ * direct rescue) who can no longer be had. `dismiss_encounter` has no
+ * effects: no charm, Microdose charge, roll, copy, XP or notification. It
+ * resolves the encounter `unavailable`, with its authored text and routing,
+ * while the live facts still say so; should she have become obtainable again
+ * by the press it is refused (`encounter_available`), nothing changes and the
+ * encounter is repainted open.
+ */
+export async function handleDungeonEncounterGone(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 0);
+  if (!parsed) return respondEphemeral(i, MALFORMED);
+  return encounterStep(ctx, i, prov, parsed, { type: 'dismiss_encounter' });
 }
 
 /** `dg|exq|<runId>` — ask before extracting. Changes nothing. */

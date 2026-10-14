@@ -676,7 +676,7 @@ export async function handleHuntReturn(
 
 // ─────────────────────────────── capture flow ───────────────────────────────
 
-async function sendRareAnnouncement(
+export async function sendRareAnnouncement(
   ctx: AppContext,
   interaction: ButtonInteraction,
   species: SpeciesRow,

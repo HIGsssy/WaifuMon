@@ -914,3 +914,69 @@ describe('validation, policy, sandbox and gates', () => {
     }
   });
 });
+
+describe('dismissing an encounter that can no longer be had', () => {
+  const unavailable = (c: DungeonEngineContext) => {
+    Object.assign(c.encounterFacts!.species.android!, { available: false, reason: 'disabled' });
+  };
+  /** What would spend or grant: a dismissal emits none of these (an exit room may still settle the run). */
+  const spending = (effects: { type: string }[]) =>
+    effects.filter((e) => ['capture_attempt', 'rescue_grant', 'consume_items', 'grant_rewards'].includes(e.type));
+  const withResult = (over: Record<string, unknown> = {}) =>
+    definition([wild({ results: { unavailable: { text: 'She is gone.', flags: [{ flag: 'saved', value: true }] } }, ...over })]);
+
+  it('resolves it unavailable with the authored text and flags, and no effect at all', () => {
+    const c = ctx(withResult()),
+      p = play(c);
+    p.input({ type: 'select_item', item: 'charm' });
+    unavailable(c);
+    const result = p.input({ type: 'dismiss_encounter' });
+    expect(result).toMatchObject({ status: 'applied', refusal: null });
+    expect(spending(result.effects)).toEqual([]);
+    expect(encounter(p.state)).toMatchObject({ species: 'android', status: 'unavailable', unavailableReason: 'disabled', attempts: [] });
+    expect(p.state.flags.saved).toBe(true);
+    expect(p.state.recent).toContainEqual(expect.objectContaining({ kind: 'encounter', outcome: 'unavailable', text: 'She is gone.' }));
+    expect(result.log.map((l) => l.type)).not.toContain('capture_attempted');
+  });
+
+  it('is refused, changing nothing, while she can still be had — then resolves once she cannot', () => {
+    const c = ctx(withResult()),
+      p = play(c);
+    p.input({ type: 'select_item', item: 'charm' });
+    const before = p.state;
+    const refused = p.input({ type: 'dismiss_encounter' });
+    expect(refused).toMatchObject({ status: 'refused', refusal: 'encounter_available', effects: [] });
+    expect(p.state).toBe(before);
+    expect(encounter(p.state)).toMatchObject({ status: 'offered', selectedItem: 'charm' });
+    unavailable(c);
+    expect(p.input({ type: 'dismiss_encounter' }).status).toBe('applied');
+    expect(encounter(p.state).status).toBe('unavailable');
+  });
+
+  it('never grants a direct rescue, whichever way the facts move', () => {
+    const c = ctx(definition([wild({ type: 'rescue', mode: 'direct', capture: undefined })])),
+      p = play(c);
+    // Obtainable: refused, nothing granted.
+    expect(p.input({ type: 'dismiss_encounter' })).toMatchObject({ status: 'refused', refusal: 'encounter_available', effects: [] });
+    // Rescue no longer authorised: resolved unavailable, still nothing granted.
+    c.encounterFacts!.species.android!.directRescue = { available: false, reason: 'direct_not_permitted' };
+    const result = p.input({ type: 'dismiss_encounter' });
+    expect(spending(result.effects)).toEqual([]);
+    expect(encounter(p.state)).toMatchObject({ status: 'unavailable', unavailableReason: 'direct_not_permitted' });
+    expect(encounter(p.state).grantKey).toBeUndefined();
+  });
+
+  it('a repeated press is stale or refused, never rerolls her, and never repeats the encounter', () => {
+    const c = ctx(withResult()),
+      p = play(c);
+    unavailable(c);
+    const step = p.state.step;
+    p.input({ type: 'dismiss_encounter' });
+    const resolved = p.state;
+    expect(stepDungeon(resolved, { type: 'dismiss_encounter', expectedStep: step }, c).refusal).toBe('stale');
+    // Even at the current step the encounter is over: the resolved instance is never offered again.
+    c.encounterFacts!.species.android!.available = true;
+    expect(stepDungeon(resolved, { type: 'dismiss_encounter', expectedStep: resolved.step }, c).status).toBe('refused');
+    expect(encounter(resolved)).toMatchObject({ species: 'android', status: 'unavailable' });
+  });
+});

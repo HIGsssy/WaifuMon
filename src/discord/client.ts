@@ -108,7 +108,12 @@ import {
   handleDungeonAbandon,
   handleDungeonAbandonConfirm,
   handleDungeonAct,
+  handleDungeonCapture,
+  handleDungeonCharm,
   handleDungeonChoose,
+  handleDungeonEncounterGone,
+  handleDungeonLeaveEncounter,
+  handleDungeonRescue,
   handleDungeonExtract,
   handleDungeonExtractConfirm,
   handleDungeonHome,
@@ -467,6 +472,13 @@ export function createDiscordClient(ctx: AppContext): Client {
       'dg:act': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonAct(ctx, i, prov, args),
       'dg:mv': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonMove(ctx, i, prov, args),
       'dg:ev': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonChoose(ctx, i, prov, args),
+      // Encounters. The charm is the select menu's value, never part of an id;
+      // Capture uses the selection stored on the run.
+      'dg:ci': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) => handleDungeonCharm(ctx, i, prov, args),
+      'dg:cap': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonCapture(ctx, i, prov, args),
+      'dg:res': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonRescue(ctx, i, prov, args),
+      'dg:cl': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonLeaveEncounter(ctx, i, prov, args),
+      'dg:cu': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonEncounterGone(ctx, i, prov, args),
       'dg:exq': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleDungeonExtractConfirm(ctx, i, prov, args),
       'dg:ex': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonExtract(ctx, i, prov, args),

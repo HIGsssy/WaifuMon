@@ -898,9 +898,8 @@ describe('rollback and concurrency', () => {
         w.app.capture.attemptCapture(playerId, spawn.encounter.id, CHARM),
         act(playerId, run, { type: 'capture' }),
       ]);
-      // The two paths take `players` and `player_inventory` in opposite orders
-      // (#0111's family). The dungeon step is the one that gives way: it rolls
-      // back whole, the hunted capture commits, and the step is run again.
+      // Both paths take the player row before the charm row, so they queue on
+      // it and both commit (tests/integration/captureConcurrency.test.ts).
       if (capture.status === 'rejected') throw capture.reason;
       if (step.status === 'rejected') throw step.reason;
       expect(step.value.status).toBe('applied');

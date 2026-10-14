@@ -60,27 +60,34 @@ import { sceneSpritesForRoom, type SceneSpriteRenderVisual } from './sceneSprite
  * Lock order of a capture or rescue step, fixed:
  *
  *   1. the run row (`FOR UPDATE`) — every step;
- *   2. the player row (`FOR UPDATE`) — taken here, before anything is read, so
- *      the inventory, Microdose and ledger facts the engine judges by are the
- *      ones the writes then meet, and so the order agrees with a hunt's
- *      (`players` before `player_inventory`);
+ *   2. the player's `player_currencies` row, then the `players` row (both
+ *      `FOR UPDATE`) — taken here, before anything is read;
  *   3. `player_inventory`, `player_active_effects`, `player_waifus`, the
  *      acquisition ledger;
  *   4. `players` again (already held) for XP, then `player_daily_quests`;
  *   5. the run row and `dungeon_run_events`.
  *
- * That order agrees with a hunt but is the reverse of a *hunted capture*,
- * which takes `player_inventory` and `player_active_effects` before `players`
- * (the same disagreement the hunt itself has with it: #0111). No order agrees
- * with both. So once it holds the player row, a capture or rescue step waits
- * only briefly (`ENCOUNTER_LOCK_TIMEOUT_MS`) for any further lock: if a
- * hunted capture or an item use is mid-flight on the same rows, the dungeon
- * step is the one that gives way — it rolls back whole, the other finishes,
- * and the step is run again. A deadlock victim (`40P01`) is retried likewise.
+ * Step 2 is the prefix a hunt takes (`player_currencies → players`), and a
+ * hunted capture takes `players` before its encounter, charm and effect rows
+ * (`captureService.lockPlayerForCapture`). So the three paths that touch one
+ * player's charms, effects, copies, XP and quests all queue on that player's
+ * row and never hold each other's later locks: they cannot deadlock one
+ * another, whichever starts first. The currency row is taken because a
+ * capture that finishes an exit room settles the run in the same step, a
+ * settlement can bank WaifuBux, and a hunt holds that row before the player
+ * row.
  *
- * Retrying is safe because the capture roll and the new copy's Base SP are
- * the engine's place-keyed draws, passed in: a step that rolled back decides
- * exactly what it decided before.
+ * Only a capture or rescue takes step 2. Every other step writes nothing a
+ * hunt or a capture orders against, and locks nothing more than it did.
+ *
+ * Paths outside those three still disagree with a hunt (using an Energy
+ * Drink and a Care tick take `players` before `player_currencies`). Against
+ * those a step can still be chosen as a deadlock victim (`40P01`), exactly as
+ * a hunt can. A victim has written nothing — Postgres rolled it back whole —
+ * so it is run again, at most `STEP_DEADLOCK_ATTEMPTS` times in all. That is
+ * safe because the capture roll and the new copy's Base SP are the engine's
+ * place-keyed draws: a step that rolled back decides exactly what it decided
+ * before. Nothing here sets or depends on a lock or deadlock timeout.
  *
  * ## Eligibility, allowance and regions
  *
@@ -89,7 +96,7 @@ import { sceneSpritesForRoom, type SceneSpriteRenderVisual } from './sceneSprite
  * and never refunded; a dungeon is startable only from one of its regions,
  * while an active run is playable anywhere.
  */
-import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { managedArtworkKey, resolveManagedArtworkIds } from '../artworkAssets/managedArtworkLookup';
 import {
@@ -98,6 +105,7 @@ import {
   dungeonRuns,
   dungeonSpeciesAcquisitions,
   items,
+  playerCurrencies,
   playerInventory,
   players,
   rewardTables,
@@ -124,7 +132,7 @@ import {
   FeatureLockedError,
   DungeonStepContendedError,
   InsufficientItemsError,
-  isLockContentionError,
+  isDeadlockError,
   ItemNotFoundError,
   ItemNotUsableError,
   PlayerNotFoundError,
@@ -133,6 +141,7 @@ import {
 import type { Logger } from '../../shared/logger';
 import { resolveEnemyVisual, type EnemyVisual, type ManagedEnemyArtwork } from '../artworkAssets/enemyArtworkService';
 import type { ArtworkRef } from '../artworkAssets/sceneLayers';
+import { DEFAULT_SPRITE_PLACEMENT, type SpritePlacement } from '../artworkAssets/scenePlacement';
 import type { CombatEvent, CombatRules } from '../combat/combatTypes';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { ExpeditionRewardTable } from '../content/schemas';
@@ -185,6 +194,8 @@ import type {
   DungeonEffect,
   DungeonEffectReceipt,
   DungeonEncounterFacts,
+  DungeonEncounterInstance,
+  DungeonEncounterUnavailableReason,
   DungeonRescueReceipt,
   DungeonEffectsPort,
   DungeonEngineContext,
@@ -298,6 +309,13 @@ export interface DungeonRunView {
   eventItemNames?: Record<string, string>;
   /** What the latest step's event choices did, in the words their author wrote. Parallel to `core.recent`'s event entries. */
   latestEvents?: DungeonEventResultView[];
+  /**
+   * The WaifuMon on offer as the scene draws her: her species' dungeon sprite
+   * at the activity's authored placement. Absent unless an encounter is offered.
+   */
+  encounterActor?: DungeonEncounterActor;
+  /** What the latest step's encounters came to, named as the catalogue now names her. Parallel to `core.recent`'s encounter entries. */
+  latestEncounters?: DungeonEncounterResultView[];
   /** The current room's backdrop, falling back to the dungeon's. */
   roomBackground: ArtworkRef;
   /** The engine's events for the latest wave fought this step. For formatting; never shown raw. */
@@ -319,6 +337,28 @@ export interface DungeonRunView {
   settlement: DungeonSettlement | null;
   startedAt: Date;
   completedAt: Date | null;
+}
+
+export interface DungeonEncounterActor {
+  speciesSlug: string;
+  placement: SpritePlacement;
+  mirror: boolean;
+}
+
+/** One encounter result of the latest step. `failure` is an attempt that missed with attempts left. */
+export interface DungeonEncounterResultView {
+  roomId: string;
+  actionId: string;
+  type: 'wild_encounter' | 'rescue';
+  /** Null when a pool drew nothing. */
+  species: string | null;
+  name: string | null;
+  rarity: string | null;
+  outcome: DungeonEncounterInstance['status'] | 'failure';
+  /** The author's result text; empty when they wrote none. */
+  text: string;
+  /** Why she could not be had, for `unavailable`. */
+  unavailableReason: DungeonEncounterUnavailableReason | null;
 }
 
 export interface DungeonRegionView {
@@ -433,15 +473,8 @@ export interface DungeonRunServiceDeps {
   combatRules?: Partial<CombatRules> | undefined;
 }
 
-/**
- * How long a capture or rescue step waits for a row lock once it holds the
- * player row, before giving way. Well under Postgres's `deadlock_timeout`
- * (1s by default), so the dungeon step yields before the deadlock detector
- * would pick a victim — which could be the player's hunted capture.
- */
-const ENCOUNTER_LOCK_TIMEOUT_MS = 250;
-/** Times a step that gave way is run again before the player is asked to. */
-const ENCOUNTER_STEP_ATTEMPTS = 4;
+/** Times a step is run in all when Postgres picks it as a deadlock victim. */
+const STEP_DEADLOCK_ATTEMPTS = 3;
 
 /** The ledger reason a settlement banks under. */
 const BANK_REASON = {
@@ -854,6 +887,30 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     );
     const room = definition.rooms.find((r) => r.id === core.room.id);
     const roomBackground = resolveDungeonArtwork(room?.background ?? null, snapshot.artwork ?? {});
+    // The offered WaifuMon's place in the picture, and the latest step's encounter results by name.
+    const offeredAction = core.action?.encounter ? room?.actions.find((a) => a.id === core.action!.id) : undefined;
+    const encounterActor: DungeonEncounterActor | null = core.action?.encounter && offeredAction && isEncounterAction(offeredAction)
+      ? { speciesSlug: core.action.encounter.species, placement: offeredAction.placement ?? DEFAULT_SPRITE_PLACEMENT, mirror: offeredAction.mirror ?? false }
+      : null;
+    const speciesFacts = run.ctx.encounterFacts?.species ?? {};
+    const latestEncounters = core.recent.flatMap((entry): DungeonEncounterResultView[] => {
+      if (entry.kind !== 'encounter') return [];
+      const action = definition.rooms.find((r) => r.id === entry.roomId)?.actions.find((a) => a.id === entry.actionId);
+      if (!action || !isEncounterAction(action)) return [];
+      const fact = entry.species !== null && Object.hasOwn(speciesFacts, entry.species) ? speciesFacts[entry.species] : undefined;
+      const instance = state.encounters?.[encounterInstanceKey(entry.roomId, entry.actionId)];
+      return [{
+        roomId: entry.roomId,
+        actionId: entry.actionId,
+        type: action.type,
+        species: entry.species,
+        name: fact?.name ?? null,
+        rarity: fact?.rarity || null,
+        outcome: entry.outcome,
+        text: entry.text,
+        unavailableReason: entry.outcome === 'unavailable' ? (instance?.unavailableReason ?? null) : null,
+      }];
+    });
     const dungeonBackground = resolveDungeonArtwork(definition.background, snapshot.artwork ?? {});
     return {
       id: row.id,
@@ -874,6 +931,8 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       ...(core.action?.event ? { eventArtwork: resolveDungeonArtwork(core.action.event.artwork ?? null, snapshot.artwork ?? {}) } : {}),
       ...(core.action?.event || spent.length > 0 ? { eventItemNames: { ...spentNames, ...run.eventItemNames } } : {}),
       ...(latestEvents.length > 0 ? { latestEvents } : {}),
+      ...(encounterActor ? { encounterActor } : {}),
+      ...(latestEncounters.length > 0 ? { latestEncounters } : {}),
       roomBackground: roomBackground.assetId || roomBackground.artworkPath ? roomBackground : dungeonBackground,
       combatEvents: events,
       currency: await currencyView(tx, run),
@@ -1095,10 +1154,11 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     return {
       type: 'capture_attempt', key: effect.key, simulated: false, grantKey: effect.grantKey,
       roomId: effect.roomId, actionId: effect.actionId, species: effect.species, mode: effect.mode,
-      item: item.slug, success: resolved.success, outcome: resolved.outcome, guaranteed: resolved.guaranteed,
+      item: item.slug, attemptNumber: effect.attempt.n, success: resolved.success, outcome: resolved.outcome, guaranteed: resolved.guaranteed,
       chance: resolved.chance, roll: resolved.roll, xpGranted: resolved.xpGranted, levelUps: resolved.levelUps,
       microdose: resolved.effect && { sourceItemSlug: resolved.effect.sourceItemSlug, chargesRemaining: resolved.effect.chargesRemaining },
       acquired: resolved.newWaifu ? acquired(found, resolved.newWaifu, resolved) : null,
+      newAppearances: resolved.newAppearances,
     };
   }
 
@@ -1122,6 +1182,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       roomId: effect.roomId, actionId: effect.actionId, species: effect.species,
       replayed: grant.replayed, xpGranted: grant.xpGranted, levelUps: grant.levelUps,
       acquired: acquired(found, grant.waifu, grant),
+      newAppearances: grant.replayed ? [] : grant.newAppearances,
     };
   }
 
@@ -1544,12 +1605,13 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           .where(and(eq(dungeonRuns.id, runId), eq(dungeonRuns.playerId, playerId)))
           .for('update');
         if (!row) throw new DungeonRunNotFoundError(runId);
-        // A capture or rescue writes inventory, ownership and XP. The player
-        // row is locked second, straight after the run and before any fact is
-        // read: see "Encounters" at the top of this file.
+        // A capture or rescue writes inventory, ownership and XP. The player's
+        // currency and player rows are locked straight after the run, in the
+        // order a hunt takes them and before any fact is read: see
+        // "Encounters" at the top of this file.
         if (input.type === 'capture' || input.type === 'rescue') {
+          await tx.select({ playerId: playerCurrencies.playerId }).from(playerCurrencies).where(eq(playerCurrencies.playerId, playerId)).for('update');
           await tx.select({ id: players.id }).from(players).where(eq(players.id, playerId)).for('update');
-          await tx.execute(sql.raw(`set local lock_timeout = '${ENCOUNTER_LOCK_TIMEOUT_MS}ms'`));
         }
         const run = await load(tx, row);
         const result = stepDungeon(stateOf(row), input, run.ctx);
@@ -1588,20 +1650,19 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           ...(encounterReceipts.length > 0 ? { encounterReceipts } : {}),
         };
       });
-      // A step that gave way wrote nothing: its transaction rolled back whole.
-      // It is a pure function of the stored run and place-keyed draws, so
-      // running it again decides exactly what it decided before.
+      // A deadlock victim wrote nothing: Postgres rolled its transaction back
+      // whole. The step is a pure function of the stored run and place-keyed
+      // draws, so running it again decides exactly what it decided before.
       for (let attempt = 1; ; attempt += 1) {
         try {
           return await step();
         } catch (err) {
-          if (!isLockContentionError(err)) throw err;
+          if (!isDeadlockError(err)) throw err;
           deps.logger?.warn(
-            { tag: 'dungeons/step-contended', runId, playerId, inputType: input.type, attempt },
-            'dungeon step gave way to concurrent activity on the player and rolled back',
+            { tag: 'dungeons/step-deadlock', runId, playerId, inputType: input.type, attempt },
+            'dungeon step was a deadlock victim and rolled back whole',
           );
-          if (attempt >= ENCOUNTER_STEP_ATTEMPTS) throw new DungeonStepContendedError(runId, err);
-          await new Promise((resolve) => setTimeout(resolve, 40 * attempt));
+          if (attempt >= STEP_DEADLOCK_ATTEMPTS) throw new DungeonStepContendedError(runId, err);
         }
       }
     },

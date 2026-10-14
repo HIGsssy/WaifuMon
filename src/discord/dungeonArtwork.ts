@@ -31,6 +31,21 @@
  * A fight is whenever `view.enemy` is set: the enemy about to be fought, else
  * the one just fought this step.
  *
+ * ## Precedence — a WaifuMon on offer (`view.encounterActor`)
+ *
+ *   1. the **composed scene** — her species dungeon sprite as the scene's
+ *      actor, at the activity's authored placement and mirror, with the run's
+ *      Buddy and the room's Scene Sprites, on the first usable background
+ *      (else the plain stage), exactly as a fight composes an enemy;
+ *   2. her standard artwork, alone — as a hunt reveals her;
+ *   3. the room's background (with its Scene Sprites), then the dungeon's;
+ *   4. text only.
+ *
+ * She is drawn only while she is on offer. Once she is caught, rescued, has
+ * escaped or been left, the view no longer names her and the screen falls
+ * back to the ordinary room scene; a caught or rescued copy's card is the
+ * caller's to show.
+ *
  * ## Precedence — anything else (rest, reward, choosing a way on, the end)
  *
  *   1. the room's background on its own;
@@ -39,7 +54,7 @@
  *   4. text only.
  *
  * An enemy is never composed onto a screen that is not a fight — and neither
- * is the Buddy: she is in the picture on fights only.
+ * is the Buddy: she is in the picture on fights and offered encounters only.
  * Her card art stays the thumbnail throughout; that is the caller's.
  *
  * ## The player's Buddy
@@ -71,8 +86,9 @@ import {
   type ArtworkRef,
 } from '../modules/artworkAssets/sceneLayers';
 import { speciesDungeonSpritePath } from '../modules/assets/speciesArtworkFile';
+import { artworkAttachmentUrl, resolveAppearanceAssetOrPath } from './assets/resolveAppearanceAsset';
 import { locateCombatArtwork } from '../modules/combat/combatArtwork';
-import type { DungeonRunView } from '../modules/dungeons/dungeonRunService';
+import type { DungeonEncounterActor, DungeonRunView } from '../modules/dungeons/dungeonRunService';
 import type { TrialArtwork } from './combatTrialPresenter';
 import type { AppContext } from './types';
 
@@ -165,14 +181,50 @@ async function spriteScene(
   placement: SpritePlacement,
   playerBuddy: BuddyActor | null,
   environmentalSprites?: SceneRequest['environmentalSprites'],
+  mirror = false,
 ): Promise<TrialArtwork | null> {
   const scenes = ctx.services.sceneComposition;
   if (!scenes) return null;
   const composed = await composeFightScene(
     { assets: ctx.services.artworkAssets, assetsDir: ctx.config.assetsDir, scenes },
-    { backgrounds, sprite: { ref: sprite, placement }, playerBuddy, ...(environmentalSprites ? { environmentalSprites } : {}) },
+    { backgrounds, sprite: { ref: sprite, placement, ...(mirror ? { mirror } : {}) }, playerBuddy, ...(environmentalSprites ? { environmentalSprites } : {}) },
   );
   return composed && attachment(composed.scene.absolutePath, `dungeon-scene-${composed.scene.cacheKey.slice(0, 16)}.webp`);
+}
+
+/** Species already warned about, so a missing encounter sprite is one log line, not one per screen. */
+const warnedMissingEncounterSprites = new Set<string>();
+
+/** The offered WaifuMon as the scene's actor, with the Buddy and the room's Scene Sprites. Null when she has no sprite. */
+async function encounterScene(
+  ctx: ArtContext,
+  backgrounds: readonly (ArtworkRef | null | undefined)[],
+  actor: DungeonEncounterActor,
+  playerBuddy: BuddyActor | null,
+  environmentalSprites?: SceneRequest['environmentalSprites'],
+): Promise<TrialArtwork | null> {
+  if (!/^[a-z0-9_]+$/.test(actor.speciesSlug)) return null;
+  const scene = await spriteScene(ctx, backgrounds, { artworkPath: speciesDungeonSpritePath(actor.speciesSlug) }, actor.placement, playerBuddy, environmentalSprites, actor.mirror);
+  if (!scene && !warnedMissingEncounterSprites.has(actor.speciesSlug)) {
+    warnedMissingEncounterSprites.add(actor.speciesSlug);
+    ctx.logger.warn(
+      { tag: 'dungeons/encounter-sprite-missing', speciesSlug: actor.speciesSlug, expectedPath: speciesDungeonSpritePath(actor.speciesSlug) },
+      'dungeon encounter sprite not found — showing her standard artwork instead',
+    );
+  }
+  return scene;
+}
+
+/**
+ * A species' standard artwork as her default appearance — what a hunt shows
+ * before there is a copy to draw a card for. Null when there is none.
+ */
+export function speciesArtwork(ctx: ArtContext, speciesSlug: string | null | undefined): TrialArtwork | null {
+  const species = speciesSlug ? ctx.content?.species.find((s) => s.slug === speciesSlug) : undefined;
+  const appearance = ctx.services.appearance;
+  if (!species || !appearance) return null;
+  const file = resolveAppearanceAssetOrPath(ctx, appearance.currentAppearance(species, null).assetId, species.imagePath);
+  return file && { file, url: artworkAttachmentUrl(file) };
 }
 
 /**
@@ -234,6 +286,15 @@ export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunVi
       return rendered && attachment(rendered.scene.absolutePath, `dungeon-scene-${rendered.scene.cacheKey.slice(0, 16)}.webp`);
     };
     if (view.eventArtwork) return compose([view.eventArtwork, roomBackground, dungeonBackground, dungeonArt]);
+    const actor = view.encounterActor;
+    if (actor) {
+      const buddy = playerBuddyActor(ctx, view.fighter?.speciesSlug);
+      return firstArtwork(ctx, [
+        () => encounterScene(ctx, [roomBackground, dungeonBackground, dungeonArt], actor, buddy, environmentalSprites),
+        () => speciesArtwork(ctx, actor.speciesSlug),
+        () => compose([roomBackground, dungeonBackground, dungeonArt]),
+      ]);
+    }
     if (view.enemy) {
       const visual = view.enemy.visual;
       const buddy = playerBuddyActor(ctx, view.fighter?.speciesSlug);
@@ -261,6 +322,18 @@ export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunVi
       () => (roomBackground ? plainArtwork(ctx, roomBackground) : null),
       () => plainArtwork(ctx, dungeonBackground),
       () => plainArtwork(ctx, dungeonArt),
+    ]);
+  }
+
+  const actor = view.encounterActor;
+  if (actor) {
+    const buddy = playerBuddyActor(ctx, view.fighter?.speciesSlug);
+    return firstArtwork(ctx, [
+      () => encounterScene(ctx, [roomBackground, dungeonBackground, dungeonArt], actor, buddy),
+      () => speciesArtwork(ctx, actor.speciesSlug),
+      () => composedArtwork(ctx, [roomBackground]),
+      () => plainArtwork(ctx, dungeonArt),
+      () => plainArtwork(ctx, dungeonBackground),
     ]);
   }
 

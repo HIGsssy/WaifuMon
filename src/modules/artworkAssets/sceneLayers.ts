@@ -105,7 +105,7 @@ export async function composeFightScene(
   },
   input: {
     backgrounds: readonly (ArtworkRef | null | undefined)[];
-    sprite: { ref: ArtworkRef; placement: SpritePlacement };
+    sprite: { ref: ArtworkRef; placement: SpritePlacement; mirror?: boolean };
     playerBuddy?: SceneRequest['playerBuddy'];
     environmentalSprites?: SceneRequest['environmentalSprites'];
   },
@@ -122,7 +122,7 @@ export async function composeFightScene(
     const scene = await deps.scenes.compose({
       background: candidate.layer,
       ...(input.environmentalSprites ? { environmentalSprites: input.environmentalSprites } : {}),
-      sprite: { layer: spriteLayer, placement: input.sprite.placement },
+      sprite: { layer: spriteLayer, placement: input.sprite.placement, ...(input.sprite.mirror ? { mirror: true } : {}) },
       playerBuddy: input.playerBuddy ?? null,
     });
     if (scene) return { scene, background: candidate.background };

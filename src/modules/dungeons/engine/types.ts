@@ -7,6 +7,7 @@
  * component or a service — `dungeonRunService` maps these to and from
  * `dungeon_runs`, and the sandbox keeps them in memory.
  */
+import type { AppearanceUnlockRef } from '../../appearance/appearanceService';
 import type { CombatEndReason, CombatEvent, CombatModifiers, CombatResultKind, CombatRules } from '../../combat/combatTypes';
 import type { CombatEnemyDefinition } from '../../combat/enemyDefinitions';
 import type { ExpeditionRewardTable } from '../../content/schemas';
@@ -313,6 +314,12 @@ export type DungeonInput = (
   | { type: 'capture' }
   | { type: 'rescue' }
   | { type: 'leave_encounter' }
+  /**
+   * Move on from an offered encounter whose WaifuMon the live facts say can
+   * no longer be had: resolves it `unavailable`, with no effect of any kind.
+   * Refused (`encounter_available`) while she can still be had.
+   */
+  | { type: 'dismiss_encounter' }
   | { type: 'advance' }
   | { type: 'decline' }
   | { type: 'choose'; choiceId: string }
@@ -330,6 +337,8 @@ export type DungeonInput = (
 
 export type DungeonRefusal =
   | 'encounter_not_offered'
+  /** `dismiss_encounter` on a WaifuMon who can still be had: nothing changed. */
+  | 'encounter_available'
   | 'capture_item_required'
   | 'capture_item_unavailable'
   | 'stale'
@@ -442,6 +451,8 @@ export interface DungeonCaptureReceipt {
   species: string;
   mode: 'wild' | 'rescue';
   item: string;
+  /** Which attempt this was, from 1. Absent on receipts from before it was reported. */
+  attemptNumber?: number;
   success: boolean;
   outcome: 'success' | 'failure' | 'escape';
   guaranteed: boolean;
@@ -453,6 +464,8 @@ export interface DungeonCaptureReceipt {
   /** The Microdose charge this attempt spent, or null. */
   microdose: { sourceItemSlug: string | null; chargesRemaining: number } | null;
   acquired: DungeonAcquiredWaifu | null;
+  /** Appearances the new copy unlocked on arrival, for the caller's toasts. Never logged. */
+  newAppearances?: AppearanceUnlockRef[];
 }
 
 /** What one real direct rescue granted. */
@@ -468,6 +481,8 @@ export interface DungeonRescueReceipt {
   xpGranted: number;
   levelUps: { fromLevel: number; toLevel: number; rewardLabels: string[] }[];
   acquired: DungeonAcquiredWaifu;
+  /** As on a capture receipt; empty on a replay. Never logged. */
+  newAppearances?: AppearanceUnlockRef[];
 }
 
 export type DungeonEffectReceipt =

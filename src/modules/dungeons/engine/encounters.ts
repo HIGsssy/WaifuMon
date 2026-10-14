@@ -211,6 +211,12 @@ export function decideEncounterInput(
   const instance = state.encounters?.[encounterInstanceKey(roomId, actionId)];
   if (instance?.status !== 'offered') return 'encounter_not_offered';
   if (input.type === 'leave_encounter') return { outcome: 'left', effects: [] };
+  // No effects whatever the facts say: never a charm, a Microdose charge, a roll or a grant.
+  // Resolves only what the live facts judge unobtainable, so it cannot end an open encounter.
+  if (input.type === 'dismiss_encounter') {
+    checkEncounterAvailability(instance, ctx, action);
+    return instance.unavailableReason !== undefined ? { outcome: 'unavailable', effects: [] } : 'encounter_available';
+  }
   const direct = action.type === 'rescue' && action.mode === 'direct';
   if (
     (input.type === 'rescue' && !direct) ||
