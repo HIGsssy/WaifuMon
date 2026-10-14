@@ -72,11 +72,13 @@ export function DungeonSpeciesPicker({
   listed,
   disabled,
   onSelect,
+  purpose = 'pool',
 }: {
   species: DungeonSpeciesRef[];
   listed: Set<string>;
   disabled: boolean;
   onSelect: (slug: string) => void;
+  purpose?: 'pool' | 'encounter';
 }) {
   const [search, setSearch] = useState('');
   const [rarity, setRarity] = useState('');
@@ -172,12 +174,12 @@ export function DungeonSpeciesPicker({
               onClick={() => {
                 if (s.permitted && !listed.has(s.slug)) onSelect(s.slug);
               }}
-              aria-label={`Add species ${s.name}`}
+              aria-label={`${purpose === 'pool' ? 'Add species' : 'Select species'} ${s.name}`}
             >
               {listed.has(s.slug)
                 ? 'Already in this pool'
                 : s.permitted
-                  ? 'Add to pool'
+                  ? purpose === 'pool' ? 'Add to pool' : 'Select WaifuMon'
                   : 'Unavailable in this dungeon'}
             </Button>
           </li>

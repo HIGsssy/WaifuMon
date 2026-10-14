@@ -38,6 +38,9 @@ import { CURRENCY, STARTER, TEST_ENEMIES, testDungeonInput, singleRoomDungeon } 
 import { eventContext, eventDungeonInput } from '../../helpers/dungeonEventFixtures';
 import { createDungeonWorld, type DungeonWorld } from '../../helpers/dungeonWorld';
 import { provisionPlayer } from '../../helpers/fixtures';
+import { createSceneSpriteService } from '../../../src/modules/dungeons/sceneSprites/sceneSpriteService';
+import { solidImage, transparentSprite, twoToneSprite, pixelAt, isNear, BLUE, GREEN, RED } from '../../helpers/imageFixtures';
+import { DEFAULT_SPRITE_PLACEMENT, layoutSprite } from '../../../src/modules/artworkAssets/scenePlacement';
 import { createCapturedLogger, createProbes, TEST_TOKEN } from '../../helpers/platformApiFixtures';
 
 const AUTH_BEARER = { authorization: `Bearer ${TEST_TOKEN}` };
@@ -149,6 +152,8 @@ beforeAll(async () => {
         progressionCurrency: w.currencies,
         enemies: w.enemies,
         artworkAssets: w.assets,
+        sceneComposition: w.scenes,
+        dungeonSceneSprites: createSceneSpriteService({ db: w.t.db, assets: w.assets }),
       },
       getContent: () => w.app.content,
       portalAuthorization,
@@ -1597,5 +1602,197 @@ describe('P4C2A species pool authoring API', () => {
       const catalogue = data<Json>(await call('GET', '/admin/dungeons/species?dungeonKey=pool_persistence'));
       expect(catalogue.species.find((s: Json) => s.slug === restricted.slug)).toMatchObject({ enabled: false, permitted: false, unavailableReason: 'disabled' });
     } finally { await w.t.db.update(species).set({ enabled: true }).where(eq(species.slug, restricted.slug)); }
+  });
+});
+
+describe('P4C2B encounter authoring, presenter and isolated sandbox', () => {
+  const stageUrl = '/admin/dungeons/encounter-preview';
+  const sandboxUrl = '/admin/dungeons/sandbox';
+  function encounterDefinition(key: string, mode: 'wild' | 'capture' | 'direct' = 'wild') {
+    const normal = w.app.content.species.find((s) => s.enabled && !s.tags.includes('region_exclusive') && !s.tags.includes('dungeon_exclusive'))!;
+    const definition = definitionOf(key);
+    definition.flags = [...definition.flags, { key: 'acquired', scope: 'run', description: 'Found a companion' }];
+    definition.rooms[0].actions = [{ id: 'encounter', type: mode === 'wild' ? 'wild_encounter' : 'rescue', ...(mode !== 'wild' ? { mode } : {}), source: { kind: 'species', species: normal.slug }, intro: 'She waits by the doorway.', ...(mode !== 'direct' ? { capture: { maxAttempts: 2, allowGuaranteedItems: false } } : {}), results: { [mode === 'wild' ? 'captured' : 'rescued']: { text: 'Together at last.', flags: [{ flag: 'acquired', value: true }] }, escaped: { text: 'She is gone.' }, unavailable: { text: 'She cannot join.' }, left: { text: 'You walk away.' }, nothing: { text: 'An empty doorway.' } }, outcomes: { [mode === 'wild' ? 'captured' : 'rescued']: { type: 'action', actionId: 'after' } } }, { id: 'after', type: 'rest', healBasisPoints: 0 }];
+    if (mode === 'direct') { delete definition.rooms[0].actions[0].results.escaped; w.speciesAccess.set(normal.slug, [{ dungeon: key, perPlayerLimit: 1, directRescue: true }]); }
+    return { definition, slug: normal.slug, roomId: definition.rooms[0].id, actionId: 'encounter' };
+  }
+  it('exposes live capture charms to readers; preview and sandbox remain permission gated', async () => {
+    expect(data<Json>(await as(READER_TOKEN, 'GET', '/admin/dungeons/capture-items')).items.some((i: Json) => i.enabled && i.slug === 'basic_charm')).toBe(true);
+    expect((await as(NON_OWNER_TOKEN, 'GET', '/admin/dungeons/capture-items')).statusCode).toBe(403);
+    const d = encounterDefinition('authoring_permissions');
+    expect((await as(NON_OWNER_TOKEN, 'POST', stageUrl, { ...d, stage: 'offered' })).statusCode).toBe(403);
+    expect((await as(NON_OWNER_TOKEN, 'POST', sandboxUrl, { definition: d.definition })).statusCode).toBe(403);
+  });
+  it.each(['offered', 'captured', 'failure', 'escaped', 'left', 'nothing', 'unavailable'])(
+    'renders the production wild presenter for %s without real writes', async (stage) => {
+      const d = encounterDefinition(`authoring_${stage}`);
+      const response = await call('POST', stageUrl, { definition: d.definition, roomId: d.roomId, actionId: d.actionId, species: d.slug, stage });
+      expect(response.statusCode, response.body).toBe(200);
+      const preview = data<Json>(response);
+      expect(preview.simulated).toBe(true);
+      expect(preview.embeds[0].title).toContain(d.definition.name);
+      const fields = JSON.stringify(preview.embeds);
+      const expected: Record<string, RegExp> = { offered: /She waits by the doorway/, captured: /Together at last/, failure: /failed|missed|Attempts left/i, escaped: /She is gone/, left: /You walk away/, nothing: /An empty doorway/, unavailable: /She cannot join/ };
+      expect(fields).toMatch(expected[stage]!);
+      expect(JSON.stringify(preview.components)).not.toContain('dg|fight');
+    },
+  );
+  it.each(['capture', 'direct'] as const)('previews %s rescue through production presentation', async (mode) => {
+    const d = encounterDefinition(`authoring_rescue_${mode}`, mode);
+    try {
+      const offered = data<Json>(await call('POST', stageUrl, { definition: d.definition, roomId: d.roomId, actionId: d.actionId, stage: 'offered' }));
+      expect(JSON.stringify(offered)).toMatch(mode === 'direct' ? /Rescue her/ : /capture charm/);
+      const done = await call('POST', stageUrl, { definition: d.definition, roomId: d.roomId, actionId: d.actionId, stage: 'rescued' });
+      expect(done.statusCode, done.body).toBe(200); expect(JSON.stringify(data<Json>(done))).toContain('Together at last.');
+    } finally { w.speciesAccess.delete(d.slug); }
+  });
+  it('runs real capture success/failure, routing and flags; consumes simulated quantities across attempts', async () => {
+    const d = encounterDefinition('authoring_sandbox');
+    const inputs = [{ type: 'select_item', item: 'basic_charm' }, { type: 'capture' }];
+    const successResponse = await call('POST', sandboxUrl, { definition: d.definition, inventory: { basic_charm: 2 }, inputs, encounterScenario: { captureOutcome: 'success' } });
+    expect(successResponse.statusCode, successResponse.body).toBe(200);
+    const success = data<Json>(successResponse);
+    expect(success.effects).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'capture_attempt', attempt: expect.objectContaining({ success: true }) })]));
+    expect(success.view.flags.acquired).toBe(true); expect(success.view.action.id).toBe('after');
+    expect(success.simulatedGrants[0]).toMatchObject({ copies: 1, success: true, item: 'basic_charm' });
+    expect(success.simulatedGrants[0].xp).toBeGreaterThan(0);
+    const failure = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, inventory: { basic_charm: 2 }, inputs, encounterScenario: { captureOutcome: 'failure' } }));
+    expect(failure.view.action.encounter.attemptsLeft).toBe(1); expect(failure.view.action.encounter.items.find((i: Json) => i.item === 'basic_charm').owned).toBe(1);
+    expect(failure.simulatedGrants[0]).toMatchObject({ copies: 0, success: false, item: 'basic_charm' });
+    const escaped = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, inventory: { basic_charm: 2 }, inputs: [...inputs, { type: 'capture' }], encounterScenario: { captureOutcome: 'failure' } }));
+    expect(escaped.state.encounters[`${d.roomId}:encounter`].status).toBe('escaped');
+    const insufficient = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, inventory: { basic_charm: 1 }, inputs: [...inputs, { type: 'capture' }], encounterScenario: { captureOutcome: 'failure' } }));
+    expect(insufficient.refusal).toBe('capture_item_unavailable'); expect(insufficient.effects).toHaveLength(1);
+    const normal1 = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, seed: 42, inventory: { basic_charm: 2 }, inputs }));
+    const normal2 = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, seed: 42, inventory: { basic_charm: 2 }, inputs }));
+    expect(normal1).toEqual(normal2);
+  });
+  it('simulates authorized direct rescue, finite limits, species disables and seeded conditions', async () => {
+    const d = encounterDefinition('authoring_direct', 'direct');
+    try {
+      const rescued = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, inputs: [{ type: 'rescue' }] }));
+      expect(rescued.view.flags.acquired).toBe(true); expect(rescued.simulatedGrants[0]).toMatchObject({ copies: 1, item: null, success: true });
+      const limited = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, encounterScenario: { acquisitions: { [d.slug]: 1 } } }));
+      expect(limited.state.encounters[`${d.roomId}:encounter`]).toMatchObject({ status: 'unavailable', unavailableReason: 'player_limit' });
+      expect(limited.effects).toEqual([]);
+      const disabled = data<Json>(await call('POST', sandboxUrl, { definition: d.definition, encounterScenario: { disabledSpecies: [d.slug] } }));
+      expect(disabled.encounterDiagnostics[0].reason).toBe('disabled'); expect(disabled.simulatedGrants).toEqual([]);
+      d.definition.rooms[0].actions[0].when = { type: 'flag', flag: 'acquired' };
+      const seeded = await call('POST', sandboxUrl, { definition: d.definition, encounterScenario: { flags: ['acquired'] } });
+      expect(seeded.statusCode, seeded.body).toBe(200); expect(data<Json>(seeded).view.action.encounter.species).toBe(d.slug);
+    } finally { w.speciesAccess.delete(d.slug); }
+  });
+  it('sandbox and presenter requests leave every gameplay and authoring database row unchanged', async () => {
+    const d = encounterDefinition('authoring_isolation');
+    const fingerprint = async () => {
+      const tables = await w.t.pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename");
+      const result: Record<string, unknown> = {};
+      for (const { tablename } of tables.rows) {
+        // Database schema tables are test-owned; names are server-selected and quoted.
+        const rows = await w.t.pool.query(`SELECT md5(coalesce(string_agg(row_to_json(t)::text || t.xmin::text, '' ORDER BY row_to_json(t)::text || t.xmin::text), '')) AS hash, count(*)::int AS count FROM "${tablename.replaceAll('"', '""')}" t`);
+        result[tablename] = rows.rows[0];
+      }
+      return result;
+    };
+    const before = await fingerprint();
+    for (const captureOutcome of ['success', 'failure', 'normal']) expect((await call('POST', sandboxUrl, { definition: d.definition, inventory: { basic_charm: 3 }, inputs: [{ type: 'select_item', item: 'basic_charm' }, { type: 'capture' }], encounterScenario: { captureOutcome } })).statusCode).toBe(200);
+    expect((await call('POST', stageUrl, { definition: d.definition, roomId: d.roomId, actionId: 'encounter', stage: 'captured' })).statusCode).toBe(200);
+    const direct = encounterDefinition('authoring_isolation_direct', 'direct');
+    try { expect((await call('POST', sandboxUrl, { definition: direct.definition, inputs: [{ type: 'rescue' }] })).statusCode).toBe(200); } finally { w.speciesAccess.delete(direct.slug); }
+    expect(await fingerprint()).toEqual(before);
+  });
+  it('preserves missing references, invalid authorization and publication/package gates in repair drafts', async () => {
+    const d = encounterDefinition('authoring_repair', 'direct'); w.speciesAccess.delete(d.slug);
+    const createdResponse = await call('POST', '/admin/dungeons/definitions', { definition: d.definition });
+    expect(createdResponse.statusCode, createdResponse.body).toBe(201);
+    const created = data<Detail>(createdResponse);
+    expect(created.issues.some((i: Json) => i.code === 'rescue_direct_not_permitted')).toBe(true);
+    expect((await call('POST', `${base(d.definition.key)}/publish`, { expectedRevision: created.draftRevision })).statusCode).toBe(400);
+    d.definition.rooms[0].actions[0].source = { kind: 'pool', poolId: 'missing_pool' };
+    const saved = data<Detail>(await call('PUT', `${base(d.definition.key)}/draft`, { expectedRevision: created.draftRevision, definition: d.definition }));
+    expect(saved.draft.rooms[0].actions[0].source.poolId).toBe('missing_pool'); expect(saved.issues.some((i: Json) => i.code === 'species_pool_missing')).toBe(true);
+    expect((await call('GET', `${base(d.definition.key)}/export?origin=draft`)).statusCode).toBe(400);
+  });
+  it('reports published species drift, republishing metadata and old revisions with active runs; missing evidence stays unknown', async () => {
+    const d = encounterDefinition('authoring_drift');
+    const created = data<Detail>(await call('POST', '/admin/dungeons/definitions', { definition: d.definition }));
+    const first = data<Json>(await call('POST', `${base(d.definition.key)}/publish`, { expectedRevision: created.draftRevision }));
+    expect(first.dungeon.speciesDiffer).toBe(false);
+    const initial = data<Json>(await call('GET', `${base(d.definition.key)}/species-status`));
+    expect(initial.revisions[0]).toMatchObject({ evidence: 'recorded', differs: false, current: true });
+    const [row] = await w.t.db.select().from(species).where(eq(species.slug, d.slug));
+    await w.t.db.update(species).set({ rarity: row!.rarity === 'N' ? 'R' : 'N' }).where(eq(species.slug, d.slug));
+    try {
+      const drift = data<Json>(await call('GET', `${base(d.definition.key)}/species-status`));
+      expect(drift.revisions[0].dependencies[0].changes.join(' ')).toContain('Rarity changed');
+      expect(data<Json>(await call('GET', base(d.definition.key))).speciesDiffer).toBe(true);
+      const player = await w.player(); const run = await w.runs.start(player.playerId, d.definition.key, { seed: 1 });
+      const second = data<Json>(await call('POST', `${base(d.definition.key)}/publish`, { expectedRevision: created.draftRevision }));
+      expect(second.unchanged).toBe(false); expect(second.revision.contentHash).toBe(first.revision.contentHash);
+      const current = data<Json>(await call('GET', `${base(d.definition.key)}/species-status`));
+      expect(current.revisions).toHaveLength(2); expect(current.revisions.find((r: Json) => !r.current)).toMatchObject({ revision: 1, activeRuns: 1, differs: true });
+      expect((await w.runs.run(player.playerId, run.id)).dungeon.revision).toBe(1);
+      await w.t.db.update(dungeonContentEvents).set({ details: {} }).where(eq(dungeonContentEvents.dungeonKey, d.definition.key));
+      expect(data<Json>(await call('GET', `${base(d.definition.key)}/species-status`)).revisions[0]).toMatchObject({ evidence: 'unknown', differs: null });
+      expect((await as(NON_OWNER_TOKEN, 'GET', `${base(d.definition.key)}/species-status`)).statusCode).toBe(403);
+    } finally { await w.t.db.update(species).set({ rarity: row!.rarity }).where(eq(species.slug, d.slug)); }
+  });
+});
+
+describe('P4C2B production encounter scene endpoint', () => {
+  it('renders placement, mirroring, Buddy and both environmental scopes with production fallback and permissions', async () => {
+    const slug = w.app.content.species.find((s) => s.enabled && !s.tags.includes('region_exclusive'))!.slug;
+    const spritePath = path.join(assetsDir, 'waifumon', slug, `${slug}_sprite.webp`);
+    fs.mkdirSync(path.dirname(spritePath), { recursive: true });
+    fs.writeFileSync(spritePath, await twoToneSprite(300, 300, GREEN, RED));
+    const background = 'dungeons/backgrounds/encounter.png'; fs.writeFileSync(path.join(assetsDir, background), await solidImage(1200, 675, BLUE));
+    const placement = { ...DEFAULT_SPRITE_PLACEMENT, anchor: 'bottom-right' as const, scaleBasisPoints: 5000, offsetX: -80 };
+    const body = { encounter: { species: slug, placement, mirror: false }, backgrounds: [{ kind: 'shipped', path: background }] };
+    const response = await call('POST', '/admin/dungeons/scene-preview', body);
+    expect(response.statusCode, response.body).toBe(200); expect(response.headers['x-dungeon-scene']).toBe('sprite');
+    const box = layoutSprite({ width: 300, height: 300 }, placement, { width: 1200, height: 675 });
+    const x = Math.round(box.left + box.width * .3), y = Math.round(box.top + box.height * .5);
+    expect(isNear(await pixelAt(response.rawPayload, x, y), GREEN)).toBe(true);
+    const mirrored = await call('POST', '/admin/dungeons/scene-preview', { ...body, encounter: { ...body.encounter, mirror: true } });
+    expect(isNear(await pixelAt(mirrored.rawPayload, x, y), RED)).toBe(true);
+    const service = createSceneSpriteService({ db: w.t.db, assets: w.assets });
+    const back = await w.assets.upload({ category: 'dungeon_scene_sprite', bytes: await transparentSprite(300, 300, GREEN), name: 'Back' }, OWNER_ID);
+    const front = await w.assets.upload({ category: 'dungeon_scene_sprite', bytes: await transparentSprite(300, 300, RED), name: 'Front' }, OWNER_ID);
+    await service.create('authoring_back', { name: 'Back', assetId: back.id, placement: { ...placement, anchor: 'center', offsetX: -300 }, visualLayer: 'background' }, OWNER_ID);
+    const foregroundPlacement = { ...placement, anchor: 'bottom-left' as const, scaleBasisPoints: 2000, offsetX: 100 };
+    await service.create('authoring_front', { name: 'Front', assetId: front.id, placement: foregroundPlacement, visualLayer: 'foreground' }, OWNER_ID);
+    const combined = await call('POST', '/admin/dungeons/scene-preview', { ...body, roomSprites: [{ id: 'back', spriteKey: 'authoring_back' }], activitySprites: [{ id: 'front', spriteKey: 'authoring_front' }] });
+    expect(combined.statusCode, combined.body).toBe(200); expect(combined.rawPayload).not.toEqual(response.rawPayload);
+    const frontBox = layoutSprite({ width: 300, height: 300 }, foregroundPlacement, { width: 1200, height: 675 });
+    expect(isNear(await pixelAt(combined.rawPayload, Math.round(frontBox.left + frontBox.width / 2), Math.round(frontBox.top + frontBox.height / 2)), RED)).toBe(true);
+    const terminal = await call('POST', '/admin/dungeons/scene-preview', { ...body, encounter: { ...body.encounter, stage: 'left' } });
+    expect(terminal.statusCode).toBe(200); expect(terminal.rawPayload).not.toEqual(response.rawPayload);
+    expect((await as(NON_OWNER_TOKEN, 'POST', '/admin/dungeons/scene-preview', body)).statusCode).toBe(403);
+    expect((await call('POST', '/admin/dungeons/scene-preview', { ...body, encounter: { species: '../secret' } })).statusCode).toBe(400);
+    fs.rmSync(spritePath);
+    const fallbackSpecies = w.app.appearance.speciesContent(slug)!;
+    const look = w.app.appearance.currentAppearance(fallbackSpecies, null);
+    const standardPath = path.join(assetsDir, `${look.assetId.kind}/${look.assetId.slug}/${look.assetId.variant}.png`);
+    fs.mkdirSync(path.dirname(standardPath), { recursive: true }); fs.writeFileSync(standardPath, await solidImage(100, 150, GREEN));
+    const fallback = await call('POST', '/admin/dungeons/scene-preview', body);
+    expect(fallback.statusCode, fallback.body).toBe(200); expect(fallback.headers['x-dungeon-scene']).toBe('full-art');
+    expect(fallback.rawPayload).toEqual(fs.readFileSync(standardPath));
+  });
+});
+
+describe('P4C2B preview mechanics edge cases', () => {
+  it('labels the extra remaining attempt simulation and refuses failure with guaranteed-only charms', async () => {
+    const definition = definitionOf('preview_mechanics');
+    const slug = w.app.content.species.find((s) => s.enabled && !s.tags.includes('region_exclusive') && !s.tags.includes('dungeon_exclusive'))!.slug;
+    definition.rooms[0].actions.unshift({ id: 'wild', type: 'wild_encounter', source: { kind: 'species', species: slug }, intro: '', capture: { maxAttempts: 1, allowGuaranteedItems: false } });
+    const body = { definition, roomId: definition.rooms[0].id, actionId: 'wild', stage: 'failure' };
+    const response = await call('POST', '/admin/dungeons/encounter-preview', body);
+    expect(response.statusCode, response.body).toBe(200);
+    expect(data<Json>(response).context).toContain('would escape instead');
+    expect(JSON.stringify(data<Json>(response).embeds)).toContain('Used');
+    definition.rooms[0].actions[0].capture = { maxAttempts: 1, allowGuaranteedItems: true, allowedItems: ['mythic_contract'] };
+    const impossible = await call('POST', '/admin/dungeons/encounter-preview', body);
+    expect(impossible.statusCode, impossible.body).toBe(400);
+    expect(errorOf(impossible).message).toContain('non-guaranteed charm');
   });
 });

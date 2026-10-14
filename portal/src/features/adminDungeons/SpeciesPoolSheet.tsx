@@ -27,7 +27,7 @@ import { EMPTY_SPECIES_SCENARIO, useSpeciesInsight } from './useSpeciesInsight';
 import type { EventIssueTarget, FriendlyIssue } from './dungeonText';
 const hint = 'text-xs text-ink-muted';
 const percent = (p: number) => `${Number((p * 100).toFixed(2))}%`;
-function Odds({
+export function Odds({
   odds,
   names,
   label,

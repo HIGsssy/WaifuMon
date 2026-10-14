@@ -1,6 +1,7 @@
 import type { DungeonSpeciesPoolAnalysis, DungeonSpeciesScenario, DungeonSpeciesRef } from './dungeonSpeciesTypes';
 export type { DungeonSpeciesPoolAnalysis, DungeonSpeciesPoolOdds, DungeonSpeciesScenario, DungeonSpeciesRef } from './dungeonSpeciesTypes';
 import type { SceneSpriteInstance } from './adminDungeonSceneSprites';
+import type { SpritePlacement } from './adminArtworkAssets';
 /** Phase 1A dungeon authoring API. All calls use the shared authenticated client. */
 import type {
   DungeonImportPlan,
@@ -143,6 +144,12 @@ export interface DungeonAction {
   rewards?: DungeonRewardBundle;
   /** An `event` activity: which event, or which pool, it presents. */
   source?: DungeonEventSource | { kind: 'species'; species: string };
+  intro?: string;
+  mode?: 'capture' | 'direct';
+  capture?: { maxAttempts: number; allowedItems?: string[]; allowGuaranteedItems: boolean };
+  placement?: SpritePlacement;
+  mirror?: boolean;
+  results?: Record<string, { text?: string; flags?: Array<{ flag: string; value: boolean }> }>;
   [field: string]: unknown;
 }
 export interface DungeonRoom {
@@ -235,6 +242,7 @@ export interface DungeonSummary {
   published: DungeonPublishedInfo | null;
   draftDiffers: boolean;
   sceneSpritesDiffer?: boolean;
+  speciesDiffer?: boolean;
   /** Reward dependency reporting (T6): the draft's loot against what the published revision pinned. */
   draftGameplayHash?: string | null;
   dependenciesDiffer?: boolean;
@@ -523,7 +531,8 @@ export function validateDungeon(
 // ── Sandbox: a run played by the real engine that changes nothing ──
 
 export type DungeonSandboxInput =
-  | { type: 'advance' | 'decline' | 'extract' | 'abandon' }
+  | { type: 'advance' | 'decline' | 'extract' | 'abandon' | 'capture' | 'rescue' | 'leave_encounter' | 'dismiss_encounter' }
+  | { type: 'select_item'; item: string }
   | { type: 'move'; connectionId: string }
   | { type: 'choose'; choiceId: string };
 export interface DungeonSandboxEventView {
@@ -548,6 +557,7 @@ export interface DungeonSandboxView {
     optional: boolean;
     wave: { index: number; count: number; enemy: { name?: string } } | null;
     event?: DungeonSandboxEventView | null;
+    encounter?: DungeonSandboxEncounter | null;
   } | null;
   connections: Array<{
     id: string;
@@ -564,6 +574,8 @@ export interface DungeonSandboxView {
   end: { outcome: string; cause: string } | null;
 }
 export type DungeonSandboxEffect =
+  | { type: 'capture_attempt'; species: string; attempt: { n: number; item: string; chance: number; roll: number; success: boolean }; consumesMicrodose: boolean }
+  | { type: 'rescue_grant'; species: string }
   | { type: 'consume_items'; items: Array<{ item: string; quantity: number }> }
   | { type: 'grant_rewards'; plan: Record<string, unknown> }
   | { type: 'settle_run' };
@@ -582,6 +594,21 @@ export interface DungeonSandboxResult {
   steps: number;
   stoppedBy: 'ended' | 'stuck' | 'max_steps' | 'refused' | null;
   refusal: string | null;
+  encounterDiagnostics?: Array<{ species: string; name: string; available: boolean; reason: string | null; directReason: string | null; acquisitions: number; items: Array<{ item: string; chance: number; owned: number; breakdown: Record<string, unknown> }> }>;
+  simulatedGrants?: Array<{ species: string; copies: number; xp: number; item: string | null; success: boolean }>;
+}
+export interface DungeonSandboxEncounter {
+  species: string; name: string; rarity: string | null; intro: string; mode: 'capture' | 'direct';
+  available: boolean; unavailableReason: string | null; selectedItem: string | null; attemptsLeft: number;
+  items: Array<{ item: string; owned: number; guaranteed: boolean; chance: number }>;
+}
+export interface DungeonEncounterScenario {
+  acquisitions?: Record<string, number>;
+  disabledSpecies?: string[];
+  ownedSpecies?: string[];
+  captureOutcome?: 'normal' | 'success' | 'failure';
+  flags?: string[];
+  completedRooms?: string[];
 }
 /**
  * Plays an unsaved definition from its start through `inputs`. The same
@@ -594,6 +621,7 @@ export function playDungeonSandbox(
     inputs: DungeonSandboxInput[];
     inventory: Record<string, number>;
     currentSp: number;
+    encounterScenario?: DungeonEncounterScenario;
   },
   signal?: AbortSignal,
 ): Promise<DungeonSandboxResult> {
@@ -716,7 +744,7 @@ export interface DungeonScenePreview {
  * dungeon artwork). Rejects with a 404 when the enemy has nothing to show.
  */
 export async function previewDungeonScene(
-  input: { enemyKey?: string; backgrounds: Array<DungeonArtworkRef | null>; roomSprites?: SceneSpriteInstance[]; activitySprites?: SceneSpriteInstance[] },
+  input: { enemyKey?: string; encounter?: { species: string; placement?: SpritePlacement; mirror?: boolean; stage?: string }; backgrounds: Array<DungeonArtworkRef | null>; roomSprites?: SceneSpriteInstance[]; activitySprites?: SceneSpriteInstance[] },
   signal?: AbortSignal,
 ): Promise<DungeonScenePreview> {
   const response = await apiClient.post<Blob>(`${base}/scene-preview`, input, {
@@ -790,6 +818,25 @@ export function updateProgressionCurrency(
 /** Policy stays on the server; metadata only, no player data or writes. */
 export function getDungeonSpecies(dungeonKey: string, signal?: AbortSignal): Promise<{ species: DungeonSpeciesRef[] }> {
   return getData(`${base}/species`, { params: { dungeonKey }, ...opts(signal) });
+}
+export function getDungeonCaptureItems(signal?: AbortSignal): Promise<{ items: Array<{ slug: string; name: string; enabled: boolean; guaranteed: boolean; rarities: string[] | null }> }> {
+  return getData(`${base}/capture-items`, opts(signal));
+}
+export interface DungeonDiscordEncounterPreview {
+  simulated: boolean; context: string;
+  embeds: Array<{ title?: string; description?: string; fields?: Array<{ name: string; value: string }> }>;
+  components: Array<{ components: Array<{ label?: string; placeholder?: string; disabled?: boolean; options?: Array<{ label: string; description?: string }> }> }>;
+}
+export function previewDungeonEncounter(input: { definition: DungeonDefinition; roomId: string; actionId: string; species?: string; stage: string }, signal?: AbortSignal): Promise<DungeonDiscordEncounterPreview> {
+  return postData(`${base}/encounter-preview`, input, opts(signal));
+}
+export interface DungeonSpeciesRevisionStatus {
+  revision: number; revisionId: number; current: boolean; activeRuns: number;
+  evidence: 'recorded' | 'unknown'; differs: boolean | null;
+  dependencies: Array<{ slug: string; changes: string[]; liveRestriction: string | null; directRestriction: string | null }>;
+}
+export function getDungeonSpeciesStatus(key: string, signal?: AbortSignal): Promise<{ revisions: DungeonSpeciesRevisionStatus[] }> {
+  return getData(`${definitionUrl(key)}/species-status`, opts(signal));
 }
 export async function dungeonSpeciesArtworkBlob(slug: string): Promise<Blob> {
   const response = await apiClient.get<Blob>(`${base}/species/artwork`, { params: { slug, width: 256 }, responseType: 'blob' });

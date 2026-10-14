@@ -11,6 +11,7 @@ let world: ReturnType<typeof install>;
 beforeEach(() => {
   world = install();
   stubObjectUrls();
+  vi.spyOn(api, 'getDungeonSpecies').mockResolvedValue({ species: [] });
 });
 const inspector = () => within(screen.getByRole('complementary', { name: 'Map inspector' }));
 const parts = (d: api.DungeonDefinition) => ({
@@ -22,7 +23,7 @@ const parts = (d: api.DungeonDefinition) => ({
 
 describe('P4B1 encounter drafts', () => {
   it.each(['species', 'pool'] as const)(
-    'shows %s encounter read-only and preserves pools, placement and outcomes through unrelated save/reload',
+    'edits %s encounters and preserves pools, placement and outcomes through unrelated save/reload',
     async (kind) => {
       const stored = fixture();
       stored.draft.speciesPools = [
@@ -66,13 +67,10 @@ describe('P4B1 encounter drafts', () => {
       await screen.findByRole('heading', { level: 1, name: 'Tunnels' });
       await user.type(inspector().getByLabelText('Dungeon name'), ' Updated');
       await user.click(await screen.findByRole('button', { name: 'Select room Entrance' }));
-      await user.click(inspector().getByRole('button', { name: /Activity \d+: Wild encounter/ }));
-      const card = within(screen.getByTestId('encounter-read-only'));
-      expect(card.getByText(/read-only and is preserved/)).toBeInTheDocument();
-      expect(card.getAllByText(/She appears/).length).toBeGreaterThan(0);
-      expect(card.queryByRole('textbox')).not.toBeInTheDocument();
-      expect(card.queryByRole('button')).not.toBeInTheDocument();
-      expect(inspector().queryByLabelText('Player can skip this')).not.toBeInTheDocument();
+      await user.click(inspector().getByRole('button', { name: /Activity \d+: Wild Encounter/ }));
+      const card = within(screen.getByTestId('encounter-editor'));
+      expect(card.getByLabelText('Encounter introduction')).toHaveValue('She appears.');
+      expect(card.getByLabelText('Mirror encountered WaifuMon')).toBeChecked();
       await user.type(inspector().getByLabelText('Room description'), 'Wind.');
       await user.click(screen.getByRole('button', { name: 'Save draft' }));
       await vi.waitFor(() => expect(api.saveDungeonDraft).toHaveBeenCalledTimes(1));
@@ -86,8 +84,8 @@ describe('P4B1 encounter drafts', () => {
       expect(screen.getByRole('button', { name: 'Save draft' })).toBeDisabled();
     },
   );
-  it('does not add encounters to the activity authoring menu', () => {
-    expect(ACTION_TYPES).not.toContain('wild_encounter');
-    expect(ACTION_TYPES).not.toContain('rescue');
+  it('adds both encounters to the activity authoring menu', () => {
+    expect(ACTION_TYPES).toContain('wild_encounter');
+    expect(ACTION_TYPES).toContain('rescue');
   });
 });

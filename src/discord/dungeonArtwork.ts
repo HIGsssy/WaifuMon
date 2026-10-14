@@ -92,7 +92,7 @@ import type { DungeonEncounterActor, DungeonRunView } from '../modules/dungeons/
 import type { TrialArtwork } from './combatTrialPresenter';
 import type { AppContext } from './types';
 
-type ArtContext = Pick<AppContext, 'config' | 'services' | 'logger'> & Partial<Pick<AppContext, 'content'>>;
+type ArtContext = { config: Pick<AppContext['config'], 'assetsDir'>; services: Pick<AppContext['services'], 'artworkAssets' | 'sceneComposition' | 'appearance'>; logger: AppContext['logger']; content?: AppContext['content'] };
 type BuddyActor = { layer: SceneLayer; mirror: boolean; label: string };
 
 function attachment(source: string | Buffer, name: string): TrialArtwork {
@@ -268,7 +268,7 @@ export async function dungeonZoneArtwork(
 }
 
 /** The scene for where a run stands. See the module comment for the order. */
-export async function dungeonRunSceneArtwork(ctx: ArtContext, view: DungeonRunView): Promise<TrialArtwork | null> {
+export async function dungeonRunSceneArtwork(ctx: ArtContext, view: Pick<DungeonRunView, 'dungeon' | 'roomBackground' | 'sceneSprites' | 'eventArtwork' | 'encounterActor' | 'enemy'> & { fighter: Pick<DungeonRunView['fighter'], 'speciesSlug'> }): Promise<TrialArtwork | null> {
   const { artwork: dungeonArt, background: dungeonBackground } = view.dungeon;
   const roomBackground: ArtworkRef | null = view.roomBackground ?? null;
   if (view.sceneSprites?.length && ctx.services.sceneComposition) {

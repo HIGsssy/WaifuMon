@@ -5,7 +5,7 @@
  */
 import type { DungeonRewardDependencyChange, DungeonSummary } from '@/api/adminDungeons';
 
-export type PublicationKind = 'unpublished' | 'matches' | 'definition' | 'loot' | 'both' | 'visuals';
+export type PublicationKind = 'unpublished' | 'matches' | 'definition' | 'loot' | 'both' | 'visuals' | 'species';
 
 export interface DependencyLine {
   id: string;
@@ -19,6 +19,7 @@ export interface DependencyLine {
 export interface PublicationState {
   kind: PublicationKind;
   visuals?: boolean;
+  species?: boolean;
   /** A loot dependency is missing, archived, unreadable or matches nothing. */
   broken: boolean;
   /** The short overall status. */
@@ -29,7 +30,7 @@ export interface PublicationState {
 
 type Source = Pick<
   DungeonSummary,
-  'published' | 'draftDiffers' | 'dependenciesDiffer' | 'dependencyChanges' | 'sceneSpritesDiffer'
+  'published' | 'draftDiffers' | 'dependenciesDiffer' | 'dependencyChanges' | 'sceneSpritesDiffer' | 'speciesDiffer'
 >;
 
 const count = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
@@ -80,6 +81,7 @@ export function describeDependencyChange(change: DungeonRewardDependencyChange):
 }
 
 const LABELS: Record<PublicationKind, string> = {
+  species: 'Species dependencies changed',
   visuals: 'Scene sprites changed',
   unpublished: 'Not published yet',
   matches: 'Matches publication',
@@ -89,6 +91,7 @@ const LABELS: Record<PublicationKind, string> = {
 };
 
 const SUMMARIES: Record<PublicationKind, string> = {
+  species: 'Published species metadata has changed or lacks publication evidence. Republish to record current metadata. Acquisition still follows live policy.',
   visuals: 'Scene sprite artwork or defaults have changed. Published scenes keep their frozen images and placement until you publish again.',
   unpublished: 'Players cannot start runs until this dungeon is published.',
   matches: 'Players get exactly what this draft holds.',
@@ -115,7 +118,7 @@ export function publicationState(source: Source, unsavedDefinition = false): Pub
         ? 'definition'
         : loot
           ? 'loot'
-          : source.sceneSpritesDiffer ? 'visuals' : 'matches';
+          : source.sceneSpritesDiffer ? 'visuals' : source.speciesDiffer ? 'species' : 'matches';
   // The server can report a difference it cannot itemise, such as a changed item.
   if (source.published && (source.dependenciesDiffer ?? false) && changes.length === 0)
     changes.push({
@@ -127,6 +130,7 @@ export function publicationState(source: Source, unsavedDefinition = false): Pub
   return {
     kind,
     ...(source.sceneSpritesDiffer ? { visuals: true } : {}),
+    ...(source.speciesDiffer ? { species: true } : {}),
     broken,
     label: broken ? 'Loot needs repair' : LABELS[kind],
     summary: broken
@@ -138,8 +142,11 @@ export function publicationState(source: Source, unsavedDefinition = false): Pub
 
 /** What pressing Publish will do, for the confirmation. */
 export function publishExplanation(state: PublicationState): string {
+  if (state.species) return 'This records current species rarity and policy evidence in a new publication, together with any dungeon, reward or scene changes. Existing runs retain their revision; acquiring a species still checks live policy.';
   if (state.visuals) return 'This freezes the current scene sprites into a new revision, along with any dungeon and reward changes. Existing runs keep their earlier revision.';
   switch (state.kind) {
+    case 'species':
+      return 'This records current species dependency evidence in a new publication.';
     case 'unpublished':
       return 'This is the first publication of this dungeon.';
     case 'visuals':

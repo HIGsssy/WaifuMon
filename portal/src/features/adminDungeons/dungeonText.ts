@@ -45,6 +45,8 @@ export const ACTIVITIES: Record<ActionType, { title: string; hint: string; icon:
     icon: Bookmark,
   },
   leave: { title: 'Leave through a path', hint: 'Send the player onward', icon: LogOut },
+  wild_encounter: { title: 'Wild Encounter', hint: 'Offer a WaifuMon to capture', icon: Bookmark },
+  rescue: { title: 'Rescue', hint: 'Capture rescue or authorized direct grant', icon: Bookmark },
 };
 /** Not in `ACTIVITIES`: an event is attached through the room's Event control, which also picks what it presents. */
 export const EVENT_ACTIVITY = {
@@ -244,6 +246,16 @@ export function incompleteIssues(definition: DungeonDefinition): DungeonIssue[] 
     ...incompleteEventIssues(definition, INCOMPLETE_CODE),
     ...incompleteSpeciesIssues(definition, INCOMPLETE_CODE),
   ];
+  definition.rooms.forEach((room, r) => room.actions.forEach((action, a) => {
+    if (!['wild_encounter', 'rescue'].includes(action.type)) return;
+    if (!action.source || (action.source.kind === 'species' ? !action.source.species : action.source.kind !== 'pool' || !action.source.poolId))
+      issues.push({ code: INCOMPLETE_CODE, severity: 'error', path: `rooms[${r}].actions[${a}].source`, message: 'Choose a WaifuMon or a species pool.' });
+    if (!(action.type === 'rescue' && action.mode === 'direct') && action.capture && ((action.capture.maxAttempts !== undefined && (!Number.isInteger(action.capture.maxAttempts) || action.capture.maxAttempts < 1 || action.capture.maxAttempts > 3)) || action.capture.allowedItems?.length === 0))
+      issues.push({ code: INCOMPLETE_CODE, severity: 'error', path: `rooms[${r}].actions[${a}].capture`, message: 'Choose 1–3 attempts and at least one charm when using an authored subset.' });
+    for (const [outcome, result] of Object.entries(action.results ?? {})) result.flags?.forEach((f, i) => {
+      if (!f.flag) issues.push({ code: INCOMPLETE_CODE, severity: 'error', path: `rooms[${r}].actions[${a}].results.${outcome}.flags[${i}].flag`, message: 'Choose a declared run flag or remove this unfinished result write.' });
+    });
+  }));
   definition.rooms.forEach((room, r) =>
     room.actions.forEach((action, a) =>
       (action.waves ?? []).forEach((wave, w) => {
@@ -513,7 +525,7 @@ export function friendlyIssue(
     return {
       issue, level: issue.code === INCOMPLETE_CODE ? 'finish' : issue.severity === 'error' ? 'fix' : 'review',
       title: `WaifuMon pool “${pool?.name || 'Unnamed'}”${entry ? `, entry ${Number(inSpeciesPool[2]) + 1}` : ''}: ${issue.message}`,
-      help: issue.code === 'species_pool_unused' ? 'Attach it to an encounter in a later authoring pass, or remove it.' : 'Open the pool to repair its entries or settings.',
+      help: issue.code === 'species_pool_unused' ? 'Attach it to a Wild Encounter or Rescue, or remove it.' : 'Open the pool to repair its entries or settings.',
       target: null, actionId: null,
       ...(pool ? { eventTarget: { kind: 'speciesPool' as const, id: pool.id, ...(entry ? { entryId: entry.id } : {}), ...(field ? { field } : {}) } } : {}),
     };
@@ -535,6 +547,19 @@ export function friendlyIssue(
     };
   }
   const connection = via ? definition.connections[Number(via[1])] : undefined;
+  if (action && (action.type === 'wild_encounter' || action.type === 'rescue')) {
+    const help: Record<string, string> = {
+      species_pool_missing: 'Choose an existing WaifuMon pool. The missing reference stays in this draft until you replace it.',
+      species_missing: 'Choose an existing WaifuMon or repair the selected pool.',
+      species_disabled: 'Choose an enabled WaifuMon. Central species policy is read-only here.',
+      species_not_permitted: 'Choose a species permitted in this dungeon or arrange a central policy update.',
+      rescue_direct_not_permitted: 'Direct grants need explicit species authorization for this dungeon. Use capture rescue or choose an authorized species.',
+      rescue_direct_limit_missing: 'Direct grants require a finite per-player acquisition limit for this dungeon across runs.',
+      capture_settings_invalid: 'Set 1–3 attempts and choose at least one valid charm for an authored subset.',
+      result_flag_undeclared: 'Declare the run flag in Dungeon settings or replace this result flag.',
+    };
+    return { issue, level: issue.code === INCOMPLETE_CODE ? 'finish' : issue.severity === 'error' ? 'fix' : 'review', title: `${roomLabel(room)}, ${activityOf(action).title}: ${issue.message}`, help: help[issue.code] ?? 'Open this activity to repair its source, rules, conditions, result flags or outcome routes.', target: room ? { kind: 'room', id: room.id } : null, actionId: action.id };
+  }
   const R = roomLabel(room);
   const activity = action ? activityOf(action).title.toLowerCase() : 'activity';
   const wave = at?.[3] !== undefined ? Number(at[3]) + 1 : null;

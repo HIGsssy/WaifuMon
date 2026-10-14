@@ -172,6 +172,9 @@ export function install() {
     publishable: true,
   }));
   vi.spyOn(api, 'listDungeonRevisions').mockResolvedValue({ revisions: [revision] });
+  vi.spyOn(api, 'getDungeonSpeciesStatus').mockResolvedValue({ revisions: [] });
+  vi.spyOn(api, 'getDungeonCaptureItems').mockResolvedValue({ items: [{ slug: 'basic_charm', name: 'Basic Charm', enabled: true, guaranteed: false, rarities: null }] });
+  vi.spyOn(api, 'previewDungeonEncounter').mockResolvedValue({ simulated: true, context: 'Simulated context', embeds: [{ title: 'Production preview', description: 'She appears.' }], components: [] });
   vi.spyOn(api, 'getDungeonRevision').mockImplementation(async () => ({
     ...revision,
     content: stored.draft,

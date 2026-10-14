@@ -36,6 +36,7 @@ import {
   type FriendlyIssue,
 } from './dungeonText';
 import { EventActivity } from './EventActivity';
+import { EncounterActivity } from './EncounterActivity';
 
 const select = 'w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink';
 const field = 'block space-y-1 text-sm';
@@ -52,6 +53,7 @@ const OUTCOME_LABEL: Record<string, string> = {
   blocked: 'If the player is turned away',
   declined: 'If the player skips it',
   next: 'After succeeding (general rule)',
+  captured: 'After capture', rescued: 'After rescue', escaped: 'After escape', left: 'After leaving her', unavailable: 'When she is unavailable',
 };
 const OUTCOME_DEFAULT: Record<string, string> = {
   defeat: 'the run ends in defeat',
@@ -627,14 +629,15 @@ function AdvancedOptions({
   };
   const fight = action.type === 'combat' || action.type === 'boss';
   const event = isEventActivity(action);
+  const encounter = action.type === 'wild_encounter' || action.type === 'rescue';
   const outcomes = [
-    ...(ACTION_OUTCOMES[action.type as ActionType] ?? []),
+    ...(ACTION_OUTCOMES[action.type as ActionType] ?? []).filter((o) => !(action.type === 'rescue' && action.mode === 'direct' && o === 'escaped')),
     ...(action.optional ? ['declined'] : []),
   ];
   const waves = action.waves ?? [];
   return (
     <div className="space-y-3">
-      {event ? (
+      {event || encounter ? (
         // An event's buttons are its choices, and it is answered with one of them rather than skipped.
         (action.optional ?? false) && (
           <p role="alert" className="text-sm">
@@ -725,7 +728,7 @@ function AdvancedOptions({
               room={room}
               actionIndex={index}
               definition={definition}
-              noRetreat={event}
+              noRetreat={event || encounter}
               onChange={(next) => {
                 const routes = { ...action.outcomes };
                 if (next) routes[outcome] = next;
@@ -750,7 +753,7 @@ function AdvancedOptions({
               room={room}
               actionIndex={index}
               definition={definition}
-              noRetreat={event}
+              noRetreat={event || encounter}
               onChange={(next) => (next ? patch({ next }) : unset('next'))}
             />
           ))}
@@ -820,20 +823,8 @@ export function ActivityCard({
   );
   const Icon = meta.icon;
   const eventActivity = isEventActivity(action);
-  if (action.type === 'wild_encounter' || action.type === 'rescue') {
-    return (
-      <li className="rounded-lg border border-border p-2.5">
-        <button type="button" aria-expanded={open} aria-label={`Activity ${index + 1}: ${action.type === 'rescue' ? 'Rescue' : 'Wild encounter'}`} onClick={onToggle}>
-          {action.label || (action.type === 'rescue' ? 'Rescue' : 'Wild encounter')}
-        </button>
-        {open && <div className="space-y-2 pt-2" data-testid="encounter-read-only">
-          <p className="text-sm text-ink-muted">Encounter authoring is not available yet. This activity is read-only and is preserved when other dungeon settings are saved.</p>
-          <pre className="overflow-auto text-xs">{JSON.stringify(action, null, 2)}</pre>
-          {action.source?.kind === 'pool' && <pre className="overflow-auto text-xs">{JSON.stringify(definition.speciesPools?.find((p) => p.id === (action.source?.kind === 'pool' ? action.source.poolId : '')), null, 2)}</pre>}
-        </div>}
-      </li>
-    );
-  }
+  const encounterActivity = action.type === 'wild_encounter' || action.type === 'rescue';
+
   return (
     <li
       className={`rounded-lg border ${issues.some((i) => i.level !== 'review') ? 'border-danger/60' : open ? 'border-accent' : 'border-border'}`}
@@ -895,7 +886,8 @@ export function ActivityCard({
           />
         </div>
       )}
-      {open && !eventActivity && (
+      {open && encounterActivity && <div className="border-t border-border p-2.5"><EncounterActivity action={action} room={room} definition={definition} disabled={disabled} onChange={onChange} /></div>}
+      {open && !eventActivity && !encounterActivity && (
         <fieldset disabled={disabled} className="space-y-3 border-t border-border p-2.5">
           <Essentials
             action={action}

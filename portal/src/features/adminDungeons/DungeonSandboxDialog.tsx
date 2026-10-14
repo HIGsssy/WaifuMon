@@ -23,6 +23,8 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/compone
 import { Input } from '@/components/ui/input';
 import { choiceNotes } from './eventPreviewModel';
 import { clampInt, eventsOf, percentOfBasisPoints } from './dungeonEventModel';
+import { useQuery } from '@tanstack/react-query';
+import { getDungeonCaptureItems, type DungeonEncounterScenario } from '@/api/adminDungeons';
 
 const select = 'rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink';
 const hint = 'text-xs text-ink-muted';
@@ -55,6 +57,7 @@ interface Settings {
   seed: number;
   currentSp: number;
   inventory: Record<string, number>;
+  encounterScenario: DungeonEncounterScenario;
 }
 
 export function DungeonSandboxDialog({
@@ -66,7 +69,36 @@ export function DungeonSandboxDialog({
   reference?: DungeonReferenceData | undefined;
   onClose: () => void;
 }) {
-  const [settings, setSettings] = useState<Settings>({ seed: 1, currentSp: 200, inventory: {} });
+  const [settings, setSettings] = useState<Settings>({
+    seed: 1,
+    currentSp: 200,
+    inventory: {},
+    encounterScenario: {},
+  });
+  const hasEncounters = definition.rooms.some((r) =>
+    r.actions.some((a) => a.type === 'wild_encounter' || a.type === 'rescue'),
+  );
+  const charms = useQuery({
+    queryKey: ['dungeon-capture-items'],
+    queryFn: ({ signal }) => getDungeonCaptureItems(signal),
+    enabled: hasEncounters,
+  });
+  const encounterSlugs = [
+    ...new Set(
+      definition.rooms.flatMap((r) =>
+        r.actions.flatMap((a) => {
+          if (a.type !== 'wild_encounter' && a.type !== 'rescue') return [];
+          return a.source?.kind === 'species'
+            ? [a.source.species]
+            : a.source?.kind === 'pool'
+              ? (definition.speciesPools
+                  ?.find((p) => p.id === (a.source?.kind === 'pool' ? a.source.poolId : ''))
+                  ?.entries.flatMap((e) => ('species' in e ? [e.species] : [])) ?? [])
+              : [];
+        }),
+      ),
+    ),
+  ];
   const [inputs, setInputs] = useState<DungeonSandboxInput[]>([]);
   const [result, setResult] = useState<DungeonSandboxResult | null>(null);
   const [busy, setBusy] = useState(true);
@@ -74,7 +106,9 @@ export function DungeonSandboxDialog({
   const [problem, setProblem] = useState('');
   const request = useRef(0);
   const itemName = (slug: string) =>
-    reference?.items.find((i) => i.slug === slug)?.name ?? 'Unknown item';
+    reference?.items.find((i) => i.slug === slug)?.name ??
+    charms.data?.items.find((i) => i.slug === slug)?.name ??
+    slug;
   /** Items any event in the dungeon asks for: the ones worth pretending to hold. */
   const askedFor = useMemo(
     () => [
@@ -134,7 +168,7 @@ export function DungeonSandboxDialog({
     let played = result;
     for (let n = 0; n < SKIP_LIMIT && played; n++) {
       const view = played.view;
-      if (view.phase === 'ended' || view.action?.event) break;
+      if (view.phase === 'ended' || view.action?.event || view.action?.encounter) break;
       let input: DungeonSandboxInput | null = null;
       if (view.phase === 'action') input = { type: 'advance' };
       else {
@@ -151,6 +185,7 @@ export function DungeonSandboxDialog({
 
   const view = result?.view;
   const event = view?.action?.event ?? null;
+  const encounter = view?.action?.encounter ?? null;
   const used = new Map<string, number>();
   let paid = 0;
   for (const effect of result?.effects ?? []) {
@@ -158,6 +193,8 @@ export function DungeonSandboxDialog({
     if (effect.type === 'consume_items')
       for (const item of effect.items)
         used.set(item.item, (used.get(item.item) ?? 0) + item.quantity);
+    if (effect.type === 'capture_attempt')
+      used.set(effect.attempt.item, (used.get(effect.attempt.item) ?? 0) + 1);
   }
   const remembered = Object.entries(view?.flags ?? {})
     .filter(([, value]) => value)
@@ -258,6 +295,166 @@ export function DungeonSandboxDialog({
             )}
           </fieldset>
 
+          {hasEncounters && (
+            <fieldset disabled={busy} className="space-y-2 rounded border border-border p-2">
+              <legend className="text-xs">Simulated encounter facts</legend>
+              <p className={hint}>
+                No live inventory, ownership, XP, quest or dungeon-run records are read or changed.
+                Capture quotes use the normal formula with a simulated Buddy with no capture
+                modifiers.
+              </p>
+              <label className="block text-xs">
+                Capture rolls
+                <select
+                  aria-label="Simulated capture rolls"
+                  className={select}
+                  value={settings.encounterScenario.captureOutcome ?? 'normal'}
+                  onChange={(e) =>
+                    change({
+                      ...settings,
+                      encounterScenario: {
+                        ...settings.encounterScenario,
+                        captureOutcome: e.target.value as 'normal' | 'success' | 'failure',
+                      },
+                    })
+                  }
+                >
+                  <option value="normal">Normal deterministic rolls</option>
+                  <option value="success">Force success (authoring test)</option>
+                  <option value="failure">Force failure (guaranteed items still succeed)</option>
+                </select>
+              </label>
+              {charms.data?.items
+                .filter((i) => i.enabled)
+                .map((i) => (
+                  <label className="flex gap-2 text-xs" key={i.slug}>
+                    <Input
+                      type="number"
+                      min={0}
+                      max={999}
+                      step={1}
+                      className="w-20"
+                      aria-label={`Simulated charm quantity ${i.name}`}
+                      value={settings.inventory[i.slug] ?? 0}
+                      onChange={(e) =>
+                        change({
+                          ...settings,
+                          inventory: {
+                            ...settings.inventory,
+                            [i.slug]: clampInt(Number(e.target.value), 0, 999),
+                          },
+                        })
+                      }
+                    />
+                    {i.name}
+                  </label>
+                ))}
+              {encounterSlugs.map((slug) => (
+                <div className="space-y-1 border-t border-border pt-2" key={slug}>
+                  <p className={hint}>
+                    {result?.encounterDiagnostics?.find((d) => d.species === slug)?.name ?? slug}
+                  </p>
+                  <label className="flex gap-2 text-xs">
+                    <Input
+                      className="w-20"
+                      aria-label={`Simulated acquisitions ${slug}`}
+                      type="number"
+                      min={0}
+                      max={1000000}
+                      value={settings.encounterScenario.acquisitions?.[slug] ?? 0}
+                      onChange={(e) =>
+                        change({
+                          ...settings,
+                          encounterScenario: {
+                            ...settings.encounterScenario,
+                            acquisitions: {
+                              ...settings.encounterScenario.acquisitions,
+                              [slug]: clampInt(Number(e.target.value), 0, 1000000),
+                            },
+                          },
+                        })
+                      }
+                    />
+                    Copies acquired from this dungeon across runs
+                  </label>
+                  {(['disabledSpecies', 'ownedSpecies'] as const).map((key) => (
+                    <label className="flex gap-2 text-xs" key={key}>
+                      <input
+                        type="checkbox"
+                        aria-label={`${key === 'disabledSpecies' ? 'Simulate disabled' : 'Simulate already owned'} ${slug}`}
+                        checked={settings.encounterScenario[key]?.includes(slug) ?? false}
+                        onChange={(e) =>
+                          change({
+                            ...settings,
+                            encounterScenario: {
+                              ...settings.encounterScenario,
+                              [key]: e.target.checked
+                                ? [...(settings.encounterScenario[key] ?? []), slug]
+                                : (settings.encounterScenario[key]?.filter((s) => s !== slug) ??
+                                  []),
+                            },
+                          })
+                        }
+                      />
+                      {key === 'disabledSpecies'
+                        ? 'Unavailable species (simulated disable)'
+                        : 'Already in collection (no new-dex XP)'}
+                    </label>
+                  ))}
+                </div>
+              ))}
+              {definition.flags
+                .filter((f) => f.scope === 'run')
+                .map((f) => (
+                  <label className="flex gap-2 text-xs" key={f.key}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Simulated run flag ${f.description || f.key}`}
+                      checked={settings.encounterScenario.flags?.includes(f.key) ?? false}
+                      onChange={(e) =>
+                        change({
+                          ...settings,
+                          encounterScenario: {
+                            ...settings.encounterScenario,
+                            flags: e.target.checked
+                              ? [...(settings.encounterScenario.flags ?? []), f.key]
+                              : (settings.encounterScenario.flags?.filter((s) => s !== f.key) ??
+                                []),
+                          },
+                        })
+                      }
+                    />
+                    Initially remembers: {f.description || f.key}
+                  </label>
+                ))}
+              {definition.rooms
+                .filter((r) => r.id !== definition.entranceRoomId)
+                .map((r) => (
+                  <label className="flex gap-2 text-xs" key={r.id}>
+                    <input
+                      type="checkbox"
+                      aria-label={`Simulated completed room ${r.name || r.id}`}
+                      checked={settings.encounterScenario.completedRooms?.includes(r.id) ?? false}
+                      onChange={(e) =>
+                        change({
+                          ...settings,
+                          encounterScenario: {
+                            ...settings.encounterScenario,
+                            completedRooms: e.target.checked
+                              ? [...(settings.encounterScenario.completedRooms ?? []), r.id]
+                              : (settings.encounterScenario.completedRooms?.filter(
+                                  (s) => s !== r.id,
+                                ) ?? []),
+                          },
+                        })
+                      }
+                    />
+                    Initially completed: {r.name || r.id}
+                  </label>
+                ))}
+            </fieldset>
+          )}
+
           {problem && (
             <p role="alert" className="text-sm text-danger">
               {problem}
@@ -343,7 +540,160 @@ export function DungeonSandboxDialog({
                   </ul>
                 </div>
               )}
-              {view.phase === 'action' && view.action && !event && (
+              {encounter && (
+                <section
+                  aria-label="Sandbox encounter"
+                  className="space-y-2 rounded border-l-4 border-accent p-2"
+                >
+                  <p className="font-semibold">
+                    {encounter.name} · {encounter.rarity}
+                  </p>
+                  <p className="text-sm whitespace-pre-wrap">{encounter.intro}</p>
+                  <p className={hint}>
+                    {encounter.available
+                      ? 'Eligible for this encounter'
+                      : `Unavailable: ${encounter.unavailableReason}`}
+                    .{' '}
+                    {encounter.mode === 'direct'
+                      ? 'Direct rescue: no charm.'
+                      : `${encounter.attemptsLeft} attempts left.`}
+                  </p>
+                  {encounter.available ? (
+                    <>
+                      <div className="flex flex-wrap gap-2">
+                        {encounter.mode === 'direct' ? (
+                          <Button
+                            disabled={busy}
+                            size="sm"
+                            onClick={() => press({ type: 'rescue' })}
+                          >
+                            Simulate direct rescue
+                          </Button>
+                        ) : (
+                          <>
+                            <select
+                              aria-label="Sandbox capture charm"
+                              className={select}
+                              disabled={busy}
+                              value={encounter.selectedItem ?? ''}
+                              onChange={(e) => press({ type: 'select_item', item: e.target.value })}
+                            >
+                              <option value="">Choose a charm…</option>
+                              {encounter.items.map((i) => (
+                                <option key={i.item} value={i.item}>
+                                  {itemName(i.item)} · {i.owned} held ·{' '}
+                                  {i.guaranteed
+                                    ? 'guaranteed'
+                                    : `${Number((i.chance * 100).toFixed(2))}%`}
+                                </option>
+                              ))}
+                            </select>
+                            <Button
+                              size="sm"
+                              disabled={busy || !encounter.selectedItem}
+                              onClick={() => press({ type: 'capture' })}
+                            >
+                              Simulate capture attempt
+                            </Button>
+                          </>
+                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => press({ type: 'leave_encounter' })}
+                        >
+                          Leave her
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <Button
+                      size="sm"
+                      disabled={busy}
+                      onClick={() => press({ type: 'dismiss_encounter' })}
+                    >
+                      Continue without granting
+                    </Button>
+                  )}
+                  {result?.encounterDiagnostics
+                    ?.find((d) => d.species === encounter.species)
+                    ?.items.filter((i) => encounter.items.some((e) => e.item === i.item))
+                    .map((i) => (
+                      <details key={i.item}>
+                        <summary className={hint}>
+                          {itemName(i.item)} probability and modifiers
+                        </summary>
+                        <dl className={hint}>
+                          {Object.entries(i.breakdown).map(([key, value]) => (
+                            <div key={key}>
+                              <dt className="inline">{key}: </dt>
+                              <dd className="inline">{String(value)}</dd>
+                            </div>
+                          ))}
+                        </dl>
+                      </details>
+                    ))}
+                </section>
+              )}
+              {(view.recent ?? [])
+                .filter((e) => e.kind === 'encounter')
+                .map((e, n) => (
+                  <p
+                    className="text-sm whitespace-pre-wrap"
+                    data-testid="sandbox-encounter-result"
+                    key={n}
+                  >
+                    Encounter: {String(e.species ?? 'Nothing')} — {String(e.outcome)}.{' '}
+                    {String(e.text ?? '')}
+                  </p>
+                ))}
+              {result?.simulatedGrants?.map((g, n) => (
+                <p className={hint} data-testid="sandbox-simulated-grant" key={n}>
+                  Simulated only: {g.species}, {g.copies} ownership{' '}
+                  {g.copies === 1 ? 'grant' : 'grants'}, {g.xp} XP
+                  {g.item ? `; consumed 1× ${itemName(g.item)}` : '; no charm consumed'}. No
+                  database changes.
+                </p>
+              ))}
+              {result?.effects
+                .filter((e) => e.type === 'capture_attempt')
+                .map(
+                  (e, n) =>
+                    e.type === 'capture_attempt' && (
+                      <p className={hint} key={`attempt-${n}`} data-testid="sandbox-capture-roll">
+                        Simulated attempt {e.attempt.n}: {e.species} ·{' '}
+                        {Number((e.attempt.chance * 100).toFixed(2))}% capture chance · roll{' '}
+                        {Number((e.attempt.roll * 100).toFixed(2))}% ·{' '}
+                        {e.attempt.success ? 'success' : 'failure'}
+                        {e.consumesMicrodose ? ' · would consume a Microdose charge' : ''}.
+                      </p>
+                    ),
+                )}
+              {Object.keys(view.flags).length > 0 && (
+                <p className={hint} data-testid="sandbox-result-flags">
+                  Resulting run flags:{' '}
+                  {Object.entries(view.flags)
+                    .map(
+                      ([key, value]) =>
+                        `${definition.flags.find((f) => f.key === key)?.description || key}=${value}`,
+                    )
+                    .join(', ')}
+                  .
+                </p>
+              )}
+              {result?.encounterDiagnostics
+                ?.filter((d) => !d.available || d.directReason)
+                .map((d) => (
+                  <p className={hint} key={d.species}>
+                    {d.name}: {d.reason ? `unavailable (${d.reason})` : 'capture eligible'};{' '}
+                    {d.directReason
+                      ? `direct rescue unavailable (${d.directReason})`
+                      : 'direct rescue eligible'}
+                    ; {d.acquisitions} acquisitions from this dungeon.
+                  </p>
+                ))}
+              {view.phase === 'action' && view.action && !event && !encounter && (
                 <div className="flex flex-wrap items-center gap-2">
                   {view.action.wave && (
                     <span className="text-sm">
@@ -418,7 +768,7 @@ export function DungeonSandboxDialog({
                       .join(' and ')}. Here, nothing was.`}
               </p>
               <div className="flex flex-wrap gap-2 border-t border-border pt-3">
-                {view.phase !== 'ended' && !event && (
+                {view.phase !== 'ended' && !event && !encounter && (
                   <Button
                     size="sm"
                     variant="outline"

@@ -98,6 +98,13 @@ import { mirrorsPlayerBuddy } from '../../../../modules/artworkAssets/scenePlace
 import { DungeonEngineContentError } from '../../../../modules/dungeons/engine/combat';
 import { EVENT_SP_NEUTRAL } from '../../../../modules/dungeons/engine/eventChecks';
 import { describeSpeciesAuthoring } from '../../../../modules/dungeons/engine/speciesAuthoring';
+import { createEncounterAuthoringFacts, authoringCaptureRng } from '../../../../modules/dungeons/dungeonEncounterAuthoring';
+import { buildEncounterAuthoringPreview } from '../../../../discord/dungeonEncounterPreview';
+import { dungeonRunSceneArtwork, speciesArtwork } from '../../../../discord/dungeonArtwork';
+import { ARTWORK_CONTENT_TYPES, artworkExtensionOf } from '../../../../modules/assets/artworkPath';
+import type { DungeonRunView } from '../../../../modules/dungeons/dungeonRunService';
+import { isEncounterAction } from '../../../../modules/dungeons/content/dungeonDefinition';
+import { SpritePlacementSchema, DEFAULT_SPRITE_PLACEMENT } from '../../../../modules/artworkAssets/scenePlacement';
 import { resolveRace } from '../../../../modules/cards/race';
 import { resolveAppearanceAssetOrLegacyPath } from '../../../../modules/appearance/assetResolver';
 import { describeEventAuthoring } from '../../../../modules/dungeons/engine/eventAuthoring';
@@ -196,6 +203,7 @@ const summarySchema = z.object({
   /** The draft's definition differs from the published revision's. */
   draftDiffers: z.boolean(),
   sceneSpritesDiffer: z.boolean().optional(),
+  speciesDiffer: z.boolean().optional(),
   /** The gameplay hash a publish would write now; null without v2 rewards or while a reward dependency is broken. */
   draftGameplayHash: z.string().nullable(),
   /** The definition is published as is, but the reward dependencies it pinned are not what the catalogues hold now. */
@@ -400,6 +408,8 @@ const packageInspectionSchema = z.object({
 const sandboxStat = z.number().int().positive().max(MAX_SANDBOX_FIGHTER_STAT);
 const connectionIdSchema = z.string().min(1).max(DUNGEON_ID_MAX_LENGTH);
 const sandboxInputSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('select_item'), item: z.string().min(1).max(100) }),
+  ...(['capture', 'rescue', 'leave_encounter', 'dismiss_encounter'] as const).map((type) => z.object({ type: z.literal(type) })),
   z.object({ type: z.literal('advance') }),
   z.object({ type: z.literal('decline') }),
   z.object({ type: z.literal('move'), connectionId: connectionIdSchema }),
@@ -435,6 +445,14 @@ const sandboxBody = z
       .default({ ...DEFAULT_DUNGEON_SANDBOX_FIGHTER }),
     /** What the imagined player holds, for event choices that need items. Nothing is ever spent. */
     inventory: sandboxInventorySchema.default({}),
+    encounterScenario: z.object({
+      acquisitions: speciesScenarioSchema.shape.acquisitions.optional(),
+      disabledSpecies: z.array(z.string().min(1).max(100)).max(1500).optional(),
+      ownedSpecies: z.array(z.string().min(1).max(100)).max(1500).optional(),
+      captureOutcome: z.enum(['normal', 'success', 'failure']).optional(),
+      flags: speciesScenarioSchema.shape.flags.optional(),
+      completedRooms: speciesScenarioSchema.shape.completedRooms.optional(),
+    }).strict().optional(),
     inputs: z.array(sandboxInputSchema).max(MAX_DUNGEON_SANDBOX_INPUTS).default([]),
     autoPlay: z.boolean().default(false),
     maxSteps: z.number().int().min(1).max(MAX_DUNGEON_SANDBOX_STEPS).default(MAX_DUNGEON_SANDBOX_STEPS),
@@ -447,6 +465,8 @@ const sandboxBody = z
   });
 
 const sandboxSchema = z.object({
+  encounterDiagnostics: z.array(z.record(z.string(), z.unknown())).optional(),
+  simulatedGrants: z.array(z.record(z.string(), z.unknown())).optional(),
   /** What a player would be shown now. */
   view: z.record(z.string(), z.unknown()),
   /** The engine's run state. */
@@ -544,6 +564,8 @@ function toSummary(s: DungeonSummary): z.infer<typeof summarySchema> {
     draftHash: s.draftHash,
     published: s.published && { ...s.published, publishedAt: s.published.publishedAt.toISOString() },
     draftDiffers: s.draftDiffers,
+    ...(s.sceneSpritesDiffer !== undefined ? { sceneSpritesDiffer: s.sceneSpritesDiffer } : {}),
+    ...(s.speciesDiffer !== undefined ? { speciesDiffer: s.speciesDiffer } : {}),
     draftGameplayHash: s.draftGameplayHash,
     dependenciesDiffer: s.dependenciesDiffer,
     dependencyChanges: s.dependencyChanges,
@@ -1148,6 +1170,59 @@ export const adminDungeonRoutes =
       }));
       return ok(req, { species });
     });
+    app.get('/admin/dungeons/capture-items', {
+      onRequest: gate('dungeons.read'),
+      schema: { tags, response: { 200: dataSchema(z.object({ items: z.array(z.object({ slug: z.string(), name: z.string(), enabled: z.boolean(), guaranteed: z.boolean(), rarities: z.array(z.string()).nullable() })) })), ...commonErrorResponses } },
+    }, async (req) => ok(req, { items: (await dungeons.encounterCatalogue()).items.filter((i) => i.category === 'capture').map((i) => ({ slug: i.slug, name: i.name, enabled: i.enabled, guaranteed: i.isGuaranteedCapture, rarities: i.captureRarities })) }));
+    app.get('/admin/dungeons/definitions/:key/species-status', {
+      onRequest: gate('dungeons.read'), schema: { tags, params: keyParams, response: { 200: dataSchema(z.object({ revisions: z.array(z.object({ revision: z.number(), revisionId: z.number(), current: z.boolean(), activeRuns: z.number(), evidence: z.enum(['recorded', 'unknown']), differs: z.boolean().nullable(), dependencies: z.array(z.object({ slug: z.string(), changes: z.array(z.string()), liveRestriction: z.string().nullable(), directRestriction: z.string().nullable() })) })) })), ...dungeonNotFoundResponse, ...commonErrorResponses } },
+    }, async (req) => { const revisions = await dungeons.speciesDependencyStatus(req.params.key); if (!revisions) throw new DungeonNotFoundError(req.params.key); return ok(req, { revisions }); });
+
+    app.post('/admin/dungeons/encounter-preview', {
+      bodyLimit: DUNGEON_DEFINITION_BODY_LIMIT_BYTES,
+      onRequest: gate('dungeons.read'),
+      schema: { tags, body: z.object({ definition: z.unknown(), roomId: connectionIdSchema, actionId: connectionIdSchema, species: z.string().min(1).max(100).optional(), stage: z.enum(['offered', 'captured', 'rescued', 'failure', 'escaped', 'left', 'nothing', 'unavailable']).default('offered') }).strict(), response: { 200: dataSchema(z.record(z.string(), z.unknown())), ...commonErrorResponses, ...invalidResponse } },
+    }, async (req) => {
+      const report = await dungeons.validate(req.body.definition);
+      // A structurally readable repair draft can be previewed, without pretending publication passed.
+      if (!report.definition) throw withDetails(new DungeonInvalidError(report.issues));
+      const definition = structuredClone(report.definition);
+      const room = definition.rooms.find((r) => r.id === req.body.roomId);
+      const original = room?.actions.find((a) => a.id === req.body.actionId);
+      if (!room || !original || !isEncounterAction(original)) throw new AppError('NOT_FOUND', 'Encounter activity not found', 'Choose a Wild Encounter or Rescue activity.');
+      const slugs = original.source.kind === 'species' ? [original.source.species] : definition.speciesPools?.find((p) => p.id === (original.source.kind === 'pool' ? original.source.poolId : ''))?.entries.flatMap((e) => 'species' in e ? [e.species] : []) ?? [];
+      const slug = req.body.species ?? slugs[0];
+      if (slug && !slugs.includes(slug)) throw new AppError('VALIDATION_ERROR', 'Preview species is not in the activity source', 'Select a species from this encounter.');
+      if (!slug && req.body.stage !== 'nothing') throw new AppError('VALIDATION_ERROR', 'Encounter has no preview species', 'Repair the species or pool reference first.');
+      const stage = req.body.stage;
+      const assumedRemainingAttempt = stage === 'failure' && original.capture?.maxAttempts === 1;
+      if ((stage === 'captured' && original.type !== 'wild_encounter') || (stage === 'rescued' && original.type !== 'rescue') || ((stage === 'failure' || stage === 'escaped') && original.type === 'rescue' && original.mode === 'direct')) throw new AppError('VALIDATION_ERROR', 'Unsupported preview stage', 'That result does not apply to this encounter.');
+      original.source = { kind: 'species', species: slug ?? 'preview' };
+      delete original.when;
+      if (stage === 'nothing') { original.source = { kind: 'pool', poolId: '__preview_nothing__' }; definition.speciesPools = [...definition.speciesPools ?? [], { id: '__preview_nothing__', name: 'Simulated Nothing', entries: [{ id: 'none', weight: 1, nothing: true }] }]; }
+      if (assumedRemainingAttempt && original.capture) original.capture.maxAttempts = 2;
+      room.actions = [original, { id: '__preview_after__', type: 'rest', label: '', optional: false, outcomes: {}, healBasisPoints: 0 }];
+      // Result routing is exercised in the sandbox; this view isolates one presentation state.
+      original.outcomes = {}; delete original.next; room.kind = 'room';
+      definition.entranceRoomId = room.id;
+      const catalogue = await dungeons.encounterCatalogue();
+      const inventory = Object.fromEntries(catalogue.items.filter((i) => i.enabled && i.category === 'capture').map((i) => [i.slug, 3]));
+      const scenario = { captureOutcome: stage === 'captured' || stage === 'rescued' ? 'success' as const : stage === 'failure' || stage === 'escaped' ? 'failure' as const : 'normal' as const, ...(stage === 'unavailable' && slug ? { disabledSpecies: [slug] } : {}) };
+      const facts = createEncounterAuthoringFacts({ definition, catalogue, content: ctx.getContent(), inventory, scenario });
+      const sandbox = createDungeonSandbox({ definition, dependencies: { enemies: {}, rewardTables: {} }, fighter: { waifuId: 0, name: 'Simulated Buddy', ...DEFAULT_DUNGEON_SANDBOX_FIGHTER }, seed: 1, encounterFactsFor: facts.factsFor, rng: authoringCaptureRng(1, scenario.captureOutcome) });
+      if (stage === 'left') await sandbox.input({ type: 'leave_encounter' });
+      if (['captured', 'rescued', 'failure', 'escaped'].includes(stage) && sandbox.view.action?.encounter) {
+        if (original.type === 'rescue' && original.mode === 'direct') await sandbox.input({ type: 'rescue' });
+        else {
+          const item = sandbox.view.action.encounter.items.find((i) => !['escaped', 'failure'].includes(stage) || !i.guaranteed);
+          if (!item) throw new AppError('VALIDATION_ERROR', 'No eligible charm for this preview state', 'Failure and escape previews need a permitted, non-guaranteed charm. Guaranteed captures still succeed.');
+          if (item) { await sandbox.input({ type: 'select_item', item: item.item }); for (let n = 0; n < (stage === 'escaped' ? original.capture!.maxAttempts : 1); n++) await sandbox.input({ type: 'capture' }); }
+        }
+      }
+      const preview = buildEncounterAuthoringPreview(definition, sandbox, catalogue.species, catalogue.items, facts.grants(sandbox.effects));
+      if (assumedRemainingAttempt) preview.context += ' Failed-attempt preview assumes one extra attempt remains; this authored one-attempt encounter would escape instead.';
+      return ok(req, preview);
+    });
     app.get('/admin/dungeons/species/artwork', {
       onRequest: gate('dungeons.read'),
       schema: { tags, summary: 'Species default artwork for the dungeon picker',
@@ -1295,6 +1370,7 @@ export const adminDungeonRoutes =
           rewardTables: {},
         };
         try {
+          const authoring = createEncounterAuthoringFacts({ definition, catalogue: await dungeons.encounterCatalogue(), content: ctx.getContent(), inventory: body.inventory, ...(body.encounterScenario ? { scenario: body.encounterScenario } : {}) });
           const sandbox = createDungeonSandbox({
             definition,
             rewards,
@@ -1302,6 +1378,10 @@ export const adminDungeonRoutes =
             fighter: { waifuId: 0, name: 'Sandbox Buddy', ...body.fighter, currentSp: body.fighter.currentSp ?? EVENT_SP_NEUTRAL },
             seed: body.seed,
             inventory: body.inventory,
+            encounterFactsFor: authoring.factsFor,
+            rng: authoringCaptureRng(body.seed, body.encounterScenario?.captureOutcome),
+            ...(body.encounterScenario?.flags ? { initialFlags: body.encounterScenario.flags } : {}),
+            ...(body.encounterScenario?.completedRooms ? { completedRooms: body.encounterScenario.completedRooms } : {}),
           });
           let steps = 0;
           let refusal: string | null = null;
@@ -1331,6 +1411,8 @@ export const adminDungeonRoutes =
               return { type: entry.type, roomId: entry.roomId, actionId: entry.actionId, payload };
             }),
             eventResults: describeEventResults(definition, sandbox.state.recent),
+            encounterDiagnostics: authoring.diagnostics.filter((d) => Object.values(sandbox.state.encounters ?? {}).some((e) => e.species === d.species)),
+            simulatedGrants: authoring.grants(sandbox.effects),
             steps,
             stoppedBy,
             refusal,
@@ -1460,6 +1542,7 @@ export const adminDungeonRoutes =
             body: z
               .object({
                 enemyKey: z.string().min(1).max(100).optional(),
+                encounter: z.object({ species: z.string().regex(/^[a-z0-9_]+$/).max(100), placement: SpritePlacementSchema.optional(), mirror: z.boolean().optional(), stage: z.enum(['offered', 'captured', 'rescued', 'failure', 'escaped', 'left', 'nothing', 'unavailable']).optional() }).strict().optional(),
                 roomSprites: z.array(SceneSpriteInstanceSchema).max(5).optional(),
                 activitySprites: z.array(SceneSpriteInstanceSchema).max(5).optional(),
                 /** In fallback order: the room's own background, the dungeon background, the dungeon artwork. */
@@ -1486,6 +1569,38 @@ export const adminDungeonRoutes =
             binaryReply(reply).header('content-type', composed.scene.contentType).header('x-content-type-options', 'nosniff').header('cache-control', 'private, no-cache')
               .header('x-dungeon-scene', mode).header('x-dungeon-scene-background', String(composed.background)).send(await readFile(composed.scene.absolutePath));
           };
+          if (req.body.encounter) {
+            const actor = req.body.encounter;
+            const artContext = { config: { assetsDir }, services: { artworkAssets, sceneComposition: scenes, appearance: ctx.services.appearance }, content: ctx.getContent(), logger: app.log as import('../../../../shared/logger').Logger };
+            if (!ctx.services.appearance.speciesContent(actor.species)) throw new AppError('NOT_FOUND', 'Species missing', 'This WaifuMon is missing from the catalogue.');
+            const buddySpecies = ctx.getContent().species.find((s) => playerBuddySpriteLayer(assetsDir, s.slug));
+            const none = { assetId: null, artworkPath: null };
+            const sceneSprites: NonNullable<DungeonRunView['sceneSprites']> = [];
+            for (const instance of instances) {
+              const sprite = spriteCatalogue.find((s) => s.key === instance.spriteKey);
+              if (!sprite) continue;
+              const visual = resolveSceneSpriteInstance(sprite, instance);
+              const layer = await artworkAssets?.layer(visual.assetId);
+              if (layer) sceneSprites.push({ ...visual, contentHash: layer.hash });
+            }
+            const stage = actor.stage ?? 'offered';
+            const view = {
+              dungeon: { key: '', name: '', description: '', revision: 0, artwork: previewBackgrounds[2] ?? none, background: previewBackgrounds[1] ?? none },
+              roomBackground: previewBackgrounds[0] ?? none, sceneSprites, enemy: null,
+              fighter: { speciesSlug: buddySpecies?.slug ?? '' },
+              ...(['offered', 'failure'].includes(stage) ? { encounterActor: { speciesSlug: actor.species, placement: actor.placement ?? DEFAULT_SPRITE_PLACEMENT, mirror: actor.mirror ?? false } } : {}),
+            };
+            // Success shows production repaint artwork. A first-acquisition card
+            // requires an owned copy; authoring never creates one.
+            const picture = (stage === 'captured' || stage === 'rescued' ? speciesArtwork(artContext, actor.species) : null) ?? await dungeonRunSceneArtwork(artContext, view);
+            if (!picture) throw new AppError('NOT_FOUND', 'Encounter artwork unavailable', 'No species artwork or scene fallback could be drawn.');
+            const attachment = picture.file.attachment;
+            const bytes = typeof attachment === 'string' ? await readFile(attachment) : Buffer.isBuffer(attachment) ? attachment : null;
+            if (!bytes) throw new AppError('NOT_FOUND', 'Preview image unavailable', 'This scene could not be drawn.');
+            const mode = picture.file.name?.startsWith('dungeon-scene-') ? 'sprite' : 'full-art';
+            const contentType = ARTWORK_CONTENT_TYPES[artworkExtensionOf(picture.file.name ?? '') ?? 'webp'];
+            binaryReply(reply).header('content-type', contentType).header('x-dungeon-scene', mode).header('x-content-type-options', 'nosniff').header('cache-control', 'private, no-cache').send(bytes); return reply;
+          }
           if (!req.body.enemyKey) {
             const composed = await composeEnvironmentalScene(previewDeps, { backgrounds: previewBackgrounds, environmentalSprites });
             if (!composed) throw new AppError('NOT_FOUND', 'Scene unavailable', 'This scene could not be drawn.');

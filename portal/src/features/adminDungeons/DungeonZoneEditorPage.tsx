@@ -18,6 +18,7 @@ import { DungeonBackgroundField } from './DungeonBackgroundField';
 import { CurrencyRiskSettings } from './CurrencyRiskSettings';
 import { DungeonEventsPanel } from './DungeonEventsPanel';
 import { DungeonSpeciesPoolsPanel } from './DungeonSpeciesPoolsPanel';
+import { SpeciesDependencyStatus } from './SpeciesDependencyStatus';
 import { ProgressionCurrencyField } from './ProgressionCurrencyField';
 import { TreasureConversionDialog } from './TreasureConversionDialog';
 import { TreasureConversionContext } from './treasureConversionContext';
@@ -617,6 +618,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           </Card>
           <Card className="space-y-2 p-4">
             <h2>Published revisions</h2>
+            <SpeciesDependencyStatus dungeonKey={loaded.key} revision={loaded.published?.number} />
             {revisions.isPending && <p>Loading revisions…</p>}
             {revisions.isError && (
               <ErrorState

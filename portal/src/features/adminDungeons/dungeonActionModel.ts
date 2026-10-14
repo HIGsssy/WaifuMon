@@ -13,6 +13,8 @@ export const ACTION_TYPES = [
   'gate',
   'set_flag',
   'leave',
+  'wild_encounter',
+  'rescue',
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 /** `event` is not an `ActionType`: it is attached with what it presents, never created bare. */
@@ -25,6 +27,8 @@ export const ACTION_OUTCOMES: Record<ActionType | 'event', string[]> = {
   set_flag: ['done'],
   leave: [],
   event: ['resolved', 'nothing'],
+  wild_encounter: ['captured', 'escaped', 'left', 'nothing', 'unavailable'],
+  rescue: ['rescued', 'escaped', 'left', 'nothing', 'unavailable'],
 };
 export function actionId(actions: DungeonAction[], uuid = () => crypto.randomUUID()) {
   const ids = new Set(actions.map((a) => a.id));
@@ -46,6 +50,11 @@ export function createAction(
   const flag = definition?.flags.find((f) => f.scope === 'run')?.key ?? '';
   const base = { id: actionId(actions), type, label: '', optional: false, outcomes: {} };
   switch (type) {
+    case 'wild_encounter':
+    case 'rescue':
+      return { ...base, source: { kind: 'species', species: '' }, intro: '',
+        ...(type === 'rescue' ? { mode: 'capture' as const } : {}),
+        capture: { maxAttempts: 3, allowGuaranteedItems: true } };
     case 'combat':
     case 'boss':
       return {

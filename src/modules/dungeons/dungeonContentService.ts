@@ -1,5 +1,9 @@
 import type { DungeonAuthoringSpecies } from './engine/speciesAuthoring';
-import { dungeonSpeciesPolicy } from './dungeonSpeciesPolicy';
+import { playerBuddySpriteLayer } from '../artworkAssets/sceneLayers';
+import { defaultAssetId } from '../appearance/appearanceContent';
+import { resolveAppearanceAssetOrLegacyPath } from '../appearance/assetResolver';
+import { buildSpeciesManifest, compareSpeciesManifest, speciesManifestSchema, type SpeciesRevisionStatus } from './dungeonSpeciesManifest';
+import { dungeonSpeciesPolicy, dungeonEncounterSpeciesSlugs } from './dungeonSpeciesPolicy';
 import { dungeonSpeciesUnavailableReason } from './validation/dungeonEncounterValidation';
 import { dungeonEncounterPackageIssues } from './validation/dungeonEncounterValidation';
 import { loadDungeonEncounterValidationSource, type DungeonSpeciesAccessLookup } from './dungeonSpeciesPolicy';
@@ -70,6 +74,8 @@ import {
   type DungeonDefinitionRow,
   type DungeonRevisionRow,
   type DungeonRevisionSource,
+  type SpeciesRow,
+  type ItemRow,
 } from '../../db/schema';
 import {
   DungeonConversionError,
@@ -153,6 +159,7 @@ export interface DungeonPublishedInfo {
 
 export interface DungeonSummary {
   sceneSpritesDiffer?: boolean;
+  speciesDiffer?: boolean;
   key: string;
   name: string;
   enabled: boolean;
@@ -382,6 +389,8 @@ export interface DungeonContentService extends DungeonImportService {
   reference(): Promise<DungeonReferenceData>;
   /** Live read-only catalogue for pool authoring; no player data. */
   speciesCatalogue(dungeonKey: string): Promise<DungeonAuthoringSpecies[]>;
+  encounterCatalogue(): Promise<{ species: SpeciesRow[]; items: ItemRow[]; speciesAccess: Record<string, readonly import('./content/dungeonDefinition').DungeonSpeciesAccess[]> }>;
+  speciesDependencyStatus(key: string): Promise<SpeciesRevisionStatus[] | null>;
   /** The active managed asset a dungeon artwork reference means here, as a run would resolve it; null when none. */
   resolveManagedArtwork(ref: { category: string; contentHash: string }): Promise<string | null>;
   /** Dry run against this server. Writes nothing. */
@@ -587,7 +596,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       sceneSpriteCatalogue(tx, deps.artworkStorage),
       // Live species policy and capture items: an encounter is judged at
       // validate, publish and rollback against the catalogue as it stands now.
-      loadDungeonEncounterValidationSource(tx, deps.getSpeciesAccess),
+      loadDungeonEncounterValidationSource(tx, deps.getSpeciesAccess, deps.assetsDir ? (row) => !!playerBuddySpriteLayer(deps.assetsDir!, row.slug) || !!resolveAppearanceAssetOrLegacyPath({ assetsDir: deps.assetsDir! }, defaultAssetId(row.slug, 'standard'), row.imagePath) : undefined),
     ]);
     const rewards = rewardContext ?? await loadDungeonRewardContext(tx);
     const assetsDir = deps.assetsDir;
@@ -698,7 +707,16 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     const draft = parseStoredDefinition(row.dungeonKey, row.draft);
     const ctx = await validationContext(tx);
     const { issues } = validateDungeonDefinition(draft, ctx);
-    return { ...summaryOf(row, published, ctx, draft), draft, layout: parseStoredLayout(row.layout), issues };
+    let speciesDiffer: boolean | undefined;
+    if (published) {
+      const content = parseStoredDefinition(row.dungeonKey, published.content);
+      if (dungeonEncounterSpeciesSlugs(content).length) {
+        const events = await tx.select({ details: dungeonContentEvents.details }).from(dungeonContentEvents).where(and(eq(dungeonContentEvents.dungeonKey, row.dungeonKey), eq(dungeonContentEvents.action, 'published'))).orderBy(desc(dungeonContentEvents.id));
+        const evidence = speciesManifestSchema.safeParse(events.find((e) => e.details.revisionId === published.id)?.details.speciesManifest);
+        speciesDiffer = !evidence.success || compareSpeciesManifest(content, evidence.data, await tx.select().from(species), deps.getSpeciesAccess).some((d) => d.changes.length > 0);
+      }
+    }
+    return { ...summaryOf(row, published, ctx, draft), ...(speciesDiffer !== undefined ? { speciesDiffer } : {}), draft, layout: parseStoredLayout(row.layout), issues };
   }
 
   async function lockRow(tx: DbOrTx, key: string): Promise<DungeonDefinitionRow> {
@@ -937,6 +955,27 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
 
     async resolveManagedArtwork(ref) {
       return (await managedArtworkIndex(db)).get(managedArtworkKey(ref)) ?? null;
+    },
+
+    async encounterCatalogue() {
+      const [speciesRows, itemRows] = await Promise.all([db.select().from(species), db.select().from(items)]);
+      return { species: speciesRows, items: itemRows, speciesAccess: Object.fromEntries(speciesRows.map((s) => [s.slug, structuredClone(deps.getSpeciesAccess?.(s.slug) ?? [])])) };
+    },
+
+    async speciesDependencyStatus(key) {
+      const [row] = await db.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, key));
+      if (!row) return null;
+      const revisions = await db.select().from(dungeonRevisions).where(eq(dungeonRevisions.dungeonKey, key)).orderBy(desc(dungeonRevisions.number));
+      const active = await activeRunCounts(db, key);
+      const events = await db.select({ details: dungeonContentEvents.details }).from(dungeonContentEvents).where(and(eq(dungeonContentEvents.dungeonKey, key), eq(dungeonContentEvents.action, 'published'))).orderBy(desc(dungeonContentEvents.id));
+      const live = await db.select().from(species);
+      return revisions.filter((r) => r.id === row.publishedRevisionId || (active.get(r.id) ?? 0) > 0).flatMap((r) => {
+        const definition = parseStoredDefinition(key, r.content);
+        const parsed = speciesManifestSchema.safeParse(events.find((e) => e.details.revisionId === r.id)?.details.speciesManifest);
+        const manifest = parsed.success ? parsed.data : null;
+        const dependencies = compareSpeciesManifest(definition, manifest, live, deps.getSpeciesAccess);
+        return dependencies.length ? [{ revision: r.number, revisionId: r.id, current: r.id === row.publishedRevisionId, activeRuns: active.get(r.id) ?? 0, evidence: manifest ? 'recorded' as const : 'unknown' as const, differs: manifest ? dependencies.some((d) => d.changes.length > 0) : null, dependencies }] : [];
+      });
     },
 
     async speciesCatalogue(dungeonKey) {
@@ -1277,6 +1316,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           throw new DungeonDraftStaleError(key, input.expectedRevision, row.draftRevision, row.updatedBy, row.updatedAt);
         }
         const definition = parseStoredDefinition(key, row.draft);
+        const publishedSpecies = dungeonEncounterSpeciesSlugs(definition).length ? await tx.select().from(species).for('share') : [];
         await assertDungeonRewardDependencies(tx, definition);
         const rewards = hasDungeonRewardBundles(definition)
           ? await loadDungeonRewardContext(tx, { lootTableKeys: dungeonDependencies(definition).lootTables, lock: true })
@@ -1304,9 +1344,12 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           rewardSnapshot = DungeonRewardSnapshotSchema.parse(rewardSnapshot);
         }
         const sceneSpriteSnapshot = freezeSceneSprites(definition, spriteCatalogue);
+        const speciesManifest = buildSpeciesManifest(definition, publishedSpecies, deps.getSpeciesAccess);
+        const oldEvidence = current && (await tx.select({ details: dungeonContentEvents.details }).from(dungeonContentEvents).where(and(eq(dungeonContentEvents.dungeonKey, key), eq(dungeonContentEvents.action, 'published'))).orderBy(desc(dungeonContentEvents.id))).find((e) => e.details.revisionId === current.id)?.details.speciesManifest;
+        const previousSpeciesManifest = speciesManifestSchema.safeParse(oldEvidence);
         const gameplayHash = rewardSnapshot ? dungeonGameplayHash(contentHash, rewardSnapshot.hash) : null;
         // With no snapshot on either side this is the content-hash comparison it always was.
-        if (current && current.contentHash === contentHash && current.gameplayHash === gameplayHash && (readSceneSpriteSnapshot(current.sceneSpriteSnapshot)?.hash ?? null) === (sceneSpriteSnapshot?.hash ?? null)) {
+        if (current && current.contentHash === contentHash && current.gameplayHash === gameplayHash && (readSceneSpriteSnapshot(current.sceneSpriteSnapshot)?.hash ?? null) === (sceneSpriteSnapshot?.hash ?? null) && (!speciesManifest || (previousSpeciesManifest.success && previousSpeciesManifest.data.hash === speciesManifest.hash))) {
           return { dungeon: await detailOf(tx, row), revision: revisionSummary(current, current.id, active), unchanged: true };
         }
 
@@ -1344,6 +1387,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           contentHash,
           draftRevision: row.draftRevision,
           previousRevision: current?.number ?? null,
+          ...(speciesManifest ? { speciesManifest } : {}),
           ...(sceneSpriteSnapshot ? { sceneSpriteSnapshotHash: sceneSpriteSnapshot.hash, sceneSpriteKeys: Object.keys(sceneSpriteSnapshot.sprites) } : {}),
           warnings: issues.filter((i) => i.severity === 'warning').length,
           ...(rewardSnapshot ? { gameplayHash, rewardSnapshotHash: rewardSnapshot.hash, definitionChanged: current?.contentHash !== contentHash } : {}),

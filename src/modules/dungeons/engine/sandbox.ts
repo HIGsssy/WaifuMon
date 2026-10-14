@@ -99,6 +99,11 @@ export interface DungeonSandboxOptions {
   /** Item quantities to assume the player holds, by slug. Nothing is spent: consumption is only recorded. */
   inventory?: DungeonEngineContext['inventory'];
   encounterFacts?: DungeonEngineContext['encounterFacts'];
+  /** Authoring-only facts refreshed after simulated spends/grants; never a live service port. */
+  encounterFactsFor?: (state: DungeonRunState | null, effects: readonly DungeonEffect[]) => DungeonEngineContext['encounterFacts'];
+  rng?: import('./types').DungeonRngSource;
+  initialFlags?: string[];
+  completedRooms?: string[];
 }
 
 export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSandbox {
@@ -110,15 +115,31 @@ export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSan
     runKey: `sandbox-${options.seed}`,
     playerFlags: options.playerFlags,
     inventory: options.inventory,
-    encounterFacts: options.encounterFacts,
+    encounterFacts: options.encounterFactsFor?.(null, []) ?? options.encounterFacts,
     combatRules: options.combatRules,
   };
-  const rng = dungeonRngSource(options.seed);
+  const rng = options.rng ?? dungeonRngSource(options.seed);
   const port = sandboxEffectsPort();
   const log: DungeonLogEntry[] = [];
   const combat: DungeonStepResult['combat'] = [];
 
-  const started = startDungeonRun(ctx, options.seed, rng);
+  // Seed authoring condition facts before entering the actual entrance. The
+  // bootstrap room exists only in memory; production startDungeonRun is unchanged.
+  const seeded = (options.initialFlags?.length ?? 0) + (options.completedRooms?.length ?? 0) > 0;
+  const bootstrap = '__sandbox_bootstrap__';
+  const bootCtx = seeded ? { ...ctx, definition: { ...ctx.definition, entranceRoomId: bootstrap,
+    rooms: [...ctx.definition.rooms, { id: bootstrap, name: 'Sandbox setup', kind: 'room' as const, description: '', background: null, extraction: false, actions: [] }],
+    connections: [...ctx.definition.connections, { id: bootstrap, from: bootstrap, to: ctx.definition.entranceRoomId, kind: 'path' as const, label: '', lockedText: '' }],
+  } } : ctx;
+  let started = startDungeonRun(bootCtx, options.seed, rng);
+  if (seeded) {
+    started.state.flags = Object.fromEntries((options.initialFlags ?? []).map((f) => [f, true]));
+    for (const id of options.completedRooms ?? []) started.state.rooms[id] = { visits: 1, completed: true, resumeAt: null, actions: {} };
+    started = stepDungeon(started.state, { type: 'move', connectionId: bootstrap }, bootCtx, rng);
+    delete started.state.rooms[bootstrap];
+    started.state.step = 0;
+    started.state.cursor.cameFrom = null;
+  }
   let state = started.state;
   log.push(...started.log);
   combat.push(...started.combat);
@@ -128,12 +149,14 @@ export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSan
       return state;
     },
     get view() {
+      if (options.encounterFactsFor) ctx.encounterFacts = options.encounterFactsFor(state, port.recorded);
       return describeDungeonRun(state, ctx, rng);
     },
     effects: port.recorded,
     log,
     combat,
     async input(input) {
+      if (options.encounterFactsFor) ctx.encounterFacts = options.encounterFactsFor(state, port.recorded);
       const result = stepDungeon(state, { expectedStep: state.step, ...input }, ctx, rng);
       if (result.status === 'applied') {
         state = result.state;

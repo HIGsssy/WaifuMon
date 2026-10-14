@@ -41,6 +41,7 @@ export function dungeonSpeciesUnavailableReason(
 }
 /** No database imports here. Adapter must use current species and charm definitions. */
 export interface DungeonEncounterValidationSource {
+  speciesArtwork?(slug: string): boolean;
   species(slug: string): DungeonSpeciesPolicy | undefined;
   item(slug: string): { enabled: boolean; capture: boolean } | undefined;
   hasUsableCaptureItem(
@@ -167,6 +168,9 @@ export function validateDungeonEncounters(
       encounters++;
       const path = `rooms[${r}].actions[${a}]`;
       const direct = action.type === 'rescue' && action.mode === 'direct';
+      for (const slug of encounterSpecies(definition, action)) {
+        if (live?.speciesArtwork && !live.speciesArtwork(slug)) add('encounter_artwork_missing', 'warning', `${path}.source`, `WaifuMon "${slug}" has no usable dungeon sprite or standard artwork fallback. Players will see the room scene or text.`);
+      }
       if (direct) directRescues++;
       if (action.optional)
         add(

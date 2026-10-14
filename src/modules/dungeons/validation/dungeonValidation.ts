@@ -62,6 +62,7 @@ import { eventActionDestinations } from '../engine/events';
 import { defaultDestination, destinationFor, destinationsOf, SUCCESS_OUTCOME } from '../engine/routing';
 
 export const DUNGEON_ISSUE_CODES = [
+  'encounter_artwork_missing',
   'species_missing',
   'species_disabled',
   'species_not_permitted',

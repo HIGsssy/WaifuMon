@@ -92,13 +92,14 @@ export async function dungeonAcquisitionCounts(
 export async function loadDungeonEncounterValidationSource(
   tx: DbOrTx,
   access: DungeonSpeciesAccessLookup | undefined,
+  artwork?: (row: Pick<SpeciesRow, 'slug' | 'imagePath'>) => boolean,
 ): Promise<DungeonEncounterValidationSource> {
   // Both catalogues whole: they are small, and the context is built before
   // the definition it will judge is known.
   const bySlug = new Map(
     (
       await tx
-        .select({ slug: species.slug, enabled: species.enabled, tags: species.tags, rarity: species.rarity })
+        .select({ slug: species.slug, enabled: species.enabled, tags: species.tags, rarity: species.rarity, imagePath: species.imagePath })
         .from(species)
     ).map((r) => [r.slug, r]),
   );
@@ -106,6 +107,7 @@ export async function loadDungeonEncounterValidationSource(
   const itemBySlug = new Map(allItems.map((i) => [i.slug, i]));
   const captureItems = allItems.filter((i) => i.enabled && i.category === 'capture');
   return {
+    ...(artwork ? { speciesArtwork: (slug: string) => { const row = bySlug.get(slug); return !row || artwork(row); } } : {}),
     species: (slug) => dungeonSpeciesPolicy(bySlug.get(slug), access),
     item: (slug) => {
       const item = itemBySlug.get(slug);
