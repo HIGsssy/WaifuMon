@@ -19,7 +19,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
-import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items, playerInventory } from '../../../src/db/schema';
+import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items, playerInventory, species } from '../../../src/db/schema';
 import { DungeonDefinitionSchema } from '../../../src/modules/dungeons/content/dungeonDefinition';
 import { startDungeonRun } from '../../../src/modules/dungeons/engine/step';
 import { createDungeonLootTableService } from '../../../src/modules/dungeons/dungeonLootTableService';
@@ -1517,5 +1517,85 @@ describe('the zone routes of the old prototype', () => {
     ] as const) {
       expect((await call(method, url, method === 'POST' ? {} : undefined)).statusCode, `${method} ${url}`).toBe(404);
     }
+  });
+});
+
+
+describe('P4C2A species pool authoring API', () => {
+  it('catalogue is read-only, permission-gated, reports central policy and scoped limits', async () => {
+    const slug = w.app.content.species.find((s) => s.enabled)?.slug!;
+    w.speciesAccess.set(slug, [{ dungeon: 'pool_authoring', perPlayerLimit: 2, directRescue: true }, { dungeon: 'other', perPlayerLimit: 'unlimited' }]);
+    const result = await as(READER_TOKEN, 'GET', '/admin/dungeons/species?dungeonKey=pool_authoring');
+    expect(result.statusCode).toBe(200);
+    const row = data<Json>(result).species.find((s: Json) => s.slug === slug);
+    expect(row).toMatchObject({ permitted: true, perPlayerLimit: 2, directRescue: { available: true, reason: null } });
+    expect(row.dungeonAccess).toHaveLength(2);
+    expect(row.race).toBeTruthy(); expect(row.affinity).toBeTruthy(); expect(row).not.toHaveProperty('imagePath');
+    expect((await as(NON_OWNER_TOKEN, 'GET', '/admin/dungeons/species?dungeonKey=pool_authoring')).statusCode).toBe(403);
+    expect((await as(NON_OWNER_TOKEN, 'GET', `/admin/dungeons/species/artwork?slug=${slug}`)).statusCode).toBe(403);
+    expect((await as(READER_TOKEN, 'GET', '/admin/dungeons/species/artwork?slug=..%2Fsecret')).statusCode).toBe(400);
+    expect((await as(READER_TOKEN, 'GET', '/admin/dungeons/species/artwork?slug=no_such_species')).statusCode).toBe(404);
+    expect((await call('POST', '/admin/dungeons/species', {})).statusCode).toBe(404);
+    const sp = w.app.appearance.speciesContent(slug)!;
+    const look = w.app.appearance.currentAppearance(sp, null);
+    const relative = `${look.assetId.kind}/${look.assetId.slug}/${look.assetId.variant}.png`;
+    const artworkFile = path.join(assetsDir, relative);
+    fs.mkdirSync(path.dirname(artworkFile), { recursive: true });
+    const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYPj/n4GBgYGJAQoAHxcCAr7uqmIAAAAASUVORK5CYII=', 'base64');
+    fs.writeFileSync(artworkFile, bytes);
+    const art = await as(READER_TOKEN, 'GET', `/admin/dungeons/species/artwork?slug=${slug}&width=256`);
+    expect(art.statusCode).toBe(200); expect(art.headers['content-type']).toBe('image/png');
+    expect(art.rawPayload).toEqual(bytes); expect(art.headers.etag).toBeTruthy();
+    const cached = await api.inject({ method: 'GET', url: `/api/v1/admin/dungeons/species/artwork?slug=${slug}&width=256`, headers: { ...AUTH_BEARER, 'if-none-match': art.headers.etag as string } });
+    expect(cached.statusCode).toBe(304);
+    expect((await call('GET', `/admin/dungeons/species/artwork?slug=${slug}&width=123`)).statusCode).toBe(400);
+    w.speciesAccess.delete(slug);
+  });
+  it('returns runtime odds and policy without redistributing unavailable or acquisition-limited weights', async () => {
+    const normal = w.app.content.species.find((s) => s.enabled && !s.tags.includes('region_exclusive'))!;
+    const restricted = w.app.content.species.find((s) => s.enabled && s.tags.includes('region_exclusive'))!;
+    w.speciesAccess.set(normal.slug, [{ dungeon: 'pool_odds', perPlayerLimit: 1 }]);
+    const definition = definitionOf('pool_odds');
+    definition.flags = [{ key: 'open', scope: 'run' }];
+    definition.speciesPools = [{ id: 'sp_test', name: 'Wild', entries: [
+      { id: 'normal', species: normal.slug, weight: 3 },
+      { id: 'restricted', species: restricted.slug, weight: 1, when: { type: 'flag', flag: 'open' } },
+      { id: 'none', nothing: true, weight: 2 },
+    ] }];
+    const preview = data<Json>(await call('POST', '/admin/dungeons/validate', { definition, speciesScenario: { flags: ['open'], acquisitions: { [normal.slug]: 1 } } }));
+    const p = preview.speciesPools[0];
+    expect(p.base.entries.map((e: Json) => e.probability)).toEqual([0.5, 1 / 6, 1 / 3]);
+    expect(p.scenario.entries.map((e: Json) => e.probability)).toEqual([0.5, 1 / 6, 1 / 3]);
+    expect(p.scenario.entries.map((e: Json) => e.unavailableReason)).toEqual(['player_limit', 'not_permitted', null]);
+    expect(p.scenario.nothingProbability).toBe(1 / 3); expect(p.scenario.unavailableProbability).toBe(2 / 3);
+    const seen = data<Json>(await call('POST', '/admin/dungeons/validate', { definition, speciesScenario: { seenSpecies: [normal.slug] } }));
+    expect(seen.speciesPools[0].scenario).toMatchObject({ totalWeight: 2, nothingProbability: 1 });
+    expect(seen.speciesPools[0].scenario.entries.map((e: Json) => e.reason)).toEqual(['already_seen', 'condition', null]);
+    expect((await call('POST', '/admin/dungeons/validate', { definition, speciesScenario: { acquisitions: { [normal.slug]: -1 } } })).statusCode).toBe(400);
+    w.speciesAccess.delete(normal.slug);
+  });
+  it('saves and reloads stable pool identities and refuses publication through existing policy validation', async () => {
+    const restricted = w.app.content.species.find((s) => s.enabled && s.tags.includes('region_exclusive'))!;
+    const definition = definitionOf('pool_persistence');
+    definition.speciesPools = [{ id: 'sp_stable', name: 'Pool', entries: [{ id: 'se_stable', species: restricted.slug, weight: 2, oncePerRun: false }, { id: 'none', nothing: true, weight: 1, text: 'Quiet.' }] }];
+    definition.rooms[0].actions.unshift({ id: 'wild', type: 'wild_encounter', source: { kind: 'pool', poolId: 'sp_stable' }, intro: '', capture: {} });
+    const created = data<Detail>(await call('POST', '/admin/dungeons/definitions', { definition }));
+    const edited = structuredClone(created.draft); edited.speciesPools[0].name = 'Renamed'; edited.speciesPools[0].entries[0].weight = 7;
+    const savedResponse = await call('PUT', `${base(definition.key)}/draft`, { expectedRevision: created.draftRevision, definition: edited });
+    expect(savedResponse.statusCode).toBe(200);
+    const saved = data<Detail>(savedResponse);
+    const loaded = data<Detail>(await call('GET', base(definition.key)));
+    expect(loaded.draft.speciesPools).toEqual(saved.draft.speciesPools);
+    expect(loaded.draft.speciesPools[0]).toMatchObject({ id: 'sp_stable', name: 'Renamed', entries: [{ id: 'se_stable', weight: 7, oncePerRun: false }, { id: 'none', text: 'Quiet.' }] });
+    const refused = await call('POST', `${base(definition.key)}/publish`, { expectedRevision: saved.draftRevision });
+    expect(refused.statusCode).toBe(400);
+    expect(errorOf(refused).details?.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'species_not_permitted' })]));
+    const duplicate = structuredClone(saved.draft); duplicate.speciesPools[0].entries.push({ ...duplicate.speciesPools[0].entries[0], id: 'dupe' });
+    expect(data<Json>(await call('POST', '/admin/dungeons/validate', { definition: duplicate })).issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'species_pool_duplicate_entry' })]));
+    await w.t.db.update(species).set({ enabled: false }).where(eq(species.slug, restricted.slug));
+    try {
+      const catalogue = data<Json>(await call('GET', '/admin/dungeons/species?dungeonKey=pool_persistence'));
+      expect(catalogue.species.find((s: Json) => s.slug === restricted.slug)).toMatchObject({ enabled: false, permitted: false, unavailableReason: 'disabled' });
+    } finally { await w.t.db.update(species).set({ enabled: true }).where(eq(species.slug, restricted.slug)); }
   });
 });

@@ -34,6 +34,7 @@ import { composeEnvironmentalScene } from '../../../../modules/artworkAssets/sce
 import { z } from 'zod';
 import { adminDungeonLootTableRoutes } from './dungeonLootTables';
 import { dungeonLootTableTierSchema } from '../../../schemas/dungeonLootTables';
+import { sendArtwork, artworkWidthQueryField } from '../../../artworkResponse';
 import { readFile } from 'node:fs/promises';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ApiContext } from '../../../context';
@@ -96,6 +97,9 @@ import {
 import { mirrorsPlayerBuddy } from '../../../../modules/artworkAssets/scenePlacement';
 import { DungeonEngineContentError } from '../../../../modules/dungeons/engine/combat';
 import { EVENT_SP_NEUTRAL } from '../../../../modules/dungeons/engine/eventChecks';
+import { describeSpeciesAuthoring } from '../../../../modules/dungeons/engine/speciesAuthoring';
+import { resolveRace } from '../../../../modules/cards/race';
+import { resolveAppearanceAssetOrLegacyPath } from '../../../../modules/appearance/assetResolver';
 import { describeEventAuthoring } from '../../../../modules/dungeons/engine/eventAuthoring';
 import { describeEventResults } from '../../../../modules/dungeons/engine/events';
 import { autoPlayDungeonSandbox, createDungeonSandbox } from '../../../../modules/dungeons/engine/sandbox';
@@ -335,6 +339,31 @@ const eventChoicePreviewSchema = z.object({
   chances: z.object({ weakest: z.number().int(), average: z.number().int(), strongest: z.number().int() }).nullable(),
 });
 
+const speciesReasonSchema = z.enum(['missing', 'disabled', 'not_permitted', 'direct_not_permitted', 'direct_limit_missing', 'player_limit']).nullable();
+const speciesScenarioSchema = z.object({
+  flags: scenarioIds, completedRooms: scenarioIds,
+  seenSpecies: z.array(z.string().min(1).max(100)).max(1500).default([]),
+  acquisitions: z.record(z.string().min(1).max(100), z.number().int().min(0).max(Number.MAX_SAFE_INTEGER))
+    .refine((counts) => Object.keys(counts).length <= 1500, 'at most 1500 species counts').default({}),
+});
+const speciesCatalogueSchema = z.object({
+  slug: z.string(), name: z.string(), rarity: z.string(), race: z.string(), affinity: z.string(),
+  enabled: z.boolean(), regionExclusive: z.boolean(), dungeonExclusive: z.boolean(), permitted: z.boolean(),
+  unavailableReason: speciesReasonSchema,
+  dungeonAccess: z.array(z.object({ dungeon: z.string(), perPlayerLimit: z.union([z.number().int().positive(), z.literal('unlimited')]).optional(), directRescue: z.boolean().optional() })),
+  perPlayerLimit: z.union([z.number().int().positive(), z.literal('unlimited')]).nullable(),
+  directRescue: z.object({ available: z.boolean(), reason: speciesReasonSchema }),
+});
+const speciesOddsSchema = z.object({
+  totalWeight: z.number().int(), nothingProbability: z.number(), unavailableProbability: z.number(),
+  rarityDistribution: z.record(z.number()), obtainableRarityDistribution: z.record(z.number()),
+  entries: z.array(z.object({
+    id: z.string(), species: z.string().nullable(), weight: z.number().int(), eligible: z.boolean(),
+    reason: z.enum(['condition', 'already_seen']).nullable(), probability: z.number(),
+    rarity: z.string().nullable(), unavailableReason: speciesReasonSchema,
+  })),
+});
+
 const validationSchema = z.object({
   /** The definition with defaults applied; null when its shape could not be read. */
   definition: documentSchema.nullable(),
@@ -347,6 +376,8 @@ const validationSchema = z.object({
    * Empty when the definition has no pools or its shape could not be read.
    */
   eventPools: z.array(z.object({ poolId: z.string(), base: eventPoolAnalysisSchema, scenario: eventPoolAnalysisSchema })),
+  /** Species selection odds with separate availability annotations; empty for legacy or unreadable definitions. */
+  speciesPools: z.array(z.object({ poolId: z.string(), base: speciesOddsSchema, scenario: speciesOddsSchema })),
   /** Each event's choices as a player in the scenario would meet them, hidden ones included and marked. */
   eventPreviews: z.array(z.object({ eventId: z.string(), choices: z.array(eventChoicePreviewSchema) })),
 });
@@ -1105,6 +1136,32 @@ export const adminDungeonRoutes =
       },
     );
 
+    app.get('/admin/dungeons/species', {
+      onRequest: gate('dungeons.read'),
+      schema: { tags, summary: 'Read-only species catalogue with live availability for the named dungeon; no player counts',
+        querystring: z.object({ dungeonKey: z.string().min(1).max(DUNGEON_KEY_MAX_LENGTH).regex(DUNGEON_KEY_PATTERN) }),
+        response: { 200: dataSchema(z.object({ species: z.array(speciesCatalogueSchema) })), ...commonErrorResponses } },
+    }, async (req) => {
+      const content = new Map(ctx.getContent().species.map((s) => [s.slug, s]));
+      const species = (await dungeons.speciesCatalogue(req.query.dungeonKey)).map(({ archetype, ...s }) => ({
+        ...s, dungeonAccess: [...s.dungeonAccess], race: resolveRace(content.get(s.slug) ?? { archetype }),
+      }));
+      return ok(req, { species });
+    });
+    app.get('/admin/dungeons/species/artwork', {
+      onRequest: gate('dungeons.read'),
+      schema: { tags, summary: 'Species default artwork for the dungeon picker',
+        querystring: z.object({ slug: z.string().min(1).max(100).regex(/^[a-z0-9_-]+$/), width: artworkWidthQueryField }),
+        response: { ...notFoundResponse, ...commonErrorResponses } },
+    }, async (req, reply) => {
+      const sp = ctx.services.appearance.speciesContent(req.query.slug);
+      const look = sp && ctx.services.appearance.currentAppearance(sp, null);
+      const file = sp && look && resolveAppearanceAssetOrLegacyPath({ assetsDir: ctx.assetsDir ?? './assets' }, look.assetId, sp.imagePath);
+      if (!file) throw new AppError('NOT_FOUND', 'Species artwork not found', 'No artwork for that WaifuMon.');
+      await sendArtwork(ctx.assetsDir ?? './assets', req, reply as FastifyReply, file, 'private, max-age=300, must-revalidate');
+      return reply;
+    });
+
     app.post(
       '/admin/dungeons/validate',
       {
@@ -1116,8 +1173,8 @@ export const adminDungeonRoutes =
             'Dry run: every issue this definition has on this server, its content hash, and whether it could be ' +
             'published. Also answers how its events would play: every event pool’s odds and every event’s choices, ' +
             'for the imagined run in `eventScenario` (omitted: nothing remembered, nothing held, an average Buddy). ' +
-            'Writes nothing',
-          body: z.object({ definition: z.unknown(), eventScenario: eventScenarioSchema.optional() }),
+            'Species pool odds also use the runtime analysis with optional speciesScenario flags, completedRooms, seenSpecies and dungeon acquisition counts. Writes nothing',
+          body: z.object({ definition: z.unknown(), eventScenario: eventScenarioSchema.optional(), speciesScenario: speciesScenarioSchema.optional() }),
           response: { 200: dataSchema(validationSchema), ...tooLargeResponse, ...commonErrorResponses },
         },
       },
@@ -1126,7 +1183,10 @@ export const adminDungeonRoutes =
         const events = report.definition
           ? describeEventAuthoring(report.definition, req.body.eventScenario)
           : { eventPools: [], eventPreviews: [] };
-        return ok(req, { ...report, ...events, definition: report.definition as unknown as Record<string, unknown> | null });
+        const species = report.definition?.speciesPools?.length
+          ? describeSpeciesAuthoring(report.definition, await dungeons.speciesCatalogue(report.definition.key), req.body.speciesScenario)
+          : { speciesPools: [] };
+        return ok(req, { ...report, ...events, ...species, definition: report.definition as unknown as Record<string, unknown> | null });
       },
     );
 

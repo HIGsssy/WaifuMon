@@ -13,10 +13,11 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { errorIssues } from './zoneFormParts';
 import { RunFlagsEditor } from './RunFlagsEditor';
-import { friendlyIssue, incompleteIssues } from './dungeonText';
+import { friendlyIssue, incompleteIssues, type EventIssueTarget } from './dungeonText';
 import { DungeonBackgroundField } from './DungeonBackgroundField';
 import { CurrencyRiskSettings } from './CurrencyRiskSettings';
 import { DungeonEventsPanel } from './DungeonEventsPanel';
+import { DungeonSpeciesPoolsPanel } from './DungeonSpeciesPoolsPanel';
 import { ProgressionCurrencyField } from './ProgressionCurrencyField';
 import { TreasureConversionDialog } from './TreasureConversionDialog';
 import { TreasureConversionContext } from './treasureConversionContext';
@@ -97,6 +98,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   /** A loot table opened beside the dungeon, and whether it has unsaved edits of its own. */
   const [lootTable, setLootTable] = useState<string | null>(null);
   const [lootDirty, setLootDirty] = useState(false);
+  const [editorRequest, setEditorRequest] = useState<(EventIssueTarget & { nonce: number }) | undefined>();
   const [confirmingPublish, setConfirmingPublish] = useState(false);
   /** The legacy treasure whose conversion preview is open. */
   const [converting, setConverting] = useState<api.DungeonTreasureTarget | null>(null);
@@ -392,6 +394,14 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         disabled={!canWrite || busy || conflict}
         onChange={(next) => patch({ settings: next })}
       />
+      <DungeonSpeciesPoolsPanel
+        definition={draft}
+        disabled={!canWrite || busy || conflict}
+        onChange={(definition) => {
+          setDraft(definition);
+          setNotice('');
+        }}
+      />
       <DungeonEventsPanel
         definition={draft}
         disabled={!canWrite || busy || conflict}
@@ -532,6 +542,21 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
                   return (
                     <li key={i} title={`${issue.code} · ${issue.path} · ${issue.message}`}>
                       {text.title} {text.help}
+                      {text.eventTarget?.kind === 'speciesPool' && (
+                        <Button
+                          variant="link"
+                          size="sm"
+                          aria-label={`Show me: ${text.title}`}
+                          onClick={() => {
+                            setView('map');
+                            setEditorRequest((old) => ({
+                              ...text.eventTarget!, nonce: (old?.nonce ?? 0) + 1,
+                            }));
+                          }}
+                        >
+                          Show me
+                        </Button>
+                      )}
                     </li>
                   );
                 })}
@@ -550,6 +575,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
               layout={layout}
               issues={issues}
               disabled={!canWrite || busy || conflict}
+              editorRequest={editorRequest}
               settings={settings}
               problemsRequest={problemsRequest}
               onChange={(definition, nextLayout) => {

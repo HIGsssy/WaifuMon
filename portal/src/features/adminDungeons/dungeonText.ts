@@ -30,6 +30,7 @@ import { bundleIssueText, rewardsSummary } from '@/features/adminDungeonLoot/bun
 import { rewardNames } from '@/features/adminDungeonLoot/lootModel';
 import type { ActionType } from './dungeonActionModel';
 import { incompleteEventIssues, type EventBranch } from './dungeonEventModel';
+import { incompleteSpeciesIssues } from './dungeonSpeciesModel';
 import type { MapSelection } from './dungeonMapModel';
 
 export const ACTIVITIES: Record<ActionType, { title: string; hint: string; icon: LucideIcon }> = {
@@ -239,7 +240,10 @@ export const INCOMPLETE_CODE = 'editor_incomplete';
  * server refuses to store them.
  */
 export function incompleteIssues(definition: DungeonDefinition): DungeonIssue[] {
-  const issues: DungeonIssue[] = incompleteEventIssues(definition, INCOMPLETE_CODE);
+  const issues: DungeonIssue[] = [
+    ...incompleteEventIssues(definition, INCOMPLETE_CODE),
+    ...incompleteSpeciesIssues(definition, INCOMPLETE_CODE),
+  ];
   definition.rooms.forEach((room, r) =>
     room.actions.forEach((action, a) =>
       (action.waves ?? []).forEach((wave, w) => {
@@ -274,7 +278,7 @@ export interface FriendlyIssue {
 }
 /** Where in the event or pool editor an issue belongs. */
 export interface EventIssueTarget {
-  kind: 'event' | 'pool';
+  kind: 'event' | 'pool' | 'speciesPool';
   id: string;
   choiceId?: string;
   entryId?: string;
@@ -501,10 +505,35 @@ export function friendlyIssue(
   definition: DungeonDefinition,
   reference?: DungeonReferenceData,
 ): FriendlyIssue {
+  const inSpeciesPool = /^speciesPools\[(\d+)\](?:\.entries\[(\d+)\])?/.exec(issue.path);
+  if (inSpeciesPool) {
+    const pool = definition.speciesPools?.[Number(inSpeciesPool[1])];
+    const entry = inSpeciesPool[2] !== undefined ? pool?.entries[Number(inSpeciesPool[2])] : undefined;
+    const field = issue.path.split('.').pop()?.replace(/\[.*$/, '');
+    return {
+      issue, level: issue.code === INCOMPLETE_CODE ? 'finish' : issue.severity === 'error' ? 'fix' : 'review',
+      title: `WaifuMon pool “${pool?.name || 'Unnamed'}”${entry ? `, entry ${Number(inSpeciesPool[2]) + 1}` : ''}: ${issue.message}`,
+      help: issue.code === 'species_pool_unused' ? 'Attach it to an encounter in a later authoring pass, or remove it.' : 'Open the pool to repair its entries or settings.',
+      target: null, actionId: null,
+      ...(pool ? { eventTarget: { kind: 'speciesPool' as const, id: pool.id, ...(entry ? { entryId: entry.id } : {}), ...(field ? { field } : {}) } } : {}),
+    };
+  }
   const at = /^rooms\[(\d+)\](?:\.actions\[(\d+)\](?:\.waves\[(\d+)\])?)?/.exec(issue.path);
   const via = /^connections\[(\d+)\]/.exec(issue.path);
   const room = at ? definition.rooms[Number(at[1])] : undefined;
   const action = at?.[2] !== undefined ? room?.actions[Number(at[2])] : undefined;
+  if (action?.source?.kind === 'pool' && (action.type === 'wild_encounter' || action.type === 'rescue') &&
+    ['species_missing', 'species_disabled', 'species_not_permitted', 'rescue_direct_not_permitted', 'rescue_direct_limit_missing'].includes(issue.code)) {
+    const pool = definition.speciesPools?.find((p) => p.id === (action.source?.kind === 'pool' ? action.source.poolId : ''));
+    const slug = quoted(issue.message);
+    const entry = pool?.entries.find((e) => 'species' in e && e.species === slug);
+    if (pool) return {
+      issue, level: 'fix', title: `WaifuMon pool “${pool.name}”: ${issue.message}`,
+      help: 'Replace or remove the unavailable species in this pool, or arrange a central policy update separately.',
+      target: room ? { kind: 'room', id: room.id } : null, actionId: action.id,
+      eventTarget: { kind: 'speciesPool', id: pool.id, ...(entry ? { entryId: entry.id } : {}), field: 'species' },
+    };
+  }
   const connection = via ? definition.connections[Number(via[1])] : undefined;
   const R = roomLabel(room);
   const activity = action ? activityOf(action).title.toLowerCase() : 'activity';

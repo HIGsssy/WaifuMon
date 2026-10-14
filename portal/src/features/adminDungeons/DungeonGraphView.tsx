@@ -44,6 +44,7 @@ import { ConnectionInspector } from './ConnectionInspector';
 import { DungeonSandboxDialog } from './DungeonSandboxDialog';
 import { EventEditorSheet } from './EventEditorSheet';
 import { EventPoolSheet } from './EventPoolSheet';
+import { SpeciesPoolSheet } from './SpeciesPoolSheet';
 import { EventEditorContext, type EventEditorHost } from './eventEditorContext';
 import { RoomInspector } from './RoomInspector';
 import {
@@ -151,6 +152,8 @@ export interface DungeonGraphViewProps {
   onChange: (definition: DungeonDefinition, layout: DungeonLayout) => void;
   /** Shown in the inspector while nothing on the map is selected. */
   settings?: ReactNode;
+  /** Repair a field named by a server request failure. */
+  editorRequest?: (EventIssueTarget & { nonce: number }) | undefined;
   /** Bumped by the page to bring the checklist into view. */
   problemsRequest?: number;
 }
@@ -210,6 +213,7 @@ export function DungeonGraphView({
   reference,
   onChange,
   settings,
+  editorRequest,
   problemsRequest,
 }: DungeonGraphViewProps) {
   const [selection, setSelection] = useState<MapSelection>(null);
@@ -225,6 +229,9 @@ export function DungeonGraphView({
   const [currencyFocus, setCurrencyFocus] = useState(0);
   /** The event or pool open in its side sheet, and the field asked for; `nonce` renews the request. */
   const [eventSheet, setEventSheet] = useState<(EventIssueTarget & { nonce: number }) | null>(null);
+  useEffect(() => {
+    if (editorRequest) setEventSheet(editorRequest);
+  }, [editorRequest]);
   const [playing, setPlaying] = useState(false);
   const eventHost = useMemo<EventEditorHost>(
     () => ({
@@ -767,6 +774,20 @@ export function DungeonGraphView({
             onClose={() => setEventSheet(null)}
             onOpenEvent={(id) => eventHost.open({ kind: 'event', id })}
             onPlay={eventHost.play}
+          />
+        )}
+        {eventSheet?.kind === 'speciesPool' && (
+          <SpeciesPoolSheet
+            key={eventSheet.id}
+            poolId={eventSheet.id}
+            definition={definition}
+            disabled={disabled}
+            focus={eventSheet}
+            issues={friendly.filter(
+              (f) => f.eventTarget?.kind === 'speciesPool' && f.eventTarget.id === eventSheet.id,
+            )}
+            onChange={(next) => !disabled && onChange(next, layout)}
+            onClose={() => setEventSheet(null)}
           />
         )}
         {playing && (

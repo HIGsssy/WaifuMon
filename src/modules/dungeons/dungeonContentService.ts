@@ -1,3 +1,6 @@
+import type { DungeonAuthoringSpecies } from './engine/speciesAuthoring';
+import { dungeonSpeciesPolicy } from './dungeonSpeciesPolicy';
+import { dungeonSpeciesUnavailableReason } from './validation/dungeonEncounterValidation';
 import { dungeonEncounterPackageIssues } from './validation/dungeonEncounterValidation';
 import { loadDungeonEncounterValidationSource, type DungeonSpeciesAccessLookup } from './dungeonSpeciesPolicy';
 import { sceneSpriteCatalogue, freezeSceneSprites, readSceneSpriteSnapshot, pinnedSceneSpriteCatalogue } from './sceneSprites/sceneSpriteSnapshot';
@@ -60,6 +63,7 @@ import {
   dungeonRevisions,
   dungeonRuns,
   items,
+  species,
   progressionCurrencies,
   rewardTables,
   type DungeonContentEventAction,
@@ -376,6 +380,8 @@ export interface DungeonContentService extends DungeonImportService {
   list(): Promise<DungeonSummary[]>;
   get(key: string): Promise<DungeonDetail | null>;
   reference(): Promise<DungeonReferenceData>;
+  /** Live read-only catalogue for pool authoring; no player data. */
+  speciesCatalogue(dungeonKey: string): Promise<DungeonAuthoringSpecies[]>;
   /** The active managed asset a dungeon artwork reference means here, as a run would resolve it; null when none. */
   resolveManagedArtwork(ref: { category: string; contentHash: string }): Promise<string | null>;
   /** Dry run against this server. Writes nothing. */
@@ -931,6 +937,23 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
 
     async resolveManagedArtwork(ref) {
       return (await managedArtworkIndex(db)).get(managedArtworkKey(ref)) ?? null;
+    },
+
+    async speciesCatalogue(dungeonKey) {
+      const rows = await db.select().from(species).orderBy(asc(species.name), asc(species.slug));
+      return rows.map((row) => {
+        const policy = dungeonSpeciesPolicy(row, deps.getSpeciesAccess)!;
+        const access = policy.access?.find((a) => a.dungeon === dungeonKey);
+        const reason = dungeonSpeciesUnavailableReason(policy, dungeonKey, false);
+        const directReason = dungeonSpeciesUnavailableReason(policy, dungeonKey, true);
+        return {
+          slug: row.slug, name: row.name, rarity: row.rarity, archetype: row.archetype, affinity: row.affinity,
+          enabled: row.enabled, regionExclusive: row.tags.includes('region_exclusive'), dungeonExclusive: row.tags.includes('dungeon_exclusive'),
+          dungeonAccess: policy.access ?? [], permitted: reason === null, unavailableReason: reason,
+          perPlayerLimit: access?.perPlayerLimit ?? null,
+          directRescue: { available: directReason === null, reason: directReason },
+        };
+      });
     },
 
     async reference() {

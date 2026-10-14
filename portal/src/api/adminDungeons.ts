@@ -1,3 +1,5 @@
+import type { DungeonSpeciesPoolAnalysis, DungeonSpeciesScenario, DungeonSpeciesRef } from './dungeonSpeciesTypes';
+export type { DungeonSpeciesPoolAnalysis, DungeonSpeciesPoolOdds, DungeonSpeciesScenario, DungeonSpeciesRef } from './dungeonSpeciesTypes';
 import type { SceneSpriteInstance } from './adminDungeonSceneSprites';
 /** Phase 1A dungeon authoring API. All calls use the shared authenticated client. */
 import type {
@@ -111,6 +113,10 @@ export interface DungeonEventPool {
   name: string;
   entries: DungeonEventPoolEntry[];
 }
+export type DungeonSpeciesPoolEntry = { id: string; weight: number; when?: DungeonCondition } & (
+  { species: string; oncePerRun?: boolean } | { nothing: true; text?: string }
+);
+export interface DungeonSpeciesPool { id: string; name: string; entries: DungeonSpeciesPoolEntry[] }
 export type DungeonEventSource =
   { kind: 'event'; eventId: string } | { kind: 'pool'; poolId: string };
 
@@ -176,8 +182,8 @@ export interface DungeonDefinition {
   /** The dungeon's events and random pools. Absent in a dungeon that has none. */
   events?: DungeonEvent[];
   eventPools?: DungeonEventPool[];
-  /** P4B1 read-only content; retained verbatim through unrelated edits. */
-  speciesPools?: Array<{ id: string; name: string; entries: Array<{ id: string; weight: number; species?: string; nothing?: true; when?: DungeonCondition; oncePerRun?: boolean; text?: string }> }>;
+  /** Dungeon-local pools, using the backend species/Nothing union. */
+  speciesPools?: DungeonSpeciesPool[];
   rooms: DungeonRoom[];
   connections: DungeonConnection[];
 }
@@ -274,6 +280,7 @@ export interface DungeonValidation {
   publishable: boolean;
   /** Odds of every event pool, worked out by the server's own draw rules. Absent from an older server. */
   eventPools?: DungeonEventPoolAnalysis[];
+  speciesPools?: DungeonSpeciesPoolAnalysis[];
   /** Every event's choices as a player in the scenario would meet them. */
   eventPreviews?: DungeonEventPreview[];
 }
@@ -504,10 +511,11 @@ export function validateDungeon(
   definition: DungeonDefinition,
   signal?: AbortSignal,
   eventScenario?: DungeonEventScenario,
+  speciesScenario?: DungeonSpeciesScenario,
 ): Promise<DungeonValidation> {
   return postData(
     `${base}/validate`,
-    { definition, ...(eventScenario ? { eventScenario } : {}) },
+    { definition, ...(eventScenario ? { eventScenario } : {}), ...(speciesScenario ? { speciesScenario } : {}) },
     opts(signal),
   );
 }
@@ -777,4 +785,13 @@ export function updateProgressionCurrency(
     ...metadata,
     expectedRevision,
   });
+}
+
+/** Policy stays on the server; metadata only, no player data or writes. */
+export function getDungeonSpecies(dungeonKey: string, signal?: AbortSignal): Promise<{ species: DungeonSpeciesRef[] }> {
+  return getData(`${base}/species`, { params: { dungeonKey }, ...opts(signal) });
+}
+export async function dungeonSpeciesArtworkBlob(slug: string): Promise<Blob> {
+  const response = await apiClient.get<Blob>(`${base}/species/artwork`, { params: { slug, width: 256 }, responseType: 'blob' });
+  return response.data;
 }
