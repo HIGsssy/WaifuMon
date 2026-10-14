@@ -81,7 +81,7 @@ export function eventSourceOf(
   definition: DungeonDefinition,
 ): EventSourceView {
   const source = action.source;
-  if (!source) return { kind: 'missing', what: 'an event' };
+  if (!source || source.kind === 'species') return { kind: 'missing', what: 'an event' };
   const events = definition.events ?? [];
   if (source.kind === 'event') {
     const event = events.find((e) => e.id === source.eventId);

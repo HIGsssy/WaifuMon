@@ -120,7 +120,7 @@ describe('migration 0065', () => {
 
       await runMigrations(db, w.t.logger, folder);
       // Same row version, same content: the active run was not rewritten.
-      expect((await pool.query("SELECT xmin::text AS version,(to_jsonb(r)-'event_states')::text AS row FROM dungeon_runs r")).rows).toEqual(before);
+      expect((await pool.query("SELECT xmin::text AS version,(to_jsonb(r)-'event_states'-'encounter_states')::text AS row FROM dungeon_runs r")).rows).toEqual(before);
       expect((await pool.query('SELECT xmin::text AS version,to_jsonb(e)::text AS row FROM dungeon_run_events e ORDER BY id')).rows).toEqual(historyBefore);
       expect((await pool.query('SELECT status,flags,event_states FROM dungeon_runs')).rows).toEqual([{ status: 'active', flags: { lever: true }, event_states: {} }]);
       await pool.query("INSERT INTO dungeon_run_events (run_id,player_id,step,type) VALUES ($1,$2,2,'event_selected'),($1,$2,2,'items_consumed')", [run, player]);

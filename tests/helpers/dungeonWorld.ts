@@ -12,7 +12,7 @@ import { createArtworkAssetService, type ArtworkAssetService } from '../../src/m
 import { createLocalArtworkStorage } from '../../src/modules/artworkAssets/artworkStorage';
 import { createSceneCompositionService, type SceneCompositionService } from '../../src/modules/artworkAssets/sceneComposition';
 import type { CombatRules } from '../../src/modules/combat/combatTypes';
-import type { DungeonDefinition, DungeonDefinitionInput } from '../../src/modules/dungeons/content/dungeonDefinition';
+import type { DungeonDefinition, DungeonDefinitionInput, DungeonSpeciesAccess } from '../../src/modules/dungeons/content/dungeonDefinition';
 import {
   createDungeonAllowanceService,
   type DungeonAllowanceService,
@@ -78,6 +78,8 @@ export interface DungeonWorld {
   enemies: EnemyCatalogueService;
   scenes: SceneCompositionService;
   artworkDir: string;
+  /** Species `dungeonAccess` policy by slug, read live by both dungeon services. */
+  speciesAccess: Map<string, DungeonSpeciesAccess[]>;
   /** The clock the daily allowance reads. Reassign `.now` to cross a reset. */
   clock: { now: Date };
   /** A fresh, eligible player. `buddy`, `unlocked` and `starters` default to true. */
@@ -99,10 +101,16 @@ export async function createDungeonWorld(
     combatRules?: Partial<CombatRules> | null;
     logger?: Parameters<typeof createDungeonRunService>[0]['logger'];
     equipment?: Parameters<typeof buildEquipmentServices>[1];
+    /** Wrap the capture service the run service calls, to observe or fail an encounter effect. */
+    capture?: (real: App['capture']) => NonNullable<Parameters<typeof createDungeonRunService>[0]['capture']>;
   } = {},
 ): Promise<DungeonWorld> {
   const t = await createTestDb();
   const app = await bootstrapApp(t);
+  // Species `dungeonAccess`, as loaded content would supply it. Tests set entries directly.
+  const speciesAccess = new Map<string, DungeonSpeciesAccess[]>(
+    app.content.species.flatMap((s) => (s.dungeonAccess ? [[s.slug, s.dungeonAccess] as const] : [])),
+  );
   const svc = buildEquipmentServices(t.db, opts.equipment ?? {});
 
   await seedEquipmentDefinitions(t.db, { catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
@@ -143,6 +151,7 @@ export async function createDungeonWorld(
     assetsDir: artworkDir,
     artworkStorage: createLocalArtworkStorage(path.join(artworkDir, 'managed')),
     getRegions: () => app.content.regions.map((r) => ({ id: r.id, name: r.name, enabled: r.enabled })),
+    getSpeciesAccess: (slug) => speciesAccess.get(slug),
     environment: 'test',
   });
   const clock = { now: new Date('2026-03-10T12:00:00Z') };
@@ -168,6 +177,8 @@ export async function createDungeonWorld(
       getAffixes: svc.getAffixes,
       featureUnlocks: svc.featureUnlocks,
     }),
+    capture: opts.capture ? opts.capture(app.capture) : app.capture,
+    speciesAccess: (slug) => speciesAccess.get(slug),
   });
   const runs = buildRuns();
 
@@ -187,6 +198,7 @@ export async function createDungeonWorld(
     enemies,
     scenes,
     artworkDir,
+    speciesAccess,
     clock,
     async player(o = {}) {
       seq += 1;

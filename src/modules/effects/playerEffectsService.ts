@@ -54,8 +54,14 @@ export interface GrantCaptureBonusResult extends CaptureBonusState {
 }
 
 export interface PlayerEffectsService {
-  /** Read-only lookup for UI paints. Null when no buff is active. */
-  getCaptureBonus(playerId: number, now?: Date): Promise<CaptureBonusState | null>;
+  /**
+   * Read-only lookup. Null when no buff is active.
+   *
+   * `tx` is the handle to read through. Omitted, the pool: a UI paint. A quote
+   * made inside a transaction passes its own, so it sees a charge that same
+   * transaction already spent.
+   */
+  getCaptureBonus(playerId: number, now?: Date, tx?: DbOrTx): Promise<CaptureBonusState | null>;
 
   /**
    * Grant (or refresh) the capture-bonus buff inside the caller's
@@ -96,8 +102,8 @@ function isExpired(row: PlayerActiveEffectRow, now: Date): boolean {
 
 export function createPlayerEffectsService(db: Db): PlayerEffectsService {
   return {
-    async getCaptureBonus(playerId, now = new Date()) {
-      const [row] = await db
+    async getCaptureBonus(playerId, now = new Date(), tx = db) {
+      const [row] = await tx
         .select()
         .from(playerActiveEffects)
         .where(

@@ -136,7 +136,7 @@ export interface DungeonAction {
   reward?: DungeonReward;
   rewards?: DungeonRewardBundle;
   /** An `event` activity: which event, or which pool, it presents. */
-  source?: DungeonEventSource;
+  source?: DungeonEventSource | { kind: 'species'; species: string };
   [field: string]: unknown;
 }
 export interface DungeonRoom {
@@ -176,6 +176,8 @@ export interface DungeonDefinition {
   /** The dungeon's events and random pools. Absent in a dungeon that has none. */
   events?: DungeonEvent[];
   eventPools?: DungeonEventPool[];
+  /** P4B1 read-only content; retained verbatim through unrelated edits. */
+  speciesPools?: Array<{ id: string; name: string; entries: Array<{ id: string; weight: number; species?: string; nothing?: true; when?: DungeonCondition; oncePerRun?: boolean; text?: string }> }>;
   rooms: DungeonRoom[];
   connections: DungeonConnection[];
 }

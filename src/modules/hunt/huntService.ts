@@ -48,6 +48,7 @@ import type { QuestService } from '../quests/questService';
 import { resolveHuntSessionBoundary, type HuntSessionBoundary } from './huntSession';
 import {
   DEFAULT_REGION,
+  DUNGEON_EXCLUSIVE_TAG_JSON,
   REGION_EXCLUSIVE_TAG,
   REGION_EXCLUSIVE_TAG_JSON,
 } from '../locations/regions';
@@ -296,6 +297,19 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
     return sql`not (${species.tags} @> ${REGION_EXCLUSIVE_TAG_JSON}::jsonb)`;
   }
 
+  /**
+   * `species.tags` does not contain `dungeon_exclusive`.
+   *
+   * Applied to **every** tier below, the pools and the emergency included. A
+   * dungeon-exclusive species is never met by hunting; content validation
+   * already keeps her out of every pool, and this is what holds if a pool row
+   * outlives a retag. No ordinary species carries the tag, so no ordinary
+   * draw or weight changes.
+   */
+  function notDungeonExclusive() {
+    return sql`not (${species.tags} @> ${DUNGEON_EXCLUSIVE_TAG_JSON}::jsonb)`;
+  }
+
   async function regionBucket(
     tx: DbOrTx,
     regionId: string,
@@ -310,6 +324,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           eq(regionEncounterPools.regionId, regionId),
           eq(species.rarity, rarity),
           eq(species.enabled, true),
+          notDungeonExclusive(),
         ),
       );
     return rows.map((r) => ({ weight: Math.max(1, r.weight), value: r.species }));
@@ -424,7 +439,12 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
           .select()
           .from(species)
           .where(
-            and(eq(species.rarity, rarity), eq(species.enabled, true), notRegionExclusive()),
+            and(
+              eq(species.rarity, rarity),
+              eq(species.enabled, true),
+              notRegionExclusive(),
+              notDungeonExclusive(),
+            ),
           );
         if (global.length > 0) {
           logger.warn(
@@ -448,7 +468,13 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
       .select({ species })
       .from(regionEncounterPools)
       .innerJoin(species, eq(regionEncounterPools.speciesId, species.id))
-      .where(and(eq(regionEncounterPools.regionId, DEFAULT_REGION), eq(species.enabled, true)))
+      .where(
+        and(
+          eq(regionEncounterPools.regionId, DEFAULT_REGION),
+          eq(species.enabled, true),
+          notDungeonExclusive(),
+        ),
+      )
       .limit(1);
     if (valleyRow[0]) {
       logger.warn(
@@ -461,7 +487,7 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
     const openRow = await tx
       .select()
       .from(species)
-      .where(and(eq(species.enabled, true), notRegionExclusive()))
+      .where(and(eq(species.enabled, true), notRegionExclusive(), notDungeonExclusive()))
       .limit(1);
     if (openRow[0]) {
       logger.warn(
@@ -476,7 +502,14 @@ export function createHuntService(deps: HuntServiceDeps): HuntService {
     // out an exclusive and handing out nothing. An encounter beats a crash, so
     // the exclusive goes out and the log says so at error level: this is a
     // content emergency, not a fallback anyone should see in normal operation.
-    const anyRow = await tx.select().from(species).where(eq(species.enabled, true)).limit(1);
+    //
+    // A dungeon-exclusive species is not part of that bargain: she is never
+    // hunted, so with nothing else left the hunt finds nobody rather than her.
+    const anyRow = await tx
+      .select()
+      .from(species)
+      .where(and(eq(species.enabled, true), notDungeonExclusive()))
+      .limit(1);
     if (anyRow[0]) {
       logger.error(
         {

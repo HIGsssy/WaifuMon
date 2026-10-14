@@ -1,3 +1,4 @@
+import { hasDungeonEncounters } from '../content/dungeonEncounters';
 import { hasSceneSprites } from '../sceneSprites/sceneSpriteDefinition';
 /**
  * The Dungeon Content Package — one dungeon as a portable, versioned file.
@@ -215,6 +216,7 @@ export function packageDependencies(
 export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPackage {
   const definition = DungeonDefinitionSchema.parse(input.definition);
   if (hasSceneSprites(definition)) throw new Error('Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely.');
+  if (hasDungeonEncounters(definition)) throw new Error('Dungeon encounter packages are unavailable until package v4.');
   const usesEvents = dungeonUsesEvents(definition);
   const deps = dungeonDependencies(definition);
   const layout = pruneDungeonLayout(
@@ -301,6 +303,7 @@ export const DUNGEON_PACKAGE_ISSUE_CODES = [
   'package_schema_version',
   'package_schema',
   'package_scene_sprites_unsupported',
+  'package_encounters_unsupported',
   'package_key_mismatch',
   'package_hash_mismatch',
   'package_dependencies_mismatch',
@@ -380,6 +383,7 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
   for (const issue of dungeon.issues) issues.push({ ...issue, path: issue.path ? `dungeon.${issue.path}` : 'dungeon' });
   if (!dungeon.definition) return { package: null, issues, ok: false };
   if (hasSceneSprites(dungeon.definition)) return fail('package_scene_sprites_unsupported', 'dungeon.rooms', 'Packages containing Scene Sprites are temporarily unavailable; this package cannot carry their frozen artwork dependencies safely.');
+  if (hasDungeonEncounters(dungeon.definition)) return fail('package_encounters_unsupported', 'dungeon.rooms', 'Dungeon encounters require package v4; v1/v2/v3 cannot carry their dependencies.');
   // Whatever version the envelope claims, versions 1 and 2 never held events.
   if (envelope.schemaVersion !== 3 && dungeonUsesEvents(dungeon.definition)) return fail('package_schema_version', 'dungeon', EVENTS_REQUIRE_V3);
 

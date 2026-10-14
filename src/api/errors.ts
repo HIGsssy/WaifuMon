@@ -241,6 +241,11 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   DB_UNAVAILABLE: 503,
   DUNGEON_REWARD_ITEM_UNAVAILABLE: 503,
   DUNGEON_EVENT_ITEM_UNAVAILABLE: 409,
+  /** Retryable: the step rolled back whole and nothing was spent. */
+  DUNGEON_CAPTURE_ITEM_UNAVAILABLE: 409,
+  DUNGEON_ENCOUNTER_SPECIES_UNAVAILABLE: 409,
+  DUNGEON_CAPTURE_QUOTE_CHANGED: 409,
+  DUNGEON_STEP_CONTENDED: 409,
   DUNGEON_REWARD_GRANT_FAILED: 503,
   /**
    * The card SVG kit is missing a file, or the base template is not the shape
@@ -435,6 +440,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   CARE_TARGET_REQUIRED: 422,
   /** Well-formed, but this item may not be committed against this rarity. */
   CAPTURE_ITEM_NOT_ELIGIBLE: 422,
+  CAPTURE_GRANT_KEY_CONFLICT: 409,
   /** Mirrors ENERGY_ALREADY_FULL: nothing to gain, so nothing is spent. */
   EFFECT_ALREADY_AT_MAX_CHARGES: 422,
   /** Capture was requested with nothing selected for the encounter. */

@@ -396,6 +396,53 @@ describe('rule 6 — region-exclusive species may appear in only one live pool',
   });
 });
 
+describe('dungeon-exclusive species and dungeon access policy', () => {
+  const valley = (pool: string[]) =>
+    region({ id: 'waifu-valley', name: 'Waifu Valley', starting: true, encounterPool: pool.map((s) => ({ species: s })) });
+
+  it('rejects a dungeon-exclusive species in any region pool, enabled or not', () => {
+    const bad = content({
+      species: [species('valley_girl'), species('cell_captive', ['dungeon_exclusive'])],
+      regions: [
+        valley(['valley_girl']),
+        region({ id: 'twin-peeks', name: 'Twin Peeks', enabled: false, encounterPool: [{ species: 'cell_captive' }] }),
+      ],
+    });
+    expect(() => validateRegionContent(bad)).toThrow(/lists species "cell_captive", which is tagged "dungeon_exclusive"/);
+  });
+
+  it('rejects a species carrying both exclusivity tags', () => {
+    const bad = content({
+      species: [species('valley_girl'), species('cell_captive', ['dungeon_exclusive', 'region_exclusive'])],
+      regions: [valley(['valley_girl'])],
+    });
+    expect(() => validateRegionContent(bad)).toThrow(/tagged both "dungeon_exclusive" and "region_exclusive"/);
+  });
+
+  it('rejects a dungeon listed twice and a direct rescue without a finite limit', () => {
+    const captive = (dungeonAccess: SpeciesContent['dungeonAccess']) =>
+      content({
+        species: [species('valley_girl'), { ...species('cell_captive', ['dungeon_exclusive']), dungeonAccess }],
+        regions: [valley(['valley_girl'])],
+      });
+    expect(() => validateRegionContent(captive([{ dungeon: 'vault' }, { dungeon: 'vault', perPlayerLimit: 2 }]))).toThrow(
+      /lists dungeon "vault" more than once/,
+    );
+    expect(() => validateRegionContent(captive([{ dungeon: 'vault', directRescue: true }]))).toThrow(/without a finite perPlayerLimit/);
+    expect(() => validateRegionContent(captive([{ dungeon: 'vault', directRescue: true, perPlayerLimit: 'unlimited' }]))).toThrow(
+      /without a finite perPlayerLimit/,
+    );
+    expect(() =>
+      validateRegionContent(captive([{ dungeon: 'vault', directRescue: true, perPlayerLimit: 1 }, { dungeon: 'crypt', perPlayerLimit: 'unlimited' }])),
+    ).not.toThrow();
+  });
+
+  it('runs the policy checks for a content set with no region files', () => {
+    const bad = content({ species: [species('cell_captive', ['dungeon_exclusive', 'region_exclusive'])], regions: [] });
+    expect(() => validateRegionContent(bad)).toThrow(/tagged both/);
+  });
+});
+
 describe('rule 7 — disabled expansion species cannot be referenced', () => {
   it('says the pack is disabled rather than "unknown species"', () => {
     // The distinction is the whole point: same fatal outcome, completely

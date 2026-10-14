@@ -54,7 +54,12 @@ import {
   type SpeciesRow,
 } from '../../db/schema';
 import { RACE_CODES, resolveRace, type RaceCode } from '../cards/race';
-import { isRegion, REGION_EXCLUSIVE_TAG_JSON, type Region } from '../locations/regions';
+import {
+  DUNGEON_EXCLUSIVE_TAG_JSON,
+  isRegion,
+  REGION_EXCLUSIVE_TAG_JSON,
+  type Region,
+} from '../locations/regions';
 import { defaultRng, rollWeighted, type Rng, type WeightedEntry } from '../../shared/random';
 
 /* ─────────────────────── Schema ─────────────────────── */
@@ -229,6 +234,7 @@ export interface FilteredSpeciesPickerDeps {
  *   - `region`: enabled species in that region's `region_encounter_pools`,
  *     at the pool's region-local weight. Nothing else — no Waifu Valley, no
  *     global table.
+ *   Neither scope ever contains a species tagged `dungeon_exclusive`.
  *   - `global`: every enabled species not tagged `region_exclusive`, plus the
  *     current region's pool (so a region-exclusive local is still reachable
  *     where she lives). Global is therefore always a superset of region.
@@ -241,7 +247,14 @@ export function createFilteredSpeciesPicker(deps: FilteredSpeciesPickerDeps): Fi
       .select({ species, weight: regionEncounterPools.weight })
       .from(regionEncounterPools)
       .innerJoin(species, eq(regionEncounterPools.speciesId, species.id))
-      .where(and(eq(regionEncounterPools.regionId, regionId), eq(species.enabled, true)));
+      .where(
+        and(
+          eq(regionEncounterPools.regionId, regionId),
+          eq(species.enabled, true),
+          // Never spawned in the wild, whatever a pool row says.
+          sql`not (${species.tags} @> ${DUNGEON_EXCLUSIVE_TAG_JSON}::jsonb)`,
+        ),
+      );
     return rows.map((r) => ({ value: r.species, rarity: r.species.rarity, weight: r.weight }));
   }
 
@@ -256,6 +269,7 @@ export function createFilteredSpeciesPicker(deps: FilteredSpeciesPickerDeps): Fi
         and(
           eq(species.enabled, true),
           sql`not (${species.tags} @> ${REGION_EXCLUSIVE_TAG_JSON}::jsonb)`,
+          sql`not (${species.tags} @> ${DUNGEON_EXCLUSIVE_TAG_JSON}::jsonb)`,
         ),
       );
     const byId = new Map<number, SpeciesRow>(open.map((s) => [s.id, s]));

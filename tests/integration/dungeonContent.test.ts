@@ -596,6 +596,7 @@ describe('what dungeons hold on to', () => {
       'dungeon_scene_sprite_events',
       'dungeon_scene_sprites',
       'dungeon_settings',
+      'dungeon_species_acquisitions',
       'dungeon_zones_prototype',
     ]);
     expect(await w.t.db.select({ key: dungeonDefinitions.dungeonKey }).from(dungeonDefinitions)).not.toHaveLength(0);

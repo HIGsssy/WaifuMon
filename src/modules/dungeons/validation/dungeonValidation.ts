@@ -1,3 +1,4 @@
+import { encounterFlagsSet, encounterShapeIssue, validateDungeonEncounters, type DungeonEncounterValidationSource } from './dungeonEncounterValidation';
 import { sceneSpriteSites } from '../sceneSprites/sceneSpriteDefinition';
 import type { SceneSpriteCatalogue } from '../sceneSprites/sceneSpriteSnapshot';
 /**
@@ -61,6 +62,29 @@ import { eventActionDestinations } from '../engine/events';
 import { defaultDestination, destinationFor, destinationsOf, SUCCESS_OUTCOME } from '../engine/routing';
 
 export const DUNGEON_ISSUE_CODES = [
+  'species_missing',
+  'species_disabled',
+  'species_not_permitted',
+  'species_pool_missing',
+  'species_pool_empty',
+  'species_pool_duplicate_entry',
+  'species_pool_weight_invalid',
+  'species_pool_unused',
+  'species_pool_always_nothing',
+  'encounter_condition_impossible',
+  'encounter_route_retreat',
+  'encounter_optional',
+  'capture_item_missing',
+  'capture_item_not_capture',
+  'capture_item_disabled',
+  'capture_no_usable_item',
+  'capture_settings_invalid',
+  'rescue_direct_not_permitted',
+  'rescue_direct_limit_missing',
+  'rescue_direct_too_many',
+  'rescue_ungated',
+  'encounter_flag_undeclared',
+  'encounter_too_many',
   'schema',
   'reward_item_missing',
   'reward_item_capped',
@@ -166,6 +190,7 @@ export interface DungeonIssue {
 export type DungeonReferenceIndex = ReadonlyMap<string, { enabled: boolean }>;
 
 export interface DungeonValidationContext extends DungeonRewardValidationContext {
+  encounterSource?: DungeonEncounterValidationSource;
   sceneSprites?: SceneSpriteCatalogue;
   enemies?: DungeonReferenceIndex | undefined;
   /** `expedition`-kind reward tables. */
@@ -242,7 +267,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
       const path = zodPath(issue.path);
       // The dedicated code already says what is wrong with that action.
       if ([...typed.paths].some((p) => path === p || path.startsWith(`${p}.`))) continue;
-      issues.push(rewardShapeIssue(raw, path, issue.message) ?? { code: 'schema', severity: 'error', path, message: issue.message });
+      issues.push(encounterShapeIssue(path, issue.message) ?? rewardShapeIssue(raw, path, issue.message) ?? { code: 'schema', severity: 'error', path, message: issue.message });
     }
     return { definition: null, issues };
   }
@@ -328,6 +353,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   const flagsRead = new Set<string>();
   for (const room of definition.rooms) for (const action of room.actions) if (action.type === 'set_flag') flagsSet.add(action.flag);
   for (const flag of eventFlagsSet(definition)) flagsSet.add(flag);
+  for (const flag of encounterFlagsSet(definition)) flagsSet.add(flag);
 
   const checkCondition = (condition: DungeonCondition | undefined, path: string) => {
     if (!condition) return;
@@ -357,6 +383,7 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
 
   const eventTools: EventValidationTools = { add, checkCondition, flagByKey };
   validateDungeonEvents(definition, ctx, eventTools);
+  validateDungeonEncounters(definition, eventTools, ctx.encounterSource);
 
   /** Where an action can send the sequence, whatever it reports. An event adds what its choices can do. */
   const everyDestination = (action: DungeonAction): ActionDestination[] =>

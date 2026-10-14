@@ -42,7 +42,7 @@ interface ActionShape {
   id: string;
   type: string;
   rewards?: DungeonRewardBundle | undefined;
-  source?: { kind: 'event'; eventId: string } | { kind: 'pool'; poolId: string } | undefined;
+  source?: { kind: 'species'; species: string } | { kind: 'event'; eventId: string } | { kind: 'pool'; poolId: string } | undefined;
 }
 /** The parts of a dungeon definition the traversal reads. A `DungeonDefinition` is one. */
 export interface DungeonRewardSiteDefinition {
@@ -77,6 +77,7 @@ export function dungeonUsesEvents(definition: DungeonRewardSiteDefinition): bool
 export function eventActionCandidateIds(definition: DungeonRewardSiteDefinition, action: ActionShape): string[] {
   if (action.type !== 'event' || !action.source) return [];
   if (action.source.kind === 'event') return [action.source.eventId];
+  if (action.source.kind !== 'pool') return [];
   const poolId = action.source.poolId;
   const pool = definition.eventPools?.find((p) => p.id === poolId);
   return [...new Set((pool?.entries ?? []).flatMap((entry) => (entry.eventId === undefined ? [] : [entry.eventId])))];

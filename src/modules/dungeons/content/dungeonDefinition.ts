@@ -36,6 +36,7 @@
  * dedicated issue code rather than a schema error.
  */
 import { z } from 'zod';
+import { DungeonCaptureRulesSchema, DungeonSpeciesPoolSchema, dungeonEncounterFields } from './dungeonEncounters';
 import { SceneSpriteInstanceSchema, SCENE_SPRITE_MAX_PLACEMENTS, sceneSpriteKeys } from '../sceneSprites/sceneSpriteDefinition';
 import { equipmentSelectorKey, type EquipmentRewardSelector } from '../../equipment/rewardSelector';
 import {
@@ -77,6 +78,7 @@ export {
   type DungeonFlagScope,
 } from './dungeonPrimitives';
 export * from './dungeonEvents';
+export * from './dungeonEncounters';
 export * from './dungeonRewardSites';
 
 export const DUNGEON_MAX_ROOMS = 200;
@@ -187,6 +189,8 @@ export const DungeonActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('reward'), ...actionBase, reward: RewardSpecSchema.optional(), rewards: DungeonRewardBundleSchema.optional() }).strict(),
   /** Presents one event from the dungeon's library: a named one, or a draw from a pool. */
   z.object({ type: z.literal('event'), ...actionBase, source: DungeonEventSourceSchema }).strict(),
+  z.object({ type: z.literal('wild_encounter'), ...actionBase, ...dungeonEncounterFields, capture: DungeonCaptureRulesSchema }).strict(),
+  z.object({ type: z.literal('rescue'), ...actionBase, ...dungeonEncounterFields, mode: z.enum(['direct', 'capture']), capture: DungeonCaptureRulesSchema.optional() }).strict(),
 ]).superRefine((action, ctx) => {
   if (action.type === 'reward' && (action.reward !== undefined) === (action.rewards !== undefined)) {
     ctx.addIssue({ code: 'custom', path: ['reward'], message: 'treasure must have exactly one of reward or rewards' });
@@ -197,7 +201,7 @@ export type DungeonActionType = DungeonAction['type'];
 export type CombatAction = Extract<DungeonAction, { type: 'combat' | 'boss' }>;
 export type EventAction = Extract<DungeonAction, { type: 'event' }>;
 
-export const DUNGEON_ACTION_TYPES = ['combat', 'boss', 'rest', 'gate', 'set_flag', 'leave', 'reward', 'event'] as const satisfies readonly DungeonActionType[];
+export const DUNGEON_ACTION_TYPES = ['combat', 'boss', 'rest', 'gate', 'set_flag', 'leave', 'reward', 'event', 'wild_encounter', 'rescue'] as const satisfies readonly DungeonActionType[];
 
 /**
  * Action types later phases add. Named now so a definition that uses one is
@@ -208,8 +212,6 @@ export const RESERVED_ACTION_TYPES = {
   choice: 'Phase 3',
   objective: 'Phase 3',
   random_outcome: 'a later phase',
-  wild_encounter: 'Phase 4',
-  rescue: 'Phase 4',
 } as const;
 
 /**
@@ -226,6 +228,8 @@ export const ACTION_OUTCOMES: Readonly<Record<DungeonActionType, readonly string
   reward: ['claimed'],
   /** `nothing`: a pool drew no event. A failed check is still `resolved`. */
   event: ['resolved', 'nothing'],
+  wild_encounter: ['captured', 'escaped', 'left', 'nothing', 'unavailable'],
+  rescue: ['rescued', 'escaped', 'left', 'nothing', 'unavailable'],
 };
 export const DECLINED_OUTCOME = 'declined';
 
@@ -292,6 +296,7 @@ export const DungeonDefinitionSchema = z
     /** Phase 3 library. Absent, never defaulted: an event-free definition must hash as it always did. */
     events: z.array(DungeonEventSchema).max(DUNGEON_EVENT_LIMITS.events).optional(),
     eventPools: z.array(DungeonEventPoolSchema).max(DUNGEON_EVENT_LIMITS.pools).optional(),
+    speciesPools: z.array(DungeonSpeciesPoolSchema).max(30).optional(),
     rooms: z.array(DungeonRoomSchema).min(1).max(DUNGEON_MAX_ROOMS),
     connections: z.array(DungeonConnectionSchema).max(DUNGEON_MAX_CONNECTIONS).default([]),
   })

@@ -67,6 +67,7 @@ export interface DungeonEngineContext {
    */
   inventory?: Readonly<Record<string, number>> | undefined;
   /** Overrides for the combat engine's rules. Production passes none. */
+  encounterFacts?: DungeonEncounterFacts | undefined;
   combatRules?: Partial<CombatRules> | undefined;
 }
 
@@ -129,6 +130,32 @@ export interface DungeonWaveResult {
   combatSeed: number;
 }
 
+// ── encounters (JSON-safe, independent of transient action records) ──────────
+export type DungeonEncounterUnavailableReason = 'missing' | 'disabled' | 'not_permitted' | 'player_limit' | 'direct_not_permitted' | 'direct_limit_missing';
+export interface DungeonEncounterFacts {
+  /** Read live on arrival and every attempt; missing facts fail closed. */
+  species: Readonly<Record<string, { available: boolean; reason?: DungeonEncounterUnavailableReason; name: string; rarity: string;
+    /** Explicit authorization + finite cross-run limit checked by the fact provider. */
+    directRescue?: { available: boolean; reason?: DungeonEncounterUnavailableReason };
+  }>>;
+  /** Quotes from the existing capture formula using the run's pinned Buddy. */
+  items?: Readonly<Record<string, { owned: number; eligible: boolean; permitted: boolean; guaranteed: boolean; chance: number; consumesMicrodose?: boolean }>>;
+}
+export interface DungeonCaptureAttempt {
+  n: number; item: string; chance: number; roll: number; success: boolean; step: number;
+}
+export interface DungeonEncounterInstance {
+  species: string | null;
+  status: 'offered' | 'captured' | 'rescued' | 'escaped' | 'left' | 'nothing' | 'unavailable';
+  unavailableReason?: DungeonEncounterUnavailableReason;
+  selectedStep: number;
+  pool?: { poolId: string; entryId: string | null; eligible: string[]; totalWeight: number; roll: number | null };
+  selectedItem?: string | null;
+  attempts: DungeonCaptureAttempt[];
+  grantKey?: string;
+  resolvedStep?: number;
+}
+
 // ── events ──────────────────────────────────────────────────────────────────
 
 /** The numbers behind an SP check, kept so a result can be explained and replayed. */
@@ -172,6 +199,7 @@ export interface DungeonRewardPlan {
 export type DungeonResolvedRewardPlan = DungeonRewardPlan | DungeonRewardPlanV2;
 
 export type DungeonActionDetail =
+  | { kind: 'encounter'; species: string | null; status: DungeonEncounterInstance['status'] }
   | { kind: 'combat'; waves: DungeonWaveResult[]; waveCount: number }
   | { kind: 'rest'; healBasisPoints: number; hpBefore: number; hpAfter: number }
   | { kind: 'gate'; passed: boolean }
@@ -223,6 +251,7 @@ export interface DungeonRunEnd {
 
 /** One thing the latest step did, compact enough to keep on the run for redisplay. */
 export type DungeonRecentEntry =
+  | { kind: 'encounter'; roomId: string; actionId: string; species: string | null; outcome: DungeonEncounterInstance['status'] | 'failure'; text: string }
   | { kind: 'wave'; roomId: string; actionId: string; wave: DungeonWaveResult; waveCount: number }
   | { kind: 'rest'; roomId: string; actionId: string; hpBefore: number; hpAfter: number; healBasisPoints: number }
   | { kind: 'gate'; roomId: string; actionId: string; passed: boolean; blockedText: string }
@@ -268,6 +297,7 @@ export interface DungeonRunState {
    * run first reaches an event, and on states from before events.
    */
   events?: Record<string, DungeonEventInstance>;
+  encounters?: Record<string, DungeonEncounterInstance>;
   unbankedCurrency: number;
   /** V2 dungeon-earned WaifuBux only; absent on historical engine states. */
   unbankedWaifubux?: number;
@@ -279,6 +309,10 @@ export interface DungeonRunState {
 // ── inputs ──────────────────────────────────────────────────────────────────
 
 export type DungeonInput = (
+  | { type: 'select_item'; item: string }
+  | { type: 'capture' }
+  | { type: 'rescue' }
+  | { type: 'leave_encounter' }
   | { type: 'advance' }
   | { type: 'decline' }
   | { type: 'choose'; choiceId: string }
@@ -295,6 +329,9 @@ export type DungeonInput = (
 };
 
 export type DungeonRefusal =
+  | 'encounter_not_offered'
+  | 'capture_item_required'
+  | 'capture_item_unavailable'
   | 'stale'
   | 'run_over'
   | 'no_action'
@@ -317,6 +354,8 @@ export type DungeonRefusal =
  * all. Every effect carries the key that makes carrying it out idempotent.
  */
 export type DungeonEffect =
+  | { type: 'capture_attempt'; key: string; grantKey: string; roomId: string; actionId: string; species: string; mode: 'wild' | 'rescue'; attempt: DungeonCaptureAttempt; guaranteed: boolean; consumesMicrodose: boolean; spRoll: number }
+  | { type: 'rescue_grant'; grantKey: string; roomId: string; actionId: string; species: string; spRoll: number }
   | {
       type: 'grant_rewards';
       /** `run:<runKey>:<roomId>:<actionId>` — the Phase 2 claim key, already in its final shape. */
@@ -381,7 +420,61 @@ export interface DungeonAffectionGrant {
   affectionAfter: number;
 }
 
+/** The owned copy a live encounter created. */
+export interface DungeonAcquiredWaifu {
+  waifuId: number;
+  speciesSlug: string;
+  name: string;
+  rarity: string;
+  baseSp: number;
+  isDuplicate: boolean;
+  isNewDex: boolean;
+}
+
+/** What one real capture attempt did, as the capture service reported it. */
+export interface DungeonCaptureReceipt {
+  type: 'capture_attempt';
+  key: string;
+  simulated: false;
+  grantKey: string;
+  roomId: string;
+  actionId: string;
+  species: string;
+  mode: 'wild' | 'rescue';
+  item: string;
+  success: boolean;
+  outcome: 'success' | 'failure' | 'escape';
+  guaranteed: boolean;
+  chance: number;
+  roll: number;
+  /** After the pinned Buddy's `player_xp_gain`, when she has one. */
+  xpGranted: number;
+  levelUps: { fromLevel: number; toLevel: number; rewardLabels: string[] }[];
+  /** The Microdose charge this attempt spent, or null. */
+  microdose: { sourceItemSlug: string | null; chargesRemaining: number } | null;
+  acquired: DungeonAcquiredWaifu | null;
+}
+
+/** What one real direct rescue granted. */
+export interface DungeonRescueReceipt {
+  type: 'rescue_grant';
+  grantKey: string;
+  simulated: false;
+  roomId: string;
+  actionId: string;
+  species: string;
+  /** True when the key had already granted its copy: nothing was written again. */
+  replayed: boolean;
+  xpGranted: number;
+  levelUps: { fromLevel: number; toLevel: number; rewardLabels: string[] }[];
+  acquired: DungeonAcquiredWaifu;
+}
+
 export type DungeonEffectReceipt =
+  | { type: 'capture_attempt'; key: string; simulated: true; success: boolean }
+  | { type: 'rescue_grant'; grantKey: string; simulated: true }
+  | DungeonCaptureReceipt
+  | DungeonRescueReceipt
   | {
       type: 'grant_rewards';
       claimKey: string;
@@ -434,6 +527,9 @@ export const DUNGEON_RUN_EVENT_TYPES = [
   'rewards_granted',
   'event_selected',
   'items_consumed',
+  'encounter_selected',
+  'capture_attempted',
+  'waifu_acquired',
 ] as const;
 export type DungeonRunEventType = (typeof DUNGEON_RUN_EVENT_TYPES)[number];
 

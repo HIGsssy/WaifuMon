@@ -157,7 +157,7 @@ export function EventActivity({
     <div className="space-y-3" data-testid="event-activity">
       <EventSourcePicker
         label="This activity shows"
-        value={action.source}
+        value={action.source?.kind === 'species' ? undefined : action.source}
         definition={definition}
         disabled={disabled}
         allowNone={false}

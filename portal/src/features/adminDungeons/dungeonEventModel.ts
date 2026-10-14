@@ -321,7 +321,7 @@ export interface EventUse {
   actionId?: string;
 }
 const roomName = (room: DungeonRoom) => room.name || 'Unnamed room';
-const isEventAction = (action: DungeonAction) => action.type === 'event';
+const isEventAction = (action: DungeonAction): action is DungeonAction & { source?: DungeonEventSource } => action.type === 'event' && action.source?.kind !== 'species';
 export const eventActionsOf = (room: DungeonRoom) => room.actions.filter(isEventAction);
 
 function roomUses(

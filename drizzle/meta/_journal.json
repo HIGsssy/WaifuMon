@@ -477,6 +477,13 @@
       "when": 1821564000000,
       "tag": "0067_dungeon_scene_sprite_snapshots",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1821650400000,
+      "tag": "0068_dungeon_encounters",
+      "breakpoints": true
     }
   ]
 }

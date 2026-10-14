@@ -501,7 +501,7 @@ describe('migration 0064 schema', () => {
       const before = (await pool.query('SELECT xmin::text AS version,to_jsonb(r)::text AS row FROM dungeon_runs r')).rows;
       const walletBefore = (await pool.query('SELECT xmin::text AS version,to_jsonb(w)::text AS row FROM player_currencies w')).rows;
       await runMigrations(db, w.t.logger, folder);
-      expect((await pool.query("SELECT xmin::text AS version,(to_jsonb(r)-'unbanked_waifubux'-'event_states')::text AS row FROM dungeon_runs r")).rows).toEqual(before);
+      expect((await pool.query("SELECT xmin::text AS version,(to_jsonb(r)-'unbanked_waifubux'-'event_states'-'encounter_states')::text AS row FROM dungeon_runs r")).rows).toEqual(before);
       expect((await pool.query('SELECT xmin::text AS version,to_jsonb(w)::text AS row FROM player_currencies w')).rows).toEqual(walletBefore);
       expect((await pool.query('SELECT unbanked_currency,unbanked_waifubux FROM dungeon_runs')).rows).toEqual([{ unbanked_currency: 45, unbanked_waifubux: 0 }]);
       await runMigrations(db, w.t.logger, folder);

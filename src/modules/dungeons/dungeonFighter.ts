@@ -38,6 +38,17 @@ export interface DungeonFighter {
   modifiers?: CombatModifiers;
   /** Absent on historical runs; never filled from the live Buddy on read. */
   rewardBonuses?: DungeonRewardBonuses;
+  /**
+   * What a capture reads from the pinned Buddy, frozen at start beside
+   * `rewardBonuses`: her affinity and rarity (the matchup wheel) and her
+   * species' authored Buddy Bonus (`capture_chance`, `player_xp_gain`).
+   *
+   * Absent on runs started before dungeon captures. Such a run can hold no
+   * encounter — none could be published then — but if one ever reaches a
+   * capture, the pinned species is read from current content by slug. The
+   * live Buddy is never substituted.
+   */
+  captureBuddy?: DungeonCaptureBuddy;
   gear: Record<EquipmentSlot, DungeonFighterGear>;
 }
 
@@ -45,6 +56,21 @@ export interface DungeonRewardBonuses {
   affectionGainPercent: number;
   essenceGainPercent: number;
   source: { speciesSlug: string; effectId: BuddyBonusEffectId; bonusName: string } | null;
+}
+
+export interface DungeonCaptureBuddy {
+  affinity: string;
+  rarity: string;
+  bonus: BuddyBonus | null;
+}
+
+/** Copy the pinned Buddy's capture inputs once at start; the bonus is deep-copied, so a reload cannot retune it. */
+export function pinnedCaptureBuddy(species: { affinity: string; rarity: string }, bonus: BuddyBonus | null): DungeonCaptureBuddy {
+  return {
+    affinity: species.affinity,
+    rarity: species.rarity,
+    bonus: bonus ? (JSON.parse(JSON.stringify(bonus)) as BuddyBonus) : null,
+  };
 }
 
 /** Copy scalar values once at start; later content reloads cannot retune them. */

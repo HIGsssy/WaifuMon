@@ -1,3 +1,5 @@
+import { dungeonEncounterPackageIssues } from './validation/dungeonEncounterValidation';
+import { loadDungeonEncounterValidationSource, type DungeonSpeciesAccessLookup } from './dungeonSpeciesPolicy';
 import { sceneSpriteCatalogue, freezeSceneSprites, readSceneSpriteSnapshot, pinnedSceneSpriteCatalogue } from './sceneSprites/sceneSpriteSnapshot';
 import { hasSceneSprites } from './sceneSprites/sceneSpriteDefinition';
 /**
@@ -455,6 +457,12 @@ export interface DungeonContentServiceDeps {
   /** Written into exported packages: `staging`, `production`, `development`. */
   environment?: string | undefined;
   getItemSlugs?: (() => readonly string[]) | undefined;
+  /**
+   * A species' `dungeonAccess` from loaded content: which dungeons may offer a
+   * restricted species, per-player limits and direct-rescue permission.
+   * Absent, no species lists any dungeon, so only untagged species pass.
+   */
+  getSpeciesAccess?: DungeonSpeciesAccessLookup | undefined;
   artworkStorage?: Pick<ArtworkStorage, 'exists'> | undefined;
   logger?: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'> | undefined;
 }
@@ -565,18 +573,22 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   const { db } = deps;
 
   async function validationContext(tx: DbOrTx = db, rewardContext?: DungeonValidationContext): Promise<DungeonValidationContext> {
-    const [enemies, tables, currencies, managed, sceneSprites] = await Promise.all([
+    const [enemies, tables, currencies, managed, sceneSprites, encounterSource] = await Promise.all([
       deps.enemies.definitions(tx),
       tx.select({ id: rewardTables.tableId, enabled: rewardTables.enabled }).from(rewardTables).where(eq(rewardTables.kind, 'expedition')),
       tx.select({ key: progressionCurrencies.currencyKey, enabled: progressionCurrencies.enabled }).from(progressionCurrencies),
       managedArtworkIndex(tx),
       sceneSpriteCatalogue(tx, deps.artworkStorage),
+      // Live species policy and capture items: an encounter is judged at
+      // validate, publish and rollback against the catalogue as it stands now.
+      loadDungeonEncounterValidationSource(tx, deps.getSpeciesAccess),
     ]);
     const rewards = rewardContext ?? await loadDungeonRewardContext(tx);
     const assetsDir = deps.assetsDir;
     return {
       ...rewards,
       sceneSprites,
+      encounterSource,
       enemies: new Map(enemies.map((e) => [e.key, { enabled: e.enabled }])),
       rewardTables: new Map(tables.map((t) => [t.id, { enabled: t.enabled }])),
       currencies: rewardContext?.currencies ?? new Map(currencies.map((c) => [c.key, { enabled: c.enabled }])),
@@ -1467,6 +1479,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           if (hasErrors(issues)) throw new DungeonInvalidError(issues);
         }
         if (hasSceneSprites(definition)) throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'rooms', message: 'Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely. Remove placements from a copy to export it.' }]);
+        const encounterGate = dungeonEncounterPackageIssues(definition);
+        if (encounterGate.length) throw new DungeonInvalidError(encounterGate);
         const enemies = new Map((await deps.enemies.definitions(tx)).map((e) => [e.key, e]));
         let pkg: DungeonPackage;
         try {

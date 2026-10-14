@@ -820,6 +820,20 @@ export function ActivityCard({
   );
   const Icon = meta.icon;
   const eventActivity = isEventActivity(action);
+  if (action.type === 'wild_encounter' || action.type === 'rescue') {
+    return (
+      <li className="rounded-lg border border-border p-2.5">
+        <button type="button" aria-expanded={open} aria-label={`Activity ${index + 1}: ${action.type === 'rescue' ? 'Rescue' : 'Wild encounter'}`} onClick={onToggle}>
+          {action.label || (action.type === 'rescue' ? 'Rescue' : 'Wild encounter')}
+        </button>
+        {open && <div className="space-y-2 pt-2" data-testid="encounter-read-only">
+          <p className="text-sm text-ink-muted">Encounter authoring is not available yet. This activity is read-only and is preserved when other dungeon settings are saved.</p>
+          <pre className="overflow-auto text-xs">{JSON.stringify(action, null, 2)}</pre>
+          {action.source?.kind === 'pool' && <pre className="overflow-auto text-xs">{JSON.stringify(definition.speciesPools?.find((p) => p.id === (action.source?.kind === 'pool' ? action.source.poolId : '')), null, 2)}</pre>}
+        </div>}
+      </li>
+    );
+  }
   return (
     <li
       className={`rounded-lg border ${issues.some((i) => i.level !== 'review') ? 'border-danger/60' : open ? 'border-accent' : 'border-border'}`}

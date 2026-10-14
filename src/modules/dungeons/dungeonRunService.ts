@@ -49,6 +49,39 @@ import { sceneSpritesForRoom, type SceneSpriteRenderVisual } from './sceneSprite
  * Shards and WaifuBux stay on the run until both are settled atomically.
  * Claims remain in the run row; there is no separate delivery queue.
  *
+ * ## Encounters
+ *
+ * A wild encounter or rescue is the one place a dungeon reaches the capture
+ * system, and it does so through `captureService`'s extracted operations,
+ * **inside this step's transaction** — never a transaction of their own. The
+ * charm, the Microdose charge, the owned copy, XP, quests, the acquisition
+ * ledger, the run row and its history commit together or not at all.
+ *
+ * Lock order of a capture or rescue step, fixed:
+ *
+ *   1. the run row (`FOR UPDATE`) — every step;
+ *   2. the player row (`FOR UPDATE`) — taken here, before anything is read, so
+ *      the inventory, Microdose and ledger facts the engine judges by are the
+ *      ones the writes then meet, and so the order agrees with a hunt's
+ *      (`players` before `player_inventory`);
+ *   3. `player_inventory`, `player_active_effects`, `player_waifus`, the
+ *      acquisition ledger;
+ *   4. `players` again (already held) for XP, then `player_daily_quests`;
+ *   5. the run row and `dungeon_run_events`.
+ *
+ * That order agrees with a hunt but is the reverse of a *hunted capture*,
+ * which takes `player_inventory` and `player_active_effects` before `players`
+ * (the same disagreement the hunt itself has with it: #0111). No order agrees
+ * with both. So once it holds the player row, a capture or rescue step waits
+ * only briefly (`ENCOUNTER_LOCK_TIMEOUT_MS`) for any further lock: if a
+ * hunted capture or an item use is mid-flight on the same rows, the dungeon
+ * step is the one that gives way — it rolls back whole, the other finishes,
+ * and the step is run again. A deadlock victim (`40P01`) is retried likewise.
+ *
+ * Retrying is safe because the capture roll and the new copy's Base SP are
+ * the engine's place-keyed draws, passed in: a step that rolled back decides
+ * exactly what it decided before.
+ *
  * ## Eligibility, allowance and regions
  *
  * Unchanged from the prototype: the `equipment` feature unlock, an active
@@ -56,21 +89,30 @@ import { sceneSpritesForRoom, type SceneSpriteRenderVisual } from './sceneSprite
  * and never refunded; a dungeon is startable only from one of its regions,
  * while an active run is playable anywhere.
  */
-import { and, asc, eq, inArray } from 'drizzle-orm';
+import { and, asc, eq, gt, inArray, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import { managedArtworkKey, resolveManagedArtworkIds } from '../artworkAssets/managedArtworkLookup';
 import {
   artworkAssets,
   dungeonRunEvents,
   dungeonRuns,
+  dungeonSpeciesAcquisitions,
   items,
   playerInventory,
   players,
   rewardTables,
+  species,
+  type DungeonAcquisitionMode,
   type DungeonRunRow,
+  type PlayerWaifuRow,
+  type SpeciesRow,
 } from '../../db/schema';
 import {
+  CaptureItemNotEligibleError,
+  DungeonCaptureItemUnavailableError,
+  DungeonCaptureQuoteChangedError,
   DungeonDailyLimitError,
+  DungeonEncounterSpeciesUnavailableError,
   DungeonEventItemUnavailableError,
   DungeonInvalidError,
   DungeonRewardItemUnavailableError,
@@ -80,7 +122,11 @@ import {
   DungeonUnavailableError,
   EquipmentRewardConfigError,
   FeatureLockedError,
+  DungeonStepContendedError,
   InsufficientItemsError,
+  isLockContentionError,
+  ItemNotFoundError,
+  ItemNotUsableError,
   PlayerNotFoundError,
   uniqueViolationConstraint,
 } from '../../shared/errors';
@@ -92,6 +138,7 @@ import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import type { ExpeditionRewardTable } from '../content/schemas';
 import type { CurrencyService } from '../currency/currencyService';
 import type { CollectionService } from '../collection/collectionService';
+import type { CaptureBuddyOverride, CaptureService } from '../capture/captureService';
 import { applyPercentModifierInt } from '../buddyBonus/buddyBonusEffects';
 import type { EnemyCatalogueService } from '../enemies/enemyService';
 import type { CombatStatsService } from '../equipment/combatStatsService';
@@ -106,13 +153,25 @@ import { parseRewardTableRow } from '../rewardTables/rewardTableStore';
 import {
   dungeonDependencies,
   eventOf,
+  hasDungeonEncounters,
   isCombatAction,
+  isEncounterAction,
   type DungeonArtworkRef,
   type DungeonDefinition,
+  type EncounterAction,
 } from './content/dungeonDefinition';
 import type { DungeonAllowanceService, DungeonDailyAllowance } from './dungeonAllowanceService';
 import type { DungeonContentService } from './dungeonContentService';
-import { fighterFromCombatStats, pinnedRewardBonuses, type DungeonFighter } from './dungeonFighter';
+import { fighterFromCombatStats, pinnedCaptureBuddy, pinnedRewardBonuses, type DungeonFighter } from './dungeonFighter';
+import {
+  dungeonAcquisitionCounts,
+  dungeonEncounterSpeciesSlugs,
+  dungeonSpeciesPolicy,
+  loadSpeciesBySlug,
+  type DungeonSpeciesAccessLookup,
+} from './dungeonSpeciesPolicy';
+import { captureRules, encounterInstanceKey } from './engine/encounters';
+import { dungeonSpeciesUnavailableReason } from './validation/dungeonEncounterValidation';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import { describeEventResults, eventInstanceKey, type DungeonEventResultView } from './engine/events';
 import { equipmentGrantKey, rewardClaimKey } from './engine/rewards';
@@ -121,8 +180,12 @@ import { applyDungeonEffects } from './engine/sandbox';
 import { randomDungeonSeed } from './engine/seeds';
 import { startDungeonRun, stepDungeon } from './engine/step';
 import type {
+  DungeonAcquiredWaifu,
+  DungeonCaptureReceipt,
   DungeonEffect,
   DungeonEffectReceipt,
+  DungeonEncounterFacts,
+  DungeonRescueReceipt,
   DungeonEffectsPort,
   DungeonEngineContext,
   DungeonEquipmentGrant,
@@ -284,6 +347,9 @@ export interface DungeonDetailView {
   daily: DungeonDailyAllowance;
 }
 
+/** What a live encounter step did for real, for the caller's result screen. Absent when the step did neither. */
+export type DungeonEncounterReceipt = DungeonCaptureReceipt | DungeonRescueReceipt;
+
 /**
  * - `applied` — this call moved the run;
  * - `refused` — the input is not legal for the run as it stands (`refusal`
@@ -293,6 +359,8 @@ export interface DungeonActionResult {
   status: 'applied' | 'refused';
   refusal: DungeonRefusal | null;
   run: DungeonRunView;
+  /** The capture attempt or rescue this step carried out, if it did one. */
+  encounterReceipts?: DungeonEncounterReceipt[];
 }
 
 export interface DungeonRunEvent {
@@ -347,6 +415,14 @@ export interface DungeonRunServiceDeps {
   collection: Pick<CollectionService, 'awardCopyAffection'>;
   inventory: Pick<InventoryService, 'addItem' | 'consumeItem'>;
   equipmentRewards: Pick<EquipmentRewardService, 'grantChosenEquipmentReward'>;
+  /**
+   * The capture system's transaction-joining operations. Optional so wirings
+   * with no encounters keep working; without it a run that reaches a capture
+   * or rescue fails that step and rolls back.
+   */
+  capture?: Pick<CaptureService, 'quoteSpecies' | 'resolveCaptureAttempt' | 'grantSpeciesCopy'> | undefined;
+  /** A species' `dungeonAccess` from loaded content. Absent, no species lists any dungeon. */
+  speciesAccess?: DungeonSpeciesAccessLookup | undefined;
   logger?: Pick<Logger, 'debug' | 'info' | 'warn' | 'error'> | undefined;
   /** A region's display name, from the region catalogue. Defaults to a title-cased id. */
   regionName?: ((regionId: string) => string) | undefined;
@@ -356,6 +432,16 @@ export interface DungeonRunServiceDeps {
    */
   combatRules?: Partial<CombatRules> | undefined;
 }
+
+/**
+ * How long a capture or rescue step waits for a row lock once it holds the
+ * player row, before giving way. Well under Postgres's `deadlock_timeout`
+ * (1s by default), so the dungeon step yields before the deadlock detector
+ * would pick a victim — which could be the player's hunted capture.
+ */
+const ENCOUNTER_LOCK_TIMEOUT_MS = 250;
+/** Times a step that gave way is run again before the player is asked to. */
+const ENCOUNTER_STEP_ATTEMPTS = 4;
 
 /** The ledger reason a settlement banks under. */
 const BANK_REASON = {
@@ -385,6 +471,8 @@ function stateOf(row: DungeonRunRow): DungeonRunState {
     rewardClaims: row.rewardClaims as unknown as DungeonRunState['rewardClaims'],
     // The engine creates this only when a run meets an event; a run that never has keeps none.
     ...(Object.keys(row.eventStates).length > 0 ? { events: row.eventStates as unknown as NonNullable<DungeonRunState['events']> } : {}),
+    // Likewise: created on the first encounter, absent on every run without one.
+    ...(Object.keys(row.encounterStates).length > 0 ? { encounters: row.encounterStates as unknown as NonNullable<DungeonRunState['encounters']> } : {}),
     unbankedCurrency: row.unbankedCurrency,
     unbankedWaifubux: row.unbankedWaifubux,
     recent: row.recent as unknown as DungeonRunState['recent'],
@@ -567,6 +655,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     const snapshot = row.dependencySnapshot as unknown as DungeonDependencySnapshot;
     const fighter = row.fighter as unknown as DungeonFighter;
     const facts = await eventItemFacts(tx, row.playerId, pinned.definition, stateOf(row));
+    const encounterFacts = await readEncounterFacts(tx, row, pinned.definition, stateOf(row), fighter);
     return {
       row,
       definition: pinned.definition,
@@ -582,9 +671,97 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         runKey: String(row.id),
         rewards,
         inventory: facts.inventory,
+        encounterFacts,
         combatRules: deps.combatRules,
       },
     };
+  }
+
+  /** The run's pinned Buddy, as the capture service reads one. Never the live Buddy. */
+  function pinnedBuddy(fighter: DungeonFighter): CaptureBuddyOverride {
+    return {
+      waifuId: fighter.waifuId,
+      speciesSlug: fighter.speciesSlug,
+      ...(fighter.captureBuddy ? { pinned: fighter.captureBuddy } : {}),
+    };
+  }
+
+  /** The encounter action the run stands on while it is offered and still open, with its species. */
+  function offeredEncounter(
+    definition: DungeonDefinition,
+    state: Pick<DungeonRunState, 'cursor' | 'encounters' | 'status'>,
+  ): { action: EncounterAction; species: string } | null {
+    if (state.status !== 'active' || state.cursor.actionId == null) return null;
+    const action = definition.rooms.find((r) => r.id === state.cursor.roomId)?.actions.find((a) => a.id === state.cursor.actionId);
+    if (!action || !isEncounterAction(action)) return null;
+    const instance = state.encounters?.[encounterInstanceKey(state.cursor.roomId, action.id)];
+    return instance?.status === 'offered' && instance.species !== null ? { action, species: instance.species } : null;
+  }
+
+  /**
+   * The live facts the pure engine judges an encounter by, read in the caller's
+   * transaction. Undefined for a definition without encounters, which costs it
+   * no query.
+   *
+   * `species` covers every slug the pinned revision can present: current
+   * `enabled`, tags and `dungeonAccess`, and how many copies this dungeon has
+   * already given this player. `items` is filled only while the run stands on
+   * an offered capture: each capture item the player holds, quoted by the
+   * capture service against the **pinned** Buddy. That quote is the number the
+   * player is shown, the number the engine rolls against, and — because the
+   * attempt recomputes it from the same inputs in the same transaction — the
+   * number the capture service resolves against.
+   */
+  async function readEncounterFacts(
+    tx: DbOrTx,
+    row: DungeonRunRow,
+    definition: DungeonDefinition,
+    state: Pick<DungeonRunState, 'cursor' | 'encounters' | 'status'>,
+    fighter: DungeonFighter,
+  ): Promise<DungeonEncounterFacts | undefined> {
+    if (!hasDungeonEncounters(definition)) return undefined;
+    const slugs = dungeonEncounterSpeciesSlugs(definition);
+    const bySlug = await loadSpeciesBySlug(tx, slugs);
+    const counts = await dungeonAcquisitionCounts(tx, row.playerId, row.dungeonKey);
+    const speciesFacts: Record<string, DungeonEncounterFacts['species'][string]> = {};
+    for (const slug of slugs) {
+      const found = bySlug.get(slug);
+      const policy = dungeonSpeciesPolicy(found, deps.speciesAccess);
+      const count = found ? (counts.get(found.id) ?? 0) : 0;
+      const reason = dungeonSpeciesUnavailableReason(policy, row.dungeonKey, false, count);
+      const direct = dungeonSpeciesUnavailableReason(policy, row.dungeonKey, true, count);
+      speciesFacts[slug] = {
+        available: reason === null,
+        ...(reason ? { reason } : {}),
+        name: found?.name ?? slug,
+        rarity: found?.rarity ?? '',
+        directRescue: { available: direct === null, ...(direct ? { reason: direct } : {}) },
+      };
+    }
+
+    const offered = offeredEncounter(definition, state);
+    const target = offered && bySlug.get(offered.species);
+    if (!offered || !target || !deps.capture || captureRules(offered.action) === null) return { species: speciesFacts };
+    const held = await tx
+      .select({ item: items, quantity: playerInventory.quantity })
+      .from(playerInventory)
+      .innerJoin(items, eq(playerInventory.itemId, items.id))
+      .where(and(eq(playerInventory.playerId, row.playerId), eq(items.category, 'capture'), gt(playerInventory.quantity, 0)))
+      .orderBy(asc(items.slug));
+    const itemFacts: Record<string, NonNullable<DungeonEncounterFacts['items']>[string]> = {};
+    for (const { item, quantity } of held) {
+      const quote = await deps.capture.quoteSpecies(tx, row.playerId, target, item, pinnedBuddy(fighter));
+      itemFacts[item.slug] = {
+        owned: quantity,
+        eligible: item.enabled && quote.eligible,
+        // Global rules have no further say; the encounter's own narrowing is the engine's.
+        permitted: true,
+        guaranteed: quote.guaranteed,
+        chance: quote.chance,
+        consumesMicrodose: !quote.guaranteed && quote.captureBonusModifier !== 0,
+      };
+    }
+    return { species: speciesFacts, items: itemFacts };
   }
 
   /**
@@ -620,7 +797,8 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
   /** The run as the row now stands, with the inventory facts of whatever it is standing on now. */
   async function reloaded(tx: DbOrTx, run: LoadedRun, row: DungeonRunRow): Promise<LoadedRun> {
     const facts = await eventItemFacts(tx, row.playerId, run.definition, stateOf(row));
-    return { ...run, row, eventItemNames: facts.names, ctx: { ...run.ctx, inventory: facts.inventory } };
+    const encounterFacts = await readEncounterFacts(tx, row, run.definition, stateOf(row), run.fighter);
+    return { ...run, row, eventItemNames: facts.names, ctx: { ...run.ctx, inventory: facts.inventory, encounterFacts } };
   }
 
   async function currencyView(tx: DbOrTx, run: LoadedRun): Promise<DungeonCurrencyView | null> {
@@ -801,9 +979,155 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     return { type: 'consume_items', key: effect.key, items: wanted };
   }
 
+  // ── encounters: the live capture and rescue effects ───────────────────────
+
+  function captureDep(): NonNullable<DungeonRunServiceDeps['capture']> {
+    if (!deps.capture) throw new Error('Dungeon encounters need the capture service, which this run service was built without');
+    return deps.capture;
+  }
+
+  /** The engine's own draw as the capture service's generator: one fixed value, so Base SP is the place-keyed roll. */
+  function fixedDraw(value: number) {
+    return { next: () => value, intInclusive: (min: number, max: number) => Math.floor(value * (max - min + 1)) + min };
+  }
+
+  /**
+   * The species a grant is about to create, judged against live policy one
+   * last time. The engine judged her by facts read moments ago in this
+   * transaction; this is the same rule on a fresh, share-locked row and a
+   * fresh ledger count, so a species disabled or restricted, or a limit
+   * reached, between the offer and the grant is refused here with nothing
+   * spent. The throw rolls the step back; the retry resolves `unavailable`.
+   */
+  async function speciesForGrant(tx: DbOrTx, run: LoadedRun, slug: string, direct: boolean): Promise<SpeciesRow> {
+    const { row } = run;
+    const [found] = await tx.select().from(species).where(eq(species.slug, slug)).for('share');
+    const counts = found ? await dungeonAcquisitionCounts(tx, row.playerId, row.dungeonKey) : new Map<number, number>();
+    const reason = dungeonSpeciesUnavailableReason(
+      dungeonSpeciesPolicy(found, deps.speciesAccess), row.dungeonKey, direct, found ? (counts.get(found.id) ?? 0) : 0,
+    );
+    if (!found || reason) {
+      deps.logger?.info(
+        { tag: 'dungeons/encounter-species-unavailable', runId: row.id, dungeonKey: row.dungeonKey, slug, reason: reason ?? 'missing' },
+        'dungeon encounter grant refused by live species policy; the step rolls back',
+      );
+      throw new DungeonEncounterSpeciesUnavailableError(row.id, slug, reason ?? 'missing');
+    }
+    return found;
+  }
+
+  /** One ledger row per copy granted. Its unique grant key is the second lock on a double grant. */
+  async function recordAcquisition(
+    tx: DbOrTx, run: LoadedRun, place: { roomId: string; actionId: string; grantKey: string },
+    mode: DungeonAcquisitionMode, found: SpeciesRow, waifu: PlayerWaifuRow, opts: { replay?: boolean } = {},
+  ): Promise<void> {
+    const insert = tx.insert(dungeonSpeciesAcquisitions).values({
+      playerId: run.row.playerId, speciesId: found.id, dungeonKey: run.row.dungeonKey, runId: run.row.id,
+      roomId: place.roomId, actionId: place.actionId, mode, waifuId: waifu.id, grantKey: place.grantKey,
+    });
+    // A replayed rescue found the copy its key already made; its ledger row is then already there too.
+    await (opts.replay ? insert.onConflictDoNothing({ target: dungeonSpeciesAcquisitions.grantKey }) : insert);
+  }
+
+  function acquired(found: SpeciesRow, waifu: PlayerWaifuRow, facts: { isDuplicate: boolean; isNewDex: boolean }): DungeonAcquiredWaifu {
+    return { waifuId: waifu.id, speciesSlug: found.slug, name: found.name, rarity: found.rarity, baseSp: waifu.baseSp, ...facts };
+  }
+
+  /**
+   * One real capture attempt. The engine decided it — which charm, the quoted
+   * chance, the place-keyed roll, and so the outcome. This spends the charm
+   * and the Microdose charge and, on a success, creates the copy with her XP,
+   * quests and ledger row, all through `captureService.resolveCaptureAttempt`
+   * in this transaction.
+   *
+   * The capture service recomputes the chance from the same inputs. Should it
+   * disagree with the quote the engine rolled against, the facts moved under
+   * the step (a Microdose charge spent by a hunted capture, say) and the step
+   * is rolled back rather than committing a result the player was not shown.
+   */
+  async function captureAttempt(tx: DbOrTx, run: LoadedRun, effect: Extract<DungeonEffect, { type: 'capture_attempt' }>): Promise<DungeonEffectReceipt> {
+    const { row } = run;
+    const capture = captureDep();
+    const action = run.definition.rooms.find((r) => r.id === effect.roomId)?.actions.find((a) => a.id === effect.actionId);
+    const rules = action && isEncounterAction(action) ? captureRules(action) : null;
+    if (!rules) throw new Error(`Dungeon run ${row.id} capture effect "${effect.key}" names no capture encounter`);
+    const found = await speciesForGrant(tx, run, effect.species, false);
+    const unusable = (cause?: unknown) => {
+      deps.logger?.info(
+        { tag: 'dungeons/capture-item-unavailable', runId: row.id, key: effect.key, slug: effect.attempt.item },
+        'dungeon capture attempt aborted: its charm can no longer be spent; the step rolls back',
+      );
+      return new DungeonCaptureItemUnavailableError(row.id, effect.attempt.item, cause);
+    };
+    const [item] = await tx.select().from(items).where(eq(items.slug, effect.attempt.item));
+    if (!item) throw unusable();
+
+    let resolved: Awaited<ReturnType<CaptureService['resolveCaptureAttempt']>>;
+    try {
+      resolved = await capture.resolveCaptureAttempt(tx, {
+        playerId: row.playerId,
+        species: found,
+        item,
+        finalAttempt: effect.attempt.n >= rules.maxAttempts,
+        roll: effect.attempt.roll,
+        rng: fixedDraw(effect.spRoll),
+        buddyOverride: pinnedBuddy(run.fighter),
+        provenance: { acquiredVia: effect.mode === 'rescue' ? 'dungeon_rescue' : 'dungeon_capture', grantKey: effect.grantKey },
+        logContext: { dungeonRunId: row.id, dungeonKey: row.dungeonKey, attemptKey: effect.key },
+      });
+    } catch (cause) {
+      if (cause instanceof InsufficientItemsError || cause instanceof ItemNotFoundError ||
+        cause instanceof ItemNotUsableError || cause instanceof CaptureItemNotEligibleError) throw unusable(cause);
+      throw cause;
+    }
+    const sameQuote = resolved.guaranteed === effect.guaranteed &&
+      (resolved.guaranteed || Math.abs(resolved.chance - effect.attempt.chance) < 1e-9);
+    if (!sameQuote || resolved.success !== effect.attempt.success) {
+      deps.logger?.info(
+        { tag: 'dungeons/capture-quote-changed', runId: row.id, key: effect.key, quoted: effect.attempt.chance, resolved: resolved.chance },
+        'dungeon capture attempt aborted: its chance changed between the quote and the spend; the step rolls back',
+      );
+      throw new DungeonCaptureQuoteChangedError(row.id, effect.key);
+    }
+    if (resolved.newWaifu) {
+      await recordAcquisition(tx, run, effect, effect.mode === 'rescue' ? 'rescue_capture' : 'capture', found, resolved.newWaifu);
+    }
+    return {
+      type: 'capture_attempt', key: effect.key, simulated: false, grantKey: effect.grantKey,
+      roomId: effect.roomId, actionId: effect.actionId, species: effect.species, mode: effect.mode,
+      item: item.slug, success: resolved.success, outcome: resolved.outcome, guaranteed: resolved.guaranteed,
+      chance: resolved.chance, roll: resolved.roll, xpGranted: resolved.xpGranted, levelUps: resolved.levelUps,
+      microdose: resolved.effect && { sourceItemSlug: resolved.effect.sourceItemSlug, chargesRemaining: resolved.effect.chargesRemaining },
+      acquired: resolved.newWaifu ? acquired(found, resolved.newWaifu, resolved) : null,
+    };
+  }
+
+  /** One real direct rescue: the copy, her XP and her ledger row. No charm, no roll, no capture quest. */
+  async function rescueGrant(tx: DbOrTx, run: LoadedRun, effect: Extract<DungeonEffect, { type: 'rescue_grant' }>): Promise<DungeonEffectReceipt> {
+    const { row } = run;
+    const capture = captureDep();
+    const found = await speciesForGrant(tx, run, effect.species, true);
+    const grant = await capture.grantSpeciesCopy(tx, {
+      playerId: row.playerId,
+      species: found,
+      grantKey: effect.grantKey,
+      acquiredVia: 'dungeon_rescue',
+      rng: fixedDraw(effect.spRoll),
+      buddyOverride: pinnedBuddy(run.fighter),
+      logContext: { dungeonRunId: row.id, dungeonKey: row.dungeonKey },
+    });
+    await recordAcquisition(tx, run, effect, 'rescue_direct', found, grant.waifu, { replay: grant.replayed });
+    return {
+      type: 'rescue_grant', grantKey: effect.grantKey, simulated: false,
+      roomId: effect.roomId, actionId: effect.actionId, species: effect.species,
+      replayed: grant.replayed, xpGranted: grant.xpGranted, levelUps: grant.levelUps,
+      acquired: acquired(found, grant.waifu, grant),
+    };
+  }
+
   /**
    * Carries the engine's effects out for real, inside the step's transaction.
-   * The only place a dungeon touches inventory, currency or Equipment.
+   * The only place a dungeon touches inventory, currency, Equipment or ownership.
    */
   function liveEffectsPort(tx: DbOrTx, run: LoadedRun): DungeonEffectsPort {
     const { row } = run;
@@ -860,6 +1184,8 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
           }
           return { type: 'grant_rewards', claimKey, waifubux: plan.waifubux, items: granted, equipment };
         }
+        if (effect.type === 'capture_attempt') return captureAttempt(tx, run, effect);
+        if (effect.type === 'rescue_grant') return rescueGrant(tx, run, effect);
         if (effect.type === 'consume_items') return consumeItems(tx, run, effect);
 
         const { end, currencyKey, requestKey } = effect;
@@ -936,7 +1262,20 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         });
       } else if (receipt.type === 'consume_items') {
         log.push({ type: 'items_consumed', roomId: null, actionId: null, payload: { key: receipt.key, items: receipt.items } });
-      } else if (settlement) {
+      } else if ((receipt.type === 'capture_attempt' || receipt.type === 'rescue_grant') && !receipt.simulated && receipt.acquired) {
+        log.push({
+          type: 'waifu_acquired',
+          roomId: receipt.roomId,
+          actionId: receipt.actionId,
+          payload: {
+            grantKey: receipt.grantKey,
+            mode: receipt.type === 'rescue_grant' ? 'rescue_direct' : receipt.mode === 'rescue' ? 'rescue_capture' : 'capture',
+            ...receipt.acquired,
+            xpGranted: receipt.xpGranted,
+            ...(receipt.type === 'rescue_grant' ? { replayed: receipt.replayed } : { attemptKey: receipt.key, item: receipt.item }),
+          },
+        });
+      } else if (receipt.type === 'settle_run' && settlement) {
         settlement = {
           ...settlement,
           banked: receipt.banked,
@@ -1012,9 +1351,15 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       }
 
       const fighter = fighterFromCombatStats(await deps.combatStats.snapshotCombatStats(tx, playerId));
-      fighter.rewardBonuses = pinnedRewardBonuses(
-        fighter.speciesSlug, deps.buddyBonus?.bonusForSpeciesSlug(fighter.speciesSlug) ?? null,
-      );
+      const buddyBonus = deps.buddyBonus?.bonusForSpeciesSlug(fighter.speciesSlug) ?? null;
+      fighter.rewardBonuses = pinnedRewardBonuses(fighter.speciesSlug, buddyBonus);
+      // Frozen beside the reward bonuses, and for the same reason: a capture
+      // later in this run reads the Buddy it started with, as she was then.
+      const [buddySpecies] = await tx
+        .select({ affinity: species.affinity, rarity: species.rarity })
+        .from(species)
+        .where(eq(species.slug, fighter.speciesSlug));
+      if (buddySpecies) fighter.captureBuddy = pinnedCaptureBuddy(buddySpecies, buddyBonus);
       const snapshot = await buildSnapshot(tx, definition);
       // Spent before the run is created so an exhausted allowance is refused
       // cheaply; it is only kept if everything below commits.
@@ -1098,6 +1443,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         roomStates: state.rooms as unknown as Record<string, unknown>,
         rewardClaims: state.rewardClaims as unknown as Record<string, unknown>,
         eventStates: (state.events ?? {}) as unknown as Record<string, unknown>,
+        encounterStates: (state.encounters ?? {}) as unknown as Record<string, unknown>,
         unbankedCurrency: state.unbankedCurrency,
         unbankedWaifubux: state.unbankedWaifubux ?? 0,
         recent: state.recent as unknown as Record<string, unknown>[],
@@ -1191,13 +1537,20 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       if (!Number.isSafeInteger(runId) || runId <= 0) throw new DungeonRunNotFoundError(runId);
       // Abandoning is the one thing a player may always do, so it does not sit behind the unlock.
       if (input.type !== 'abandon') await requireUnlocked(playerId);
-      return db.transaction(async (tx) => {
+      const step = () => db.transaction(async (tx): Promise<DungeonActionResult> => {
         const [row] = await tx
           .select()
           .from(dungeonRuns)
           .where(and(eq(dungeonRuns.id, runId), eq(dungeonRuns.playerId, playerId)))
           .for('update');
         if (!row) throw new DungeonRunNotFoundError(runId);
+        // A capture or rescue writes inventory, ownership and XP. The player
+        // row is locked second, straight after the run and before any fact is
+        // read: see "Encounters" at the top of this file.
+        if (input.type === 'capture' || input.type === 'rescue') {
+          await tx.select({ id: players.id }).from(players).where(eq(players.id, playerId)).for('update');
+          await tx.execute(sql.raw(`set local lock_timeout = '${ENCOUNTER_LOCK_TIMEOUT_MS}ms'`));
+        }
         const run = await load(tx, row);
         const result = stepDungeon(stateOf(row), input, run.ctx);
         if (result.status === 'refused') {
@@ -1226,8 +1579,31 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
             `dungeon run ${extra.settlement.outcome}`,
           );
         }
-        return { status: 'applied', refusal: null, run: await runView(tx, await reloaded(tx, run, written), result.combat.at(-1)?.events ?? null) };
+        const encounterReceipts = receipts.filter((r): r is DungeonEncounterReceipt =>
+          (r.type === 'capture_attempt' || r.type === 'rescue_grant') && !r.simulated);
+        return {
+          status: 'applied',
+          refusal: null,
+          run: await runView(tx, await reloaded(tx, run, written), result.combat.at(-1)?.events ?? null),
+          ...(encounterReceipts.length > 0 ? { encounterReceipts } : {}),
+        };
       });
+      // A step that gave way wrote nothing: its transaction rolled back whole.
+      // It is a pure function of the stored run and place-keyed draws, so
+      // running it again decides exactly what it decided before.
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return await step();
+        } catch (err) {
+          if (!isLockContentionError(err)) throw err;
+          deps.logger?.warn(
+            { tag: 'dungeons/step-contended', runId, playerId, inputType: input.type, attempt },
+            'dungeon step gave way to concurrent activity on the player and rolled back',
+          );
+          if (attempt >= ENCOUNTER_STEP_ATTEMPTS) throw new DungeonStepContendedError(runId, err);
+          await new Promise((resolve) => setTimeout(resolve, 40 * attempt));
+        }
+      }
     },
 
     async history(runId) {

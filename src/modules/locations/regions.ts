@@ -82,5 +82,24 @@ export const REGION_EXCLUSIVE_TAG = 'region_exclusive';
 /** `["region_exclusive"]` — the containment operand for a jsonb `@>` test. */
 export const REGION_EXCLUSIVE_TAG_JSON = JSON.stringify([REGION_EXCLUSIVE_TAG]);
 
+/**
+ * The species tag that keeps a WaifuMon out of the wild altogether: she is
+ * never met by hunting or by a scripted spawn, and is offered only by the
+ * dungeons her content lists in `dungeonAccess`.
+ *
+ * It follows `region_exclusive` exactly, and is enforced at the same points:
+ * content validation (a tagged species in any region pool is fatal), every
+ * hunt fallback and selector pool, and the spawner's named-slug lookup.
+ */
+export const DUNGEON_EXCLUSIVE_TAG = 'dungeon_exclusive';
+
+/** `["dungeon_exclusive"]` — the containment operand for a jsonb `@>` test. */
+export const DUNGEON_EXCLUSIVE_TAG_JSON = JSON.stringify([DUNGEON_EXCLUSIVE_TAG]);
+
+/** True when a dungeon may offer a species only with an explicit `dungeonAccess` entry. */
+export function isDungeonRestricted(tags: readonly string[]): boolean {
+  return tags.includes(REGION_EXCLUSIVE_TAG) || tags.includes(DUNGEON_EXCLUSIVE_TAG);
+}
+
 /** SQL fragment listing every region id, for CHECK constraints in schema.ts. */
 export const REGION_SQL_LIST = REGIONS.map((r) => `'${r}'`).join(',');

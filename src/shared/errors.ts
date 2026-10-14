@@ -435,6 +435,22 @@ export class CaptureItemNotEligibleError extends AppError {
   }
 }
 
+/**
+ * A capture or direct grant carried a `player_waifus.grant_key` that already
+ * names a copy it cannot be: the capture was resolved before, or the key
+ * belongs to another player or species. Nothing is granted a second time; the
+ * caller's transaction must roll back.
+ */
+export class CaptureGrantKeyConflictError extends AppError {
+  constructor(grantKey: string) {
+    super(
+      'CAPTURE_GRANT_KEY_CONFLICT',
+      `Grant key "${grantKey}" has already been used`,
+      "That's already been resolved~ Nothing was spent.",
+    );
+  }
+}
+
 /** Capture was pressed with nothing selected for this encounter. */
 export class NoCaptureItemSelectedError extends AppError {
   constructor() {
@@ -1086,6 +1102,30 @@ export function isUniqueViolation(err: unknown): boolean {
     const e = err as { code?: unknown; cause?: unknown };
     if (e.code === '23505') return true;
     if (e.cause) return isUniqueViolation(e.cause);
+  }
+  return false;
+}
+
+/** True for a Postgres deadlock victim (`40P01`): its transaction was rolled back whole and may be retried. */
+export function isDeadlockError(err: unknown): boolean {
+  if (err && typeof err === 'object') {
+    const e = err as { code?: unknown; cause?: unknown };
+    if (e.code === '40P01') return true;
+    if (e.cause) return isDeadlockError(e.cause);
+  }
+  return false;
+}
+
+/**
+ * True when a transaction gave way to another over a row lock: a deadlock
+ * victim (`40P01`) or a `lock_timeout` it set for itself (`55P03`). Either
+ * way it wrote nothing and may be run again.
+ */
+export function isLockContentionError(err: unknown): boolean {
+  if (err && typeof err === 'object') {
+    const e = err as { code?: unknown; cause?: unknown };
+    if (e.code === '40P01' || e.code === '55P03') return true;
+    if (e.cause) return isLockContentionError(e.cause);
   }
   return false;
 }
@@ -1799,6 +1839,70 @@ export class DungeonEventItemUnavailableError extends AppError {
       `Dungeon run ${runId} event choice needs ${quantity} of item "${slug}", which the player no longer holds`,
       "You no longer have what that choice needs. Nothing was used and nothing changed.",
     );
+  }
+}
+
+/**
+ * A capture attempt's charm could not be spent: the player no longer holds it,
+ * or it has since been disabled or made ineligible for this rarity. The whole
+ * step rolled back: nothing was consumed or rolled, and the encounter is open.
+ */
+export class DungeonCaptureItemUnavailableError extends AppError {
+  constructor(readonly runId: number, readonly slug: string, cause?: unknown) {
+    super(
+      'DUNGEON_CAPTURE_ITEM_UNAVAILABLE',
+      `Dungeon run ${runId} capture attempt could not spend item "${slug}"`,
+      "You can't use that charm any more. Nothing was used and nothing changed. Pick another one.",
+    );
+    this.cause = cause;
+  }
+}
+
+/**
+ * The species an encounter offered stopped being obtainable between the step's
+ * facts and its grant: disabled, restricted, or the player's limit reached.
+ * The whole step rolled back, so nothing was spent; pressing again resolves the
+ * encounter as unavailable.
+ */
+export class DungeonEncounterSpeciesUnavailableError extends AppError {
+  constructor(readonly runId: number, readonly slug: string, readonly reason: string) {
+    super(
+      'DUNGEON_ENCOUNTER_SPECIES_UNAVAILABLE',
+      `Dungeon run ${runId} cannot grant species "${slug}": ${reason}`,
+      "She can't join you right now. Nothing was used. Please try again.",
+    );
+  }
+}
+
+/**
+ * The chance a capture attempt was decided against is not the chance the
+ * capture service computed when it came to spend the charm: a Microdose
+ * charge or the item changed in between. The whole step rolled back; the
+ * retry is decided against fresh facts with the same roll.
+ */
+export class DungeonCaptureQuoteChangedError extends AppError {
+  constructor(readonly runId: number, readonly attemptKey: string) {
+    super(
+      'DUNGEON_CAPTURE_QUOTE_CHANGED',
+      `Dungeon run ${runId} capture attempt "${attemptKey}" was quoted against facts that have since changed`,
+      'Your capture odds just changed. Nothing was used. Please try again.',
+    );
+  }
+}
+
+/**
+ * A capture or rescue step kept meeting another transaction on the player's
+ * rows (a hunted capture, an item use) and gave way each time. Nothing was
+ * spent or decided; the same press works once the other finishes.
+ */
+export class DungeonStepContendedError extends AppError {
+  constructor(readonly runId: number, cause?: unknown) {
+    super(
+      'DUNGEON_STEP_CONTENDED',
+      `Dungeon run ${runId} step gave way to concurrent activity on the player's rows`,
+      "You're doing a lot at once! Nothing was used. Please try that again.",
+    );
+    this.cause = cause;
   }
 }
 

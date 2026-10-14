@@ -37,6 +37,8 @@ export function sandboxEffectsPort(recorded: DungeonEffect[] = []): DungeonEffec
     recorded,
     async apply(effect): Promise<DungeonEffectReceipt> {
       recorded.push(effect);
+      if (effect.type === 'capture_attempt') return { type: 'capture_attempt', key: effect.key, simulated: true, success: effect.attempt.success };
+      if (effect.type === 'rescue_grant') return { type: 'rescue_grant', grantKey: effect.grantKey, simulated: true };
       if (effect.type === 'grant_rewards') {
         if (isDungeonRewardPlanV2(effect.plan)) {
           return {
@@ -96,6 +98,7 @@ export interface DungeonSandboxOptions {
   playerFlags?: DungeonEngineContext['playerFlags'];
   /** Item quantities to assume the player holds, by slug. Nothing is spent: consumption is only recorded. */
   inventory?: DungeonEngineContext['inventory'];
+  encounterFacts?: DungeonEngineContext['encounterFacts'];
 }
 
 export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSandbox {
@@ -107,6 +110,7 @@ export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSan
     runKey: `sandbox-${options.seed}`,
     playerFlags: options.playerFlags,
     inventory: options.inventory,
+    encounterFacts: options.encounterFacts,
     combatRules: options.combatRules,
   };
   const rng = dungeonRngSource(options.seed);
@@ -173,6 +177,9 @@ export async function autoPlayDungeonSandbox(
         const choice = choices.find((c) => !c.walksAway) ?? choices[0];
         if (!choice) return { steps, view, stoppedBy: 'stuck' };
         input = { type: 'choose', choiceId: choice.id };
+      } else if (view.phase === 'action' && view.action?.encounter) {
+        const e = view.action.encounter;
+        input = e.mode === 'direct' ? { type: 'rescue' } : e.selectedItem ? { type: 'capture' } : e.items[0] ? { type: 'select_item', item: e.items[0].item } : { type: 'leave_encounter' };
       } else if (view.phase === 'action') input = { type: 'advance' };
       else {
         // Prefer a way on over a way back, so a cyclic map is walked forward.

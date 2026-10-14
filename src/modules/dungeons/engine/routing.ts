@@ -38,6 +38,8 @@ export const SUCCESS_OUTCOME: Readonly<Record<DungeonActionType, string | null>>
   leave: null,
   reward: 'claimed',
   event: 'resolved',
+  wild_encounter: 'captured',
+  rescue: 'rescued',
 };
 
 /** Outcomes recorded as `failed` rather than `completed`. */
@@ -51,6 +53,8 @@ export const FAILURE_OUTCOMES: Readonly<Record<DungeonActionType, readonly strin
   reward: [],
   // A failed check is a result of the event, not a failure of the action.
   event: [],
+  wild_encounter: ['escaped', 'unavailable'],
+  rescue: ['escaped', 'unavailable'],
 };
 
 const NEXT: ActionDestination = { type: 'next' };
@@ -71,7 +75,7 @@ export function destinationFor(action: DungeonAction, outcome: string): ActionDe
   if (routed) return routed;
   // Declining is "carry on as if it were not there", whatever the action is.
   if (outcome === DECLINED_OUTCOME) return NEXT;
-  if (outcome === SUCCESS_OUTCOME[action.type] && action.next) return action.next;
+  if ((action.type === 'wild_encounter' || action.type === 'rescue' || outcome === SUCCESS_OUTCOME[action.type]) && action.next) return action.next;
   return defaultDestination(action, outcome);
 }
 

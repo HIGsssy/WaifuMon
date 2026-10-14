@@ -46,6 +46,7 @@ import {
   type SpeciesRow,
 } from '../../db/schema';
 import {
+  CaptureGrantKeyConflictError,
   CaptureItemNotEligibleError,
   EffectAlreadyAtMaxChargesError,
   EncounterAlreadyResolvedError,
@@ -61,7 +62,11 @@ import {
 import type { Logger } from '../../shared/logger';
 import { defaultRng, type Rng } from '../../shared/random';
 import type { CaptureConfig } from './captureMath';
-import { computeCaptureChance, describeCaptureChance } from './captureMath';
+import {
+  computeCaptureChance,
+  describeCaptureChance,
+  type CaptureChanceBreakdown,
+} from './captureMath';
 import { normalizeAffinity, resolveBuddyAffinity, type AffinityMatchup } from './affinityMath';
 import type { InventoryService } from '../inventory/inventoryService';
 import type { AppearanceService, AppearanceUnlockRef } from '../appearance/appearanceService';
@@ -81,7 +86,12 @@ import {
   speciesRefFromRow,
   type BuddyBonusService,
 } from '../buddyBonus/buddyBonusService';
-import { appliedBuddyBonus, type AppliedBuddyBonus } from '../buddyBonus/buddyBonusEffects';
+import {
+  appliedBuddyBonus,
+  buddyBonusPercent as percentOfBuddyBonus,
+  type AppliedBuddyBonus,
+  type BuddyBonus,
+} from '../buddyBonus/buddyBonusEffects';
 import type { ItemUseResult, ItemUseService } from '../items/itemUseService';
 import {
   encounterItemKind,
@@ -283,7 +293,185 @@ export interface AttemptCaptureOptions {
   expectedAttemptCount?: number;
 }
 
+/**
+ * A capture-chance quote for a species, with no encounter row behind it.
+ * Everything {@link CaptureQuote} carries except the encounter.
+ */
+export type SpeciesCaptureQuote = Omit<CaptureQuote, 'encounter'>;
+
+/**
+ * Which Buddy a quote or attempt reads, when it is not the live one.
+ *
+ * A dungeon pins its fighter at the start of a run, and that copy's species is
+ * what its affinity matchup and Buddy Bonus come from for the whole run — the
+ * `players.buddy_waifu_id` pointer is not read, and is not healed. The copy is
+ * identified by species: a pinned copy released mid-run still counts, exactly
+ * as it still fights.
+ *
+ * The three states are distinct on purpose: `undefined` is the live Buddy
+ * (every hunt), `null` is "no Buddy at all", and a value is the pinned copy.
+ */
+export interface CaptureBuddyOverride {
+  /** The pinned owned copy. Reported back in {@link CaptureAffinityInfo}. */
+  waifuId: number;
+  speciesSlug: string;
+  /**
+   * What the run froze about her when it started: her affinity and rarity
+   * (the matchup wheel) and her species' whole authored Buddy Bonus (the
+   * `capture_chance` and `player_xp_gain` effects). Present, nothing about
+   * her is read from current content, so a retune or a reload mid-run changes
+   * nothing. Absent — a run started before this was frozen — her species is
+   * read from current content by slug instead. Either way the live Buddy
+   * pointer is not consulted.
+   */
+  pinned?: CapturePinnedBuddy | undefined;
+}
+
+/** The frozen part of a {@link CaptureBuddyOverride}. JSON-safe: it is stored on the run. */
+export interface CapturePinnedBuddy {
+  affinity: string;
+  rarity: string;
+  bonus: BuddyBonus | null;
+}
+
+/** Where a granted copy came from, for copies that are not hunted captures. */
+export interface CaptureProvenance {
+  /** Stored in `player_waifus.acquired_via`. */
+  acquiredVia?: string | null | undefined;
+  /**
+   * Stored in `player_waifus.grant_key`, which is unique when present. A key
+   * that already exists is never silently granted a second copy.
+   */
+  grantKey?: string | null | undefined;
+}
+
+/** What an attempt decided, before anything about its outcome is written. */
+export interface CaptureAttemptDecision {
+  outcome: CaptureOutcome;
+  success: boolean;
+  guaranteed: boolean;
+  chance: number;
+  roll: number;
+}
+
+export interface ResolveCaptureAttemptInput {
+  playerId: number;
+  species: SpeciesRow;
+  /** The charm being committed. Eligibility is judged here, not trusted. */
+  item: ItemRow;
+  /** True when a miss ends the encounter (`escape` rather than `failure`). */
+  finalAttempt: boolean;
+  now?: Date | undefined;
+  /**
+   * The decided chance roll, uniform in [0, 1). Omitted, one is drawn from
+   * {@link rng} — which is what a hunt does. Ignored by a guaranteed capture,
+   * which records a roll of 0 as it always has.
+   */
+  roll?: number | undefined;
+  /**
+   * Source of the chance roll (when `roll` is omitted) and of the new copy's
+   * Base SP. Omitted, the service's own generator: the process RNG in
+   * production.
+   */
+  rng?: Rng | undefined;
+  buddyOverride?: CaptureBuddyOverride | null | undefined;
+  provenance?: CaptureProvenance | undefined;
+  /** Extra fields for the diagnostic log line, placed after `playerId`. */
+  logContext?: Record<string, unknown> | undefined;
+  /**
+   * Called once the outcome is decided and before the copy, XP and quests are
+   * written, in the same transaction. The caller records its own attempt here
+   * (a hunt: the `capture_attempts` row and the encounter state) and returns
+   * the id XP audit rows should reference, or null.
+   */
+  recordAttempt?:
+    | ((decision: CaptureAttemptDecision) => Promise<number | null | undefined | void>)
+    | undefined;
+}
+
+export interface ResolvedCaptureAttempt extends CaptureAttemptDecision {
+  /** The term-by-term chance, as logged. */
+  breakdown: CaptureChanceBreakdown;
+  newWaifu: PlayerWaifuRow | null;
+  isDuplicate: boolean;
+  isNewDex: boolean;
+  xpGranted: number;
+  xpBonus: AppliedBuddyBonus | null;
+  levelUps: LevelUpEvent[];
+  affinity: CaptureAffinityInfo;
+  effect: CaptureEffectInfo | null;
+  itemCaptureBonus: number;
+  newAppearances: AppearanceUnlockRef[];
+}
+
+export interface GrantSpeciesCopyInput {
+  playerId: number;
+  species: SpeciesRow;
+  /** Required: a direct grant is only ever made idempotently. */
+  grantKey: string;
+  /** Required provenance, e.g. `dungeon_rescue`. */
+  acquiredVia: string;
+  /** Source of the Base SP roll. Omitted, the service's own generator. */
+  rng?: Rng | undefined;
+  /**
+   * Whose `player_xp_gain` bonus the grant's XP reads. Omitted, the live
+   * Buddy; `null`, none; a value, that pinned Buddy.
+   */
+  buddyOverride?: CaptureBuddyOverride | null | undefined;
+  /**
+   * Whether the grant pays the capture-success XP for the species' rarity,
+   * plus the new-dex bonus. Default true. It is logged as `species_granted`,
+   * never as `capture_success`.
+   */
+  awardXp?: boolean | undefined;
+  logContext?: Record<string, unknown> | undefined;
+}
+
+export interface SpeciesCopyGrant {
+  waifu: PlayerWaifuRow;
+  /**
+   * True when the key had already been granted: `waifu` is the copy made the
+   * first time, and this call wrote nothing — no copy, no XP, no audit row.
+   */
+  replayed: boolean;
+  isDuplicate: boolean;
+  isNewDex: boolean;
+  xpGranted: number;
+  xpBonus: AppliedBuddyBonus | null;
+  levelUps: LevelUpEvent[];
+  newAppearances: AppearanceUnlockRef[];
+}
+
 export interface CaptureService {
+  /**
+   * A chance quote for a species, in the caller's transaction, with no
+   * encounter row. What {@link quoteCapture} computes; nothing is locked and
+   * nothing is spent.
+   */
+  quoteSpecies(
+    tx: DbOrTx,
+    playerId: number,
+    species: SpeciesRow,
+    item: ItemRow | null,
+    buddyOverride?: CaptureBuddyOverride | null,
+  ): Promise<SpeciesCaptureQuote>;
+
+  /**
+   * Everything one capture attempt does that is not about an `encounters`
+   * row: charm eligibility and consumption, the Microdose charge, the chance
+   * and its roll, the owned copy on success, XP, capture quests and appearance
+   * bookkeeping. Runs entirely in the caller's transaction and opens none of
+   * its own, so a thrown error leaves the caller free to roll everything back.
+   */
+  resolveCaptureAttempt(tx: DbOrTx, input: ResolveCaptureAttemptInput): Promise<ResolvedCaptureAttempt>;
+
+  /**
+   * Grant one owned copy outright — the success branch alone. Spends no charm
+   * and no Microdose charge, rolls no chance, writes no capture attempt and
+   * advances no capture quest. Idempotent on `grantKey`.
+   */
+  grantSpeciesCopy(tx: DbOrTx, input: GrantSpeciesCopyInput): Promise<SpeciesCopyGrant>;
+
   /**
    * Resolve one capture commit. Atomic: item consumption, attempt row,
    * encounter state, and any owned-waifu row all commit together. Discord
@@ -435,51 +623,189 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
   const appearance = deps.appearance;
   const rng = deps.rng ?? defaultRng();
 
+  /** The Buddy an affinity matchup is read from, or null for none. */
+  interface BuddyAffinityRead {
+    buddyWaifuId: number | null;
+    resolution: ReturnType<typeof resolveBuddyAffinity> | null;
+  }
+
   /**
-   * Everything the chance formula needs, gathered once. Shared by the quote
-   * path and the authoritative attempt so the two can never disagree about
-   * what a capture is worth — the attempt simply calls it with a locked
-   * encounter row and a transaction that is about to spend things.
+   * The affinity matchup against one species.
+   *
+   * With no override this is the live Buddy through the self-healing
+   * resolver, exactly as a hunt has always read it. With one, the pinned
+   * species is read instead and the live pointer is left alone.
    */
-  async function gatherChanceInputs(
+  async function readBuddyAffinity(
     tx: DbOrTx,
     playerId: number,
     speciesRow: SpeciesRow,
-  ): Promise<{
-    buddyAffinityModifier: number;
-    captureBonusModifier: number;
-    buddyBonusPercent: number;
-    buddyBonusApplied: AppliedBuddyBonus | null;
-  }> {
-    const buddy = await collection.resolveActiveBuddy(tx, playerId);
-    const resolution = buddy
-      ? resolveBuddyAffinity(
-          {
-            buddyAffinity: buddy.species.affinity,
-            buddyRarity: buddy.species.rarity as Rarity,
-            encounterAffinity: speciesRow.affinity,
-          },
-          buddyAffinityConfig,
-        )
-      : null;
-    const bonus = await effects.getCaptureBonus(playerId);
+    override: CaptureBuddyOverride | null | undefined,
+  ): Promise<BuddyAffinityRead> {
+    let source: { waifuId: number; affinity: string; rarity: string } | null = null;
+    if (override === undefined) {
+      const buddy = await collection.resolveActiveBuddy(tx, playerId);
+      if (buddy) {
+        source = {
+          waifuId: buddy.waifu.id,
+          affinity: buddy.species.affinity,
+          rarity: buddy.species.rarity,
+        };
+      }
+    } else if (override?.pinned) {
+      source = {
+        waifuId: override.waifuId,
+        affinity: override.pinned.affinity,
+        rarity: override.pinned.rarity,
+      };
+    } else if (override !== null) {
+      const [pinned] = await tx
+        .select({ affinity: species.affinity, rarity: species.rarity })
+        .from(species)
+        .where(eq(species.slug, override.speciesSlug));
+      if (pinned) {
+        source = { waifuId: override.waifuId, ...pinned };
+      } else {
+        // The seeder never deletes a species, so this should be unreachable.
+        // A missing one contributes nothing rather than failing the attempt.
+        logger.warn(
+          { playerId, speciesSlug: override.speciesSlug },
+          'pinned buddy species not found; capture reads no buddy',
+        );
+      }
+    }
+    return {
+      buddyWaifuId: source?.waifuId ?? null,
+      resolution: source
+        ? resolveBuddyAffinity(
+            {
+              buddyAffinity: source.affinity,
+              buddyRarity: source.rarity as Rarity,
+              encounterAffinity: speciesRow.affinity,
+            },
+            buddyAffinityConfig,
+          )
+        : null,
+    };
+  }
+
+  /**
+   * The Buddy Bonus `capture_chance` percentage against one species, and the
+   * bonus behind it. `bonus` is null exactly when the percentage is 0 — the
+   * percentage is the authority, so a targeted bonus this species does not
+   * match reads as no bonus at all.
+   */
+  async function readBuddyCaptureBonus(
+    tx: DbOrTx,
+    playerId: number,
+    speciesRow: SpeciesRow,
+    override: CaptureBuddyOverride | null | undefined,
+  ): Promise<{ percent: number; bonus: BuddyBonus | null }> {
+    if (override === undefined) {
+      const percent =
+        (await buddyBonus?.percentForSpecies(
+          tx,
+          playerId,
+          'capture_chance',
+          speciesRefFromRow(speciesRow),
+        )) ?? 0;
+      const active =
+        percent !== 0 ? ((await buddyBonus?.getActiveBuddyBonus(tx, playerId)) ?? null) : null;
+      return { percent, bonus: active?.bonus ?? null };
+    }
+    if (override === null || !buddyBonus) return { percent: 0, bonus: null };
+    // The pinned species' authored bonus, tested against this species by the
+    // same matcher the live path uses. Ownership is still the player's own.
+    const pinned = pinnedBuddyBonus(override);
+    if (!pinned || pinned.effectId !== 'capture_chance') return { percent: 0, bonus: null };
+    const subject = await buddyBonus.subjectFor(tx, playerId, speciesRefFromRow(speciesRow), {
+      resolveOwnership: pinned.target?.type === 'ownership',
+    });
+    const percent = percentOfBuddyBonus(pinned, 'capture_chance', subject);
+    return { percent, bonus: percent !== 0 ? pinned : null };
+  }
+
+  /** The pinned Buddy's authored bonus: frozen with the run when it was, else current content's. */
+  function pinnedBuddyBonus(override: CaptureBuddyOverride): BuddyBonus | null {
+    return override.pinned
+      ? override.pinned.bonus
+      : (buddyBonus?.bonusForSpeciesSlug(override.speciesSlug) ?? null);
+  }
+
+  /**
+   * Whose `player_xp_gain` an award reads: `undefined` leaves `grantXp` on the
+   * live Buddy (every hunt), anything else is the pinned Buddy's bonus or none.
+   */
+  function xpBuddyBonus(
+    override: CaptureBuddyOverride | null | undefined,
+  ): BuddyBonus | null | undefined {
+    if (override === undefined) return undefined;
+    return override === null ? null : pinnedBuddyBonus(override);
+  }
+
+  /**
+   * The quote: everything the chance formula needs, gathered once and put
+   * through the same {@link computeCaptureChance} the attempt rolls against.
+   */
+  async function quoteSpecies(
+    tx: DbOrTx,
+    playerId: number,
+    speciesRow: SpeciesRow,
+    item: ItemRow | null,
+    buddyOverride?: CaptureBuddyOverride | null,
+  ): Promise<SpeciesCaptureQuote> {
+    const rarity = speciesRow.rarity as Rarity;
+    const { resolution } = await readBuddyAffinity(tx, playerId, speciesRow, buddyOverride);
+    const buddyAffinityModifier = resolution?.modifier ?? 0;
+    // Read through the caller's handle: a quote made inside a transaction must
+    // see a charge that transaction has already spent.
+    const captureBonusModifier =
+      (await effects.getCaptureBonus(playerId, undefined, tx))?.modifier ?? 0;
     // The Buddy Bonus is a second, unrelated contribution from the same copy:
     // affinity is the matchup wheel, this is whatever her species authors.
-    const buddyBonusPercent =
-      (await buddyBonus?.percentForSpecies(
-        tx,
-        playerId,
-        'capture_chance',
-        speciesRefFromRow(speciesRow),
-      )) ?? 0;
-    // The percentage is the authority: it is already 0 for a non-matching
-    // target, so the display record exists exactly when the bonus applies.
-    const active = buddyBonusPercent !== 0 ? await buddyBonus?.getActiveBuddyBonus(tx, playerId) : null;
-    return {
-      buddyAffinityModifier: resolution?.modifier ?? 0,
-      captureBonusModifier: bonus?.modifier ?? 0,
+    const { percent: buddyBonusPercent, bonus } = await readBuddyCaptureBonus(
+      tx,
+      playerId,
+      speciesRow,
+      buddyOverride,
+    );
+    const baselineChance = computeCaptureChance({
+      guaranteed: false,
+      baseCaptureRate: speciesRow.baseCaptureRate,
+      rarity,
+      captureModifier: null,
+      config: captureConfig,
+      buddyAffinityModifier,
+      captureBonusModifier,
       buddyBonusPercent,
-      buddyBonusApplied: active ? appliedBuddyBonus(active.bonus) : null,
+    });
+    const guaranteed = item?.isGuaranteedCapture ?? false;
+    const itemCaptureBonus = guaranteed ? 0 : (item?.captureBonus ?? 0);
+    const chance = item
+      ? computeCaptureChance({
+          guaranteed,
+          baseCaptureRate: speciesRow.baseCaptureRate,
+          rarity,
+          captureModifier: item.captureModifier,
+          config: captureConfig,
+          buddyAffinityModifier,
+          captureBonusModifier,
+          buddyBonusPercent,
+          itemCaptureBonus,
+        })
+      : baselineChance;
+    return {
+      species: speciesRow,
+      item,
+      guaranteed,
+      chance,
+      baselineChance,
+      eligible: item ? isCaptureItemEligible(item, rarity) : true,
+      buddyAffinityModifier,
+      captureBonusModifier,
+      buddyBonusPercent,
+      buddyBonus: bonus ? appliedBuddyBonus(bonus) : null,
+      itemCaptureBonus,
     };
   }
 
@@ -535,51 +861,447 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
     item: ItemRow | null,
     playerId: number,
   ): Promise<CaptureQuote> {
-    const rarity = speciesRow.rarity as Rarity;
-    const { buddyAffinityModifier, captureBonusModifier, buddyBonusPercent, buddyBonusApplied } =
-      await gatherChanceInputs(db, playerId, speciesRow);
-    const baselineChance = computeCaptureChance({
-      guaranteed: false,
+    return { encounter, ...(await quoteSpecies(db, playerId, speciesRow, item)) };
+  }
+
+  function assertProvenance(provenance: CaptureProvenance | undefined): void {
+    for (const [name, value] of [
+      ['grantKey', provenance?.grantKey],
+      ['acquiredVia', provenance?.acquiredVia],
+    ] as const) {
+      if (value != null && value.trim() === '') throw new RangeError(`${name} must not be blank`);
+    }
+  }
+
+  /**
+   * Create one owned copy: the duplicate read, the Base SP roll and the
+   * insert, in that order. The only place a copy comes into existence.
+   *
+   * `waifu` is null only when a grant key was supplied and already exists —
+   * the insert then writes nothing, and what that means is the caller's call.
+   */
+  async function mintCopy(
+    tx: DbOrTx,
+    playerId: number,
+    speciesRow: SpeciesRow,
+    draw: Rng,
+    provenance?: CaptureProvenance,
+  ): Promise<{ waifu: PlayerWaifuRow | null; isDuplicate: boolean; baseSp: number }> {
+    const [existing] = await tx
+      .select({ count: sql<number>`count(*)::int` })
+      .from(playerWaifus)
+      .where(
+        and(
+          eq(playerWaifus.playerId, playerId),
+          eq(playerWaifus.speciesId, speciesRow.id),
+          isNull(playerWaifus.releasedAt),
+        ),
+      );
+    const isDuplicate = (existing?.count ?? 0) > 0;
+
+    // Base SP is rolled here — inside the capture transaction, and written in
+    // the same INSERT that creates the copy. A retried transaction re-runs
+    // the whole block, so it cannot half-apply: either a copy exists with the
+    // SP rolled alongside it, or neither does. There is no second write that
+    // could leave a copy without a value, and no read path that recomputes
+    // one.
+    const baseSp = rollBaseSeductivePower(speciesRow.rarity, draw, spRanges);
+    const grantKey = provenance?.grantKey ?? null;
+    const acquiredVia = provenance?.acquiredVia ?? null;
+    const values = {
+      playerId,
+      speciesId: speciesRow.id,
+      baseSp,
+      ...(acquiredVia === null ? {} : { acquiredVia }),
+      ...(grantKey === null ? {} : { grantKey }),
+    };
+    const [created] =
+      grantKey === null
+        ? await tx.insert(playerWaifus).values(values).returning()
+        : await tx
+            .insert(playerWaifus)
+            .values(values)
+            .onConflictDoNothing({
+              target: playerWaifus.grantKey,
+              where: sql`grant_key is not null`,
+            })
+            .returning();
+    return { waifu: created ?? null, isDuplicate, baseSp };
+  }
+
+  async function resolveCaptureAttempt(
+    tx: DbOrTx,
+    input: ResolveCaptureAttemptInput,
+  ): Promise<ResolvedCaptureAttempt> {
+    const { playerId, species: speciesRow, item } = input;
+    const now = input.now ?? new Date();
+    const draw = input.rng ?? rng;
+
+    if (!item.enabled) throw new ItemNotFoundError(item.slug);
+    if (item.category !== 'capture') throw new ItemNotUsableError(item.slug);
+    // Rarity eligibility, revalidated authoritatively: content may have
+    // changed since the selection, and the selector is only a convenience.
+    if (!isCaptureItemEligible(item, speciesRow.rarity)) {
+      throw new CaptureItemNotEligibleError(item.name, speciesRow.rarity);
+    }
+    if (input.roll !== undefined && !(input.roll >= 0 && input.roll < 1)) {
+      throw new RangeError(`Capture roll must be in [0, 1), got ${input.roll}`);
+    }
+    assertProvenance(input.provenance);
+
+    // Consume the item. InsufficientItemsError bubbles out with the
+    // transaction rolled back — no attempt row, no state change.
+    await inventory.consumeItem(tx, playerId, item.id, 1);
+
+    const guaranteed = item.isGuaranteedCapture;
+    const rarity = speciesRow.rarity as keyof typeof captureConfig.baseRatesByRarity;
+
+    // Buddy affinity (5D). Resolved inside the same transaction so a buddy
+    // released mid-encounter can't contribute a bonus; the resolver clears
+    // a dangling pointer for us. No buddy → neutral, modifier 0.
+    const { buddyWaifuId, resolution } = await readBuddyAffinity(
+      tx,
+      playerId,
+      speciesRow,
+      input.buddyOverride,
+    );
+    const buddyAffinityModifier = resolution?.modifier ?? 0;
+
+    // Consumable capture buff (Microdose). Spent here — after the
+    // encounter passed validation and the charm was consumed, so it can
+    // only be charged for an attempt that actually resolves. Guaranteed
+    // captures skip it: the formula is bypassed, so a charge would buy
+    // nothing.
+    const consumed = guaranteed ? null : await effects.consumeCaptureCharge(tx, playerId, now);
+    const captureBonusModifier = consumed?.modifier ?? 0;
+    const effect: CaptureEffectInfo | null = consumed
+      ? {
+          sourceItemSlug: consumed.sourceItemSlug,
+          captureBonusModifier: consumed.modifier,
+          chargesBefore: consumed.chargesBefore,
+          chargesRemaining: consumed.chargesRemaining,
+          cleared: consumed.cleared,
+        }
+      : null;
+
+    // The item's own flat bonus. Guaranteed captures bypass the formula,
+    // so it contributes nothing there (and content forbids the pairing).
+    const itemCaptureBonus = guaranteed ? 0 : (item.captureBonus ?? 0);
+
+    // Re-derived under the caller's lock rather than trusted from the
+    // quote, exactly like the affinity term above: the player may have
+    // swapped Buddy between opening the screen and pressing the button.
+    const { percent: buddyBonusPercent, bonus: buddyBonusApplied } = await readBuddyCaptureBonus(
+      tx,
+      playerId,
+      speciesRow,
+      input.buddyOverride,
+    );
+
+    // One breakdown drives the roll *and* the diagnostic log, so the number
+    // the server rolls against is the same number an incident can explain
+    // term by term. `buddyBonusIsConditional` only steers how the single
+    // percentage is attributed (global vs targeted); it never doubles it.
+    const breakdown = describeCaptureChance({
+      guaranteed,
       baseCaptureRate: speciesRow.baseCaptureRate,
       rarity,
-      captureModifier: null,
+      captureModifier: item.captureModifier,
       config: captureConfig,
       buddyAffinityModifier,
       captureBonusModifier,
       buddyBonusPercent,
+      buddyBonusIsConditional: (buddyBonusApplied?.target ?? null) !== null,
+      itemCaptureBonus,
     });
-    const guaranteed = item?.isGuaranteedCapture ?? false;
-    const itemCaptureBonus = guaranteed ? 0 : (item?.captureBonus ?? 0);
-    const chance = item
-      ? computeCaptureChance({
+    const chance = breakdown.finalChance;
+    const affinity: CaptureAffinityInfo = {
+      buddyWaifuId,
+      buddyAffinity: resolution?.buddyAffinity ?? null,
+      encounterAffinity: normalizeAffinity(speciesRow.affinity),
+      matchup: resolution?.matchup ?? 'neutral',
+      buddyAffinityModifier,
+      finalChance: chance,
+      buddyBonus: buddyBonusApplied ? appliedBuddyBonus(buddyBonusApplied) : null,
+    };
+    const roll = guaranteed ? 0 : (input.roll ?? draw.next());
+    const success = guaranteed || roll < chance;
+    const outcome: CaptureOutcome = success ? 'success' : input.finalAttempt ? 'escape' : 'failure';
+
+    const refId =
+      (await input.recordAttempt?.({ outcome, success, guaranteed, chance, roll })) ?? null;
+
+    let newWaifu: PlayerWaifuRow | null = null;
+    let isDuplicate = false;
+    let xpDelta = 0;
+    let isNewDex = false;
+
+    if (success) {
+      const minted = await mintCopy(tx, playerId, speciesRow, draw, input.provenance);
+      // A key that already exists means this capture was granted before. The
+      // charm is already spent in this transaction, so the only safe answer
+      // is to refuse and let the caller roll the whole attempt back.
+      if (!minted.waifu) throw new CaptureGrantKeyConflictError(input.provenance?.grantKey ?? '');
+      newWaifu = minted.waifu;
+      isDuplicate = minted.isDuplicate;
+      isNewDex = !isDuplicate;
+      xpDelta =
+        (progressionConfig.xp.captureSuccessByRarity as Record<string, number>)[
+          speciesRow.rarity
+        ] ?? 0;
+      if (isNewDex) xpDelta += progressionConfig.xp.newDexEntry;
+      logger.info(
+        {
+          playerId,
+          ...input.logContext,
+          speciesSlug: speciesRow.slug,
+          itemSlug: item.slug,
+          chance,
+          roll,
           guaranteed,
-          baseCaptureRate: speciesRow.baseCaptureRate,
-          rarity,
-          captureModifier: item.captureModifier,
-          config: captureConfig,
-          buddyAffinityModifier,
-          captureBonusModifier,
-          buddyBonusPercent,
+          isDuplicate,
+          isNewDex,
+          xpDelta,
+          baseSp: minted.baseSp,
+          affinity,
+          effect,
           itemCaptureBonus,
-        })
-      : baselineChance;
+          captureBreakdown: breakdown,
+        },
+        'capture success',
+      );
+    } else {
+      xpDelta = progressionConfig.xp.captureFailed;
+      // Failure/escape diagnostics mirror the success log so an incident can
+      // reconstruct a *missed* capture just as precisely as a caught one —
+      // the same breakdown, the same roll, so "why did this fail" and "why
+      // did this catch" are answered from the same fields.
+      logger.info(
+        {
+          playerId,
+          ...input.logContext,
+          speciesSlug: speciesRow.slug,
+          itemSlug: item.slug,
+          outcome,
+          chance,
+          roll,
+          guaranteed,
+          affinity,
+          effect,
+          itemCaptureBonus,
+          captureBreakdown: breakdown,
+        },
+        outcome === 'escape' ? 'capture escaped' : 'capture failed',
+      );
+    }
+
+    // Grant XP in the same transaction as the capture state change.
+    const xpResult = await progression.grantXp(tx, playerId, {
+      eventType: success ? 'capture_success' : 'capture_failed',
+      xpDelta,
+      refId,
+      buddyBonus: xpBuddyBonus(input.buddyOverride),
+      metadata: {
+        outcome,
+        rarity: speciesRow.rarity,
+        speciesSlug: speciesRow.slug,
+        itemSlug: item.slug,
+        isNewDex,
+        // Buddy-affinity audit trail. `capture_attempts` has no metadata
+        // column and 5D doesn't add one, so the per-attempt affinity read
+        // rides along on the progression event (which already refs the
+        // capture_attempts row via `refId`).
+        buddyWaifuId: affinity.buddyWaifuId,
+        buddyAffinity: affinity.buddyAffinity,
+        encounterAffinity: affinity.encounterAffinity,
+        affinityMatchup: affinity.matchup,
+        buddyAffinityModifier: affinity.buddyAffinityModifier,
+        finalChance: affinity.finalChance,
+        // Consumable buff audit trail — mirrors the affinity fields so a
+        // single progression-event row explains the whole chance.
+        captureBonusModifier: effect?.captureBonusModifier ?? 0,
+        captureBonusSource: effect?.sourceItemSlug ?? null,
+        captureBonusChargesRemaining: effect?.chargesRemaining ?? null,
+        // The committed item's own additive term, so one progression row
+        // still explains the whole chance.
+        itemCaptureBonus,
+        // Present only for a capture that is not a hunted one.
+        ...(input.provenance?.acquiredVia != null ? { acquiredVia: input.provenance.acquiredVia } : {}),
+        ...(input.provenance?.grantKey != null ? { grantKey: input.provenance.grantKey } : {}),
+      },
+    });
+    // "new dex entry" is logged separately for audit clarity.
+    if (isNewDex && progressionConfig.xp.newDexEntry > 0) {
+      await progression.grantXp(tx, playerId, {
+        eventType: 'new_dex_entry',
+        xpDelta: 0, // already included above; this row is bookkeeping-only
+        refId,
+        metadata: { speciesSlug: speciesRow.slug, rarity: speciesRow.rarity },
+      });
+    }
+
+    // Daily-quest progress inside the same transaction — every attempt
+    // counts, only a success bumps capture_success and its rarity-gated
+    // variant. If the outer transaction rolls back, quest progress does
+    // too.
+    await quests.recordQuestEvent(tx, playerId, 'capture_attempts', 1, {}, now);
+    if (success) {
+      await quests.recordQuestEvent(tx, playerId, 'capture_success', 1, {}, now);
+      await quests.recordQuestEvent(
+        tx,
+        playerId,
+        'capture_success_rarity_at_least',
+        1,
+        { rarity: speciesRow.rarity as Rarity },
+        now,
+      );
+    }
+
+    // Cosmetic bookkeeping, last and best-effort in spirit: acknowledge the
+    // appearances a brand-new copy already qualifies for so she is never
+    // toasted for the look she arrived in. Runs after every gameplay write
+    // so it can only ever cost a notification, never a capture.
+    const newAppearances =
+      appearance && newWaifu ? await appearance.syncUnlocks(tx, newWaifu, speciesRow, 'owned') : [];
+
     return {
-      encounter,
-      species: speciesRow,
-      item,
+      outcome,
+      success,
       guaranteed,
       chance,
-      baselineChance,
-      eligible: item ? isCaptureItemEligible(item, rarity) : true,
-      buddyAffinityModifier,
-      captureBonusModifier,
-      buddyBonusPercent,
-      buddyBonus: buddyBonusApplied,
+      roll,
+      breakdown,
+      newWaifu,
+      isDuplicate,
+      isNewDex,
+      // What the player actually received: `grantXp` may have raised it
+      // through a `player_xp_gain` Buddy Bonus, and the result screen
+      // prints this number.
+      xpGranted: xpResult.xpDelta,
+      xpBonus: xpResult.buddyBonus,
+      levelUps: xpResult.levelUps,
+      affinity,
+      effect,
       itemCaptureBonus,
+      newAppearances,
+    };
+  }
+
+  async function grantSpeciesCopy(
+    tx: DbOrTx,
+    input: GrantSpeciesCopyInput,
+  ): Promise<SpeciesCopyGrant> {
+    const { playerId, species: speciesRow, grantKey, acquiredVia } = input;
+    if (typeof grantKey !== 'string' || grantKey.trim() === '') {
+      throw new RangeError('grantKey must not be blank');
+    }
+    if (typeof acquiredVia !== 'string' || acquiredVia.trim() === '') {
+      throw new RangeError('acquiredVia must not be blank');
+    }
+
+    // A key names one grant for good. Seen again, it returns the copy it made
+    // and writes nothing; seen for someone or something else, it is a bug in
+    // the caller's key and is refused rather than papered over.
+    const replay = (prior: PlayerWaifuRow): SpeciesCopyGrant => {
+      if (prior.playerId !== playerId || prior.speciesId !== speciesRow.id) {
+        throw new CaptureGrantKeyConflictError(grantKey);
+      }
+      return {
+        waifu: prior,
+        replayed: true,
+        isDuplicate: false,
+        isNewDex: false,
+        xpGranted: 0,
+        xpBonus: null,
+        levelUps: [],
+        newAppearances: [],
+      };
+    };
+    const findByKey = async (): Promise<PlayerWaifuRow | undefined> => {
+      const [row] = await tx.select().from(playerWaifus).where(eq(playerWaifus.grantKey, grantKey));
+      return row;
+    };
+    const prior = await findByKey();
+    if (prior) return replay(prior);
+
+    const minted = await mintCopy(tx, playerId, speciesRow, input.rng ?? rng, {
+      grantKey,
+      acquiredVia,
+    });
+    if (!minted.waifu) {
+      // A racing twin committed between the read and the insert.
+      const raced = await findByKey();
+      if (!raced) throw new CaptureGrantKeyConflictError(grantKey);
+      return replay(raced);
+    }
+    const waifu = minted.waifu;
+    const isNewDex = !minted.isDuplicate;
+
+    let xpGranted = 0;
+    let xpBonus: AppliedBuddyBonus | null = null;
+    let levelUps: LevelUpEvent[] = [];
+    if (input.awardXp !== false) {
+      let xpDelta =
+        (progressionConfig.xp.captureSuccessByRarity as Record<string, number>)[
+          speciesRow.rarity
+        ] ?? 0;
+      if (isNewDex) xpDelta += progressionConfig.xp.newDexEntry;
+      // Its own event type: a grant is not a capture, and nothing that counts
+      // `capture_success` rows should count this one.
+      const xpResult = await progression.grantXp(tx, playerId, {
+        eventType: 'species_granted',
+        xpDelta,
+        buddyBonus: xpBuddyBonus(input.buddyOverride),
+        metadata: {
+          rarity: speciesRow.rarity,
+          speciesSlug: speciesRow.slug,
+          isNewDex,
+          waifuId: waifu.id,
+          acquiredVia,
+          grantKey,
+        },
+      });
+      xpGranted = xpResult.xpDelta;
+      xpBonus = xpResult.buddyBonus;
+      levelUps = xpResult.levelUps;
+    }
+
+    const newAppearances = appearance
+      ? await appearance.syncUnlocks(tx, waifu, speciesRow, 'owned')
+      : [];
+
+    logger.info(
+      {
+        playerId,
+        ...input.logContext,
+        speciesSlug: speciesRow.slug,
+        waifuId: waifu.id,
+        acquiredVia,
+        grantKey,
+        isDuplicate: minted.isDuplicate,
+        isNewDex,
+        xpGranted,
+        baseSp: minted.baseSp,
+      },
+      'species copy granted',
+    );
+    return {
+      waifu,
+      replayed: false,
+      isDuplicate: minted.isDuplicate,
+      isNewDex,
+      xpGranted,
+      xpBonus,
+      levelUps,
+      newAppearances,
     };
   }
 
   return {
+    quoteSpecies,
+    resolveCaptureAttempt,
+    grantSpeciesCopy,
+
     async selectCaptureItem(playerId, encounterId, itemSlug, now = new Date()) {
       const { encounter, species: speciesRow } = await loadActiveEncounter(
         playerId,
@@ -880,336 +1602,77 @@ export function createCaptureService(deps: CaptureServiceDeps): CaptureService {
             throw new NoCaptureItemSelectedError();
           }
         }
-        if (item.category !== 'capture') throw new ItemNotUsableError(item.slug);
-        // Rarity eligibility, revalidated authoritatively: content may have
-        // changed since the selection, and the selector is only a convenience.
-        if (!isCaptureItemEligible(item, speciesRow.rarity)) {
-          throw new CaptureItemNotEligibleError(item.name, speciesRow.rarity);
-        }
-
-        // Consume the item. InsufficientItemsError bubbles out with the
-        // transaction rolled back — no attempt row, no state change.
-        await inventory.consumeItem(tx, playerId, item.id, 1);
-
-        const guaranteed = item.isGuaranteedCapture;
-        const rarity = speciesRow.rarity as keyof typeof captureConfig.baseRatesByRarity;
-
-        // Buddy affinity (5D). Resolved inside the same transaction so a buddy
-        // released mid-encounter can't contribute a bonus; the resolver clears
-        // a dangling pointer for us. No buddy → neutral, modifier 0.
-        const buddy = await collection.resolveActiveBuddy(tx, playerId);
-        const resolution = buddy
-          ? resolveBuddyAffinity(
-              {
-                buddyAffinity: buddy.species.affinity,
-                buddyRarity: buddy.species.rarity as Rarity,
-                encounterAffinity: speciesRow.affinity,
-              },
-              buddyAffinityConfig,
-            )
-          : null;
-        const buddyAffinityModifier = resolution?.modifier ?? 0;
-
-        // Consumable capture buff (Microdose). Spent here — after the
-        // encounter passed validation and the charm was consumed, so it can
-        // only be charged for an attempt that actually resolves. Guaranteed
-        // captures skip it: the formula is bypassed, so a charge would buy
-        // nothing.
-        const consumed = guaranteed
-          ? null
-          : await effects.consumeCaptureCharge(tx, playerId, now);
-        const captureBonusModifier = consumed?.modifier ?? 0;
-        const effect: CaptureEffectInfo | null = consumed
-          ? {
-              sourceItemSlug: consumed.sourceItemSlug,
-              captureBonusModifier: consumed.modifier,
-              chargesBefore: consumed.chargesBefore,
-              chargesRemaining: consumed.chargesRemaining,
-              cleared: consumed.cleared,
-            }
-          : null;
-
-        // The item's own flat bonus. Guaranteed captures bypass the formula,
-        // so it contributes nothing there (and content forbids the pairing).
-        const itemCaptureBonus = guaranteed ? 0 : (item.captureBonus ?? 0);
-
-        // Re-derived under the encounter lock rather than trusted from the
-        // quote, exactly like the affinity term above: the player may have
-        // swapped Buddy between opening the screen and pressing the button.
-        const buddyBonusPercent =
-          (await buddyBonus?.percentForSpecies(
-            tx,
-            playerId,
-            'capture_chance',
-            speciesRefFromRow(speciesRow),
-          )) ?? 0;
-        const buddyBonusApplied =
-          buddyBonusPercent !== 0
-            ? ((await buddyBonus?.getActiveBuddyBonus(tx, playerId)) ?? null)
-            : null;
-
-        // One breakdown drives the roll *and* the diagnostic log, so the number
-        // the server rolls against is the same number an incident can explain
-        // term by term. `buddyBonusIsConditional` only steers how the single
-        // percentage is attributed (global vs targeted); it never doubles it.
-        const breakdown = describeCaptureChance({
-          guaranteed,
-          baseCaptureRate: speciesRow.baseCaptureRate,
-          rarity,
-          captureModifier: item.captureModifier,
-          config: captureConfig,
-          buddyAffinityModifier,
-          captureBonusModifier,
-          buddyBonusPercent,
-          buddyBonusIsConditional: (buddyBonusApplied?.bonus.target ?? null) !== null,
-          itemCaptureBonus,
-        });
-        const chance = breakdown.finalChance;
-        const affinity: CaptureAffinityInfo = {
-          buddyWaifuId: buddy?.waifu.id ?? null,
-          buddyAffinity: resolution?.buddyAffinity ?? null,
-          encounterAffinity: normalizeAffinity(speciesRow.affinity),
-          matchup: resolution?.matchup ?? 'neutral',
-          buddyAffinityModifier,
-          finalChance: chance,
-          buddyBonus: buddyBonusApplied ? appliedBuddyBonus(buddyBonusApplied.bonus) : null,
-        };
-        const roll = guaranteed ? 0 : rng.next();
-        const success = guaranteed || roll < chance;
+        // Everything that is not this encounter row — eligibility, the charm,
+        // the Microdose charge, the roll, the copy, XP and quests — is the
+        // shared attempt. It calls back once the outcome is decided, so the
+        // audit row and the encounter state are written exactly where they
+        // always were: after the roll, before the copy.
         const attemptNumber = encounter.attemptCount + 1;
-
-        const [attempt] = await tx
-          .insert(captureAttempts)
-          .values({
-            encounterId: encounter.id,
-            playerId,
-            attemptNumber,
-            itemId: item.id,
-            computedChance: chance,
-            roll,
-            success,
-            guaranteed,
-          })
-          .returning();
-
-        let updatedEncounter: EncounterRow;
-        let newWaifu: PlayerWaifuRow | null = null;
-        let isDuplicate = false;
-        let attemptOutcome: CaptureOutcome;
-        let xpDelta = 0;
-        let isNewDex = false;
-
-        if (success) {
-          const [row] = await tx
-            .update(encounters)
-            .set({
-              attemptCount: attemptNumber,
-              state: 'captured',
-              resolvedAt: now,
-              // A resolved encounter holds no selection — nothing may be
-              // committed against it again.
-              selectedItemId: null,
-            })
-            .where(eq(encounters.id, encounter.id))
-            .returning();
-          updatedEncounter = row!;
-
-          const [existing] = await tx
-            .select({ count: sql<number>`count(*)::int` })
-            .from(playerWaifus)
-            .where(
-              and(
-                eq(playerWaifus.playerId, playerId),
-                eq(playerWaifus.speciesId, speciesRow.id),
-                isNull(playerWaifus.releasedAt),
-              ),
-            );
-          isDuplicate = (existing?.count ?? 0) > 0;
-          isNewDex = !isDuplicate;
-
-          // Base SP is rolled here — inside the capture transaction, from the
-          // same injectable `rng` the chance roll used, and written in the
-          // same INSERT that creates the copy. A retried transaction re-runs
-          // the whole block, so it cannot half-apply: either a copy exists
-          // with the SP rolled alongside it, or neither does. There is no
-          // second write that could leave a copy without a value, and no read
-          // path that recomputes one.
-          const baseSp = rollBaseSeductivePower(speciesRow.rarity, rng, spRanges);
-          const [created] = await tx
-            .insert(playerWaifus)
-            .values({
-              playerId,
-              speciesId: speciesRow.id,
-              baseSp,
-            })
-            .returning();
-          newWaifu = created!;
-          attemptOutcome = 'success';
-          xpDelta =
-            (progressionConfig.xp.captureSuccessByRarity as Record<string, number>)[
-              speciesRow.rarity
-            ] ?? 0;
-          if (isNewDex) xpDelta += progressionConfig.xp.newDexEntry;
-          logger.info(
-            {
-              playerId,
-              encounterId: encounter.id,
-              speciesSlug: speciesRow.slug,
-              itemSlug: item.slug,
-              chance,
-              roll,
-              guaranteed,
-              isDuplicate,
-              isNewDex,
-              xpDelta,
-              baseSp,
-              affinity,
-              effect,
-              itemCaptureBonus,
-              captureBreakdown: breakdown,
-            },
-            'capture success',
-          );
-        } else if (attemptNumber >= encounter.maxAttempts) {
-          const [row] = await tx
-            .update(encounters)
-            .set({
-              attemptCount: attemptNumber,
-              state: 'escaped',
-              resolvedAt: now,
-              selectedItemId: null,
-            })
-            .where(eq(encounters.id, encounter.id))
-            .returning();
-          updatedEncounter = row!;
-          attemptOutcome = 'escape';
-          xpDelta = progressionConfig.xp.captureFailed;
-        } else {
-          const [row] = await tx
-            .update(encounters)
-            // Selection deliberately survives a failed attempt: she is still
-            // there, and re-committing the same item should be one click.
-            .set({ attemptCount: attemptNumber, selectedItemId: item.id })
-            .where(eq(encounters.id, encounter.id))
-            .returning();
-          updatedEncounter = row!;
-          attemptOutcome = 'failure';
-          xpDelta = progressionConfig.xp.captureFailed;
-        }
-
-        // Failure/escape diagnostics mirror the success log so an incident can
-        // reconstruct a *missed* capture just as precisely as a caught one —
-        // the same breakdown, the same roll, so "why did this fail" and "why
-        // did this catch" are answered from the same fields.
-        if (attemptOutcome !== 'success') {
-          logger.info(
-            {
-              playerId,
-              encounterId: encounter.id,
-              speciesSlug: speciesRow.slug,
-              itemSlug: item.slug,
-              outcome: attemptOutcome,
-              chance,
-              roll,
-              guaranteed,
-              affinity,
-              effect,
-              itemCaptureBonus,
-              captureBreakdown: breakdown,
-            },
-            attemptOutcome === 'escape' ? 'capture escaped' : 'capture failed',
-          );
-        }
-
-        // Grant XP in the same transaction as the capture state change.
-        const xpResult = await progression.grantXp(tx, playerId, {
-          eventType: attemptOutcome === 'success' ? 'capture_success' : 'capture_failed',
-          xpDelta,
-          refId: attempt?.id ?? null,
-          metadata: {
-            outcome: attemptOutcome,
-            rarity: speciesRow.rarity,
-            speciesSlug: speciesRow.slug,
-            itemSlug: item.slug,
-            isNewDex,
-            // Buddy-affinity audit trail. `capture_attempts` has no metadata
-            // column and 5D doesn't add one, so the per-attempt affinity read
-            // rides along on the progression event (which already refs the
-            // capture_attempts row via `refId`).
-            buddyWaifuId: affinity.buddyWaifuId,
-            buddyAffinity: affinity.buddyAffinity,
-            encounterAffinity: affinity.encounterAffinity,
-            affinityMatchup: affinity.matchup,
-            buddyAffinityModifier: affinity.buddyAffinityModifier,
-            finalChance: affinity.finalChance,
-            // Consumable buff audit trail — mirrors the affinity fields so a
-            // single progression-event row explains the whole chance.
-            captureBonusModifier: effect?.captureBonusModifier ?? 0,
-            captureBonusSource: effect?.sourceItemSlug ?? null,
-            captureBonusChargesRemaining: effect?.chargesRemaining ?? null,
-            // The committed item's own additive term, so one progression row
-            // still explains the whole chance.
-            itemCaptureBonus,
+        let attempt: CaptureAttemptRow | undefined;
+        let updatedEncounter: EncounterRow | undefined;
+        const resolved = await resolveCaptureAttempt(tx, {
+          playerId,
+          species: speciesRow,
+          item,
+          now,
+          finalAttempt: attemptNumber >= encounter.maxAttempts,
+          logContext: { encounterId: encounter.id },
+          recordAttempt: async (decision) => {
+            [attempt] = await tx
+              .insert(captureAttempts)
+              .values({
+                encounterId: encounter.id,
+                playerId,
+                attemptNumber,
+                itemId: item.id,
+                computedChance: decision.chance,
+                roll: decision.roll,
+                success: decision.success,
+                guaranteed: decision.guaranteed,
+              })
+              .returning();
+            [updatedEncounter] = await tx
+              .update(encounters)
+              .set(
+                decision.outcome === 'failure'
+                  ? // Selection deliberately survives a failed attempt: she is
+                    // still there, and re-committing the same item should be
+                    // one click.
+                    { attemptCount: attemptNumber, selectedItemId: item.id }
+                  : {
+                      attemptCount: attemptNumber,
+                      state: decision.outcome === 'success' ? 'captured' : 'escaped',
+                      resolvedAt: now,
+                      // A resolved encounter holds no selection — nothing may
+                      // be committed against it again.
+                      selectedItemId: null,
+                    },
+              )
+              .where(eq(encounters.id, encounter.id))
+              .returning();
+            return attempt?.id ?? null;
           },
         });
-        // "new dex entry" is logged separately for audit clarity.
-        if (isNewDex && progressionConfig.xp.newDexEntry > 0) {
-          await progression.grantXp(tx, playerId, {
-            eventType: 'new_dex_entry',
-            xpDelta: 0, // already included above; this row is bookkeeping-only
-            refId: attempt?.id ?? null,
-            metadata: { speciesSlug: speciesRow.slug, rarity: speciesRow.rarity },
-          });
-        }
-
-        // Daily-quest progress inside the same transaction — every attempt
-        // counts, only a success bumps capture_success and its rarity-gated
-        // variant. If the outer transaction rolls back, quest progress does
-        // too.
-        await quests.recordQuestEvent(tx, playerId, 'capture_attempts', 1, {}, now);
-        if (success) {
-          await quests.recordQuestEvent(tx, playerId, 'capture_success', 1, {}, now);
-          await quests.recordQuestEvent(
-            tx,
-            playerId,
-            'capture_success_rarity_at_least',
-            1,
-            { rarity: speciesRow.rarity as import('../../db/schema').Rarity },
-            now,
-          );
-        }
-
-        // Cosmetic bookkeeping, last and best-effort in spirit: acknowledge the
-        // appearances a brand-new copy already qualifies for so she is never
-        // toasted for the look she arrived in. Runs after every gameplay write
-        // so it can only ever cost a notification, never a capture.
-        const newAppearances =
-          appearance && newWaifu
-            ? await appearance.syncUnlocks(tx, newWaifu, speciesRow, 'owned')
-            : [];
 
         return {
           kind: 'result',
           value: {
-            outcome: attemptOutcome,
+            outcome: resolved.outcome,
             attempt: attempt!,
-            encounter: updatedEncounter,
+            encounter: updatedEncounter!,
             species: speciesRow,
             item,
             attemptsRemaining: Math.max(0, encounter.maxAttempts - attemptNumber),
-            newWaifu,
-            isDuplicate,
-            // What the player actually received: `grantXp` may have raised it
-            // through a `player_xp_gain` Buddy Bonus, and the result screen
-            // prints this number.
-            xpGranted: xpResult.xpDelta,
-            xpBonus: xpResult.buddyBonus,
-            levelUps: xpResult.levelUps,
-            isNewDex,
-            affinity,
-            effect,
-            itemCaptureBonus,
-            newAppearances,
+            newWaifu: resolved.newWaifu,
+            isDuplicate: resolved.isDuplicate,
+            xpGranted: resolved.xpGranted,
+            xpBonus: resolved.xpBonus,
+            levelUps: resolved.levelUps,
+            isNewDex: resolved.isNewDex,
+            affinity: resolved.affinity,
+            effect: resolved.effect,
+            itemCaptureBonus: resolved.itemCaptureBonus,
+            newAppearances: resolved.newAppearances,
           },
         };
       });

@@ -513,11 +513,15 @@ async function main(): Promise<void> {
     );
   }
   const dungeonRegions = () => contentSnapshot.regions.map((r) => ({ id: r.id, name: r.name, enabled: r.enabled }));
+  // Species dungeon policy is content with no column behind it, so both dungeon
+  // services read it through the live snapshot and follow a content reload.
+  const dungeonSpeciesAccess = (slug: string) => contentSnapshot.species.find((s) => s.slug === slug)?.dungeonAccess;
   const dungeonContent = createDungeonContentService({
     db,
     enemies: enemyCatalogue,
     getRegions: dungeonRegions,
     getItemSlugs: () => contentSnapshot.items.map(item => item.slug),
+    getSpeciesAccess: dungeonSpeciesAccess,
     artworkStorage,
     assetsDir: config.assetsDir,
     environment: config.deploymentEnv,
@@ -538,6 +542,14 @@ async function main(): Promise<void> {
     collection,
     inventory,
     equipmentRewards,
+    // Built further down, once its own dependencies exist; a run only reaches
+    // it from inside a step, long after startup has finished.
+    capture: {
+      quoteSpecies: (...args) => captureService.quoteSpecies(...args),
+      resolveCaptureAttempt: (...args) => captureService.resolveCaptureAttempt(...args),
+      grantSpeciesCopy: (...args) => captureService.grantSpeciesCopy(...args),
+    },
+    speciesAccess: dungeonSpeciesAccess,
     logger,
   });
   const equipmentOnboarding = createEquipmentOnboardingService({
@@ -592,6 +604,25 @@ async function main(): Promise<void> {
     progression,
     care,
     collection,
+  });
+  // One capture service for hunted encounters and for dungeon encounters: a
+  // dungeon step calls its transaction-joining operations from inside its own
+  // transaction (see `dungeonRuns` above).
+  const captureService = createCaptureService({
+    db,
+    inventory,
+    progression,
+    progressionConfig: content.tables.progression,
+    captureConfig: content.tables.capture,
+    buddyAffinityConfig: content.tables.buddyAffinity,
+    seductivePowerConfig: content.tables.seductivePower,
+    collection,
+    quests,
+    effects,
+    itemUse,
+    appearance,
+    buddyBonus,
+    logger,
   });
   // Affection gifts. Built before the context because DailyService takes it —
   // the daily claim is the authoritative daily reset the roll rides inside.
@@ -802,22 +833,7 @@ async function main(): Promise<void> {
         captureCapacity: content.tables.inventory.captureCapacity,
       }),
       hunt: huntService,
-      capture: createCaptureService({
-        db,
-        inventory,
-        progression,
-        progressionConfig: content.tables.progression,
-        captureConfig: content.tables.capture,
-        buddyAffinityConfig: content.tables.buddyAffinity,
-        seductivePowerConfig: content.tables.seductivePower,
-        collection,
-        quests,
-        effects,
-        itemUse,
-        appearance,
-        buddyBonus,
-        logger,
-      }),
+      capture: captureService,
       care,
       collection,
       achievements,

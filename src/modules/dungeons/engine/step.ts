@@ -49,6 +49,9 @@ import {
   connectionOf,
   connectionsFrom,
   isCombatAction,
+  isEncounterAction,
+  type EncounterAction,
+  type DungeonEncounterOutcome,
   roomOf,
   eventOf,
   isWalkAway,
@@ -60,6 +63,7 @@ import {
   type DungeonConnection,
   type DungeonRoom,
 } from '../content/dungeonDefinition';
+import { checkEncounterAvailability, decideEncounterInput, encounterInstanceKey, encounterResultText, selectDungeonEncounter } from './encounters';
 import { DungeonEngineContentError, fightWave, selectWaveEnemy } from './combat';
 import { conditionFacts, evaluateCondition } from './conditions';
 import { rollEventCheck } from './eventChecks';
@@ -316,10 +320,21 @@ function runSequence(w: Work, room: DungeonRoom, startIndex: number): void {
       completeRoom(w, room);
       return;
     }
-    if (!holds(w, action.when)) {
+    const selectedEncounter = isEncounterAction(action) && w.state.encounters?.[encounterInstanceKey(room.id, action.id)] !== undefined;
+    if (!selectedEncounter && !holds(w, action.when)) {
       record(w, room, action, { status: 'condition_skipped', outcome: null, detail: null });
       w.log.push({ type: 'action_skipped', roomId: room.id, actionId: action.id, payload: { actionType: action.type } });
       index += 1;
+      continue;
+    }
+    if (isEncounterAction(action)) {
+      const arrival = arriveAtEncounter(w, room, index, action);
+      if (arrival === 'await') {
+        w.state.cursor = { ...w.state.cursor, actionId: action.id, waveIndex: 0 };
+        return;
+      }
+      if (arrival.kind === 'stop') return;
+      index = arrival.index;
       continue;
     }
     if (action.type === 'event') {
@@ -340,6 +355,40 @@ function runSequence(w: Work, room: DungeonRoom, startIndex: number): void {
     if (flow.kind === 'stop') return;
     index = flow.index;
   }
+}
+
+// ── encounters ──────────────────────────────────────────────────────────────
+function finishEncounter(w: Work, room: DungeonRoom, index: number, action: EncounterAction, outcome: DungeonEncounterOutcome, apply: boolean): Flow {
+  const instance = w.state.encounters![encounterInstanceKey(room.id, action.id)]!;
+  instance.status = outcome;
+  if (apply) {
+    instance.resolvedStep = w.state.step;
+    for (const write of action.results?.[outcome]?.flags ?? []) w.state.flags[write.flag] = write.value;
+    w.state.recent.push({ kind: 'encounter', roomId: room.id, actionId: action.id, species: instance.species, outcome, text: encounterResultText(w.ctx.definition, action, instance, outcome) });
+    w.log.push({ type: isFailureOutcome(action, outcome) ? 'action_failed' : 'action_completed', roomId: room.id, actionId: action.id, payload: { actionType: action.type, outcome, encounter: instance } });
+  }
+  record(w, room, action, { status: isFailureOutcome(action, outcome) ? 'failed' : 'completed', outcome, detail: { kind: 'encounter', species: instance.species, status: instance.status } });
+  return follow(w, room, index, action, outcome);
+}
+function arriveAtEncounter(w: Work, room: DungeonRoom, index: number, action: EncounterAction): Flow | 'await' {
+  const instances = w.state.encounters ??= {};
+  const key = encounterInstanceKey(room.id, action.id);
+  let instance = instances[key];
+  if (!instance) {
+    instance = selectDungeonEncounter(w.ctx.definition, action, { roomId: room.id, actionId: action.id }, w.state, conditionFacts(w.state, w.ctx.playerFlags), w.rng);
+    instances[key] = instance;
+    checkEncounterAvailability(instance, w.ctx, action);
+    // Who was drawn and how, with the live reason when she cannot be had. Logged once, on the draw.
+    w.log.push({ type: 'encounter_selected', roomId: room.id, actionId: action.id, payload: {
+      actionType: action.type, species: instance.species, status: instance.status,
+      ...(instance.unavailableReason ? { unavailableReason: instance.unavailableReason } : {}),
+      ...(instance.pool ? { pool: instance.pool } : {}),
+    } });
+  }
+  const unresolved = instance.resolvedStep === undefined;
+  checkEncounterAvailability(instance, w.ctx, action);
+  if (instance.status === 'offered') return 'await';
+  return finishEncounter(w, room, index, action, instance.status, unresolved);
 }
 
 // ── events ──────────────────────────────────────────────────────────────────
@@ -680,6 +729,32 @@ export function stepDungeon(
       break;
     }
 
+    case 'select_item':
+    case 'capture':
+    case 'rescue':
+    case 'leave_encounter': {
+      const at = currentAction(w.state, ctx.definition);
+      if (!at || !isEncounterAction(at.action)) return refused(state, 'encounter_not_offered');
+      const decision = decideEncounterInput(w.state, at.action, input, ctx, rng);
+      if (typeof decision === 'string') return refused(state, decision);
+      w.effects.push(...decision.effects);
+      if (decision.attempt) {
+        const made = decision.effects.find((e) => e.type === 'capture_attempt');
+        w.log.push({ type: 'capture_attempted', roomId: room.id, actionId: at.action.id, payload: {
+          key: made?.type === 'capture_attempt' ? made.key : null,
+          species: made?.type === 'capture_attempt' ? made.species : null,
+          attempt: decision.attempt,
+        } });
+      }
+      if (decision.outcome !== null) {
+        const flow = finishEncounter(w, room, at.index, at.action, decision.outcome, true);
+        if (flow.kind === 'continue') runSequence(w, room, flow.index);
+      } else if (decision.attempt) {
+        w.state.recent.push({ kind: 'encounter', roomId: room.id, actionId: at.action.id, species: w.state.encounters![encounterInstanceKey(room.id, at.action.id)]!.species, outcome: 'failure', text: '' });
+      }
+      break;
+    }
+
     case 'choose': {
       const at = currentAction(w.state, ctx.definition);
       if (!at) return refused(state, 'no_action');
@@ -694,6 +769,7 @@ export function stepDungeon(
     case 'decline': {
       const at = currentAction(w.state, ctx.definition);
       if (!at) return refused(state, 'no_action');
+      if (isEncounterAction(at.action)) return refused(state, input.type === 'advance' ? 'encounter_not_offered' : 'not_optional');
       // An event is answered with a choice; it has no single thing to carry out or to decline.
       if (at.action.type === 'event') return refused(state, input.type === 'advance' ? 'choice_required' : 'not_optional');
       let flow: Flow | 'await';

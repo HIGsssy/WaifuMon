@@ -19,6 +19,7 @@ import {
  * the dependency runs content → cards only.
  */
 import { RACE_CODES } from '../cards/race';
+import { DungeonSpeciesAccessSchema } from '../dungeons/content/dungeonEncounters';
 /**
  * The Buddy Bonus effect registry. Same reasoning as `RACE_CODES` above: the
  * closed set of effects is owned by the module that *applies* them, and is
@@ -808,6 +809,18 @@ const SpeciesBaseSchema = z.object({
    * simply grants nothing, which is a perfectly ordinary species.
    */
   buddyBonus: BuddyBonusSchema.optional(),
+  /**
+   * Which dungeons may offer her, and on what terms. Optional and absent on
+   * every species that predates dungeon encounters, so existing content files
+   * stay byte-identical.
+   *
+   * An untagged species may be offered by any dungeon; an entry here only adds
+   * a per-player limit or direct-rescue permission. A `region_exclusive` or
+   * `dungeon_exclusive` species may be offered **only** by the dungeons listed.
+   * `perPlayerLimit` is a positive whole number or `"unlimited"`; omitted, an
+   * ordinary capture is unlimited. A direct rescue needs a finite limit.
+   */
+  dungeonAccess: z.array(DungeonSpeciesAccessSchema).optional(),
 });
 
 export const SpeciesContentSchema = SpeciesBaseSchema.superRefine((s, ctx) => {

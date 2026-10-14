@@ -58,6 +58,7 @@ import type { CurrencyService } from '../currency/currencyService';
 import { isUniqueViolation } from '../../shared/errors';
 import type { FilteredSpeciesPicker, SpeciesFilter } from './speciesSelection';
 import type { Logger } from '../../shared/logger';
+import { DUNGEON_EXCLUSIVE_TAG } from '../locations/regions';
 
 /**
  * What caused this spawn. `ref` is the causing subsystem's own identifier —
@@ -283,6 +284,15 @@ export function createWildEncounterSpawner(
         .from(species)
         .where(and(eq(species.slug, opts.speciesSlug), eq(species.enabled, true)));
       if (!row) return { status: 'unavailable', reason: 'unknown_species' };
+      // A dungeon-exclusive species is never spawned in the wild, by name or
+      // otherwise. To a scripted spawn she is simply not a species it can name.
+      if (row.tags.includes(DUNGEON_EXCLUSIVE_TAG)) {
+        deps.logger.warn(
+          { tag: 'wild-encounter/dungeon-exclusive-refused', slug: row.slug, origin: opts.origin },
+          'scripted spawn names a dungeon-exclusive species; nothing was spawned',
+        );
+        return { status: 'unavailable', reason: 'unknown_species' };
+      }
       picked = row;
     } else if (opts.selection) {
       // Strict: the selector's candidate set is the whole guarantee, so an
@@ -309,6 +319,15 @@ export function createWildEncounterSpawner(
       );
     }
     if (!picked) return { status: 'unavailable', reason: 'no_species_available' };
+    // The pickers already exclude her; this is the last line, so that no
+    // injected picker or future fallback can put her in an `encounters` row.
+    if (picked.tags.includes(DUNGEON_EXCLUSIVE_TAG)) {
+      deps.logger.error(
+        { tag: 'wild-encounter/dungeon-exclusive-refused', slug: picked.slug, origin: opts.origin },
+        'a species picker returned a dungeon-exclusive species; nothing was spawned',
+      );
+      return { status: 'unavailable', reason: 'no_species_available' };
+    }
 
     // 4. Energy, only when the caller explicitly asked for it to cost some.
     if (opts.consumeHuntEnergy) {

@@ -11,7 +11,7 @@ import { resolveExistingAssetFile } from '../assets/assetContainment';
 import { archetypeToRace, DEFAULT_RACE } from '../cards/race';
 import { ContentValidationError } from '../../shared/errors';
 import type { Logger } from '../../shared/logger';
-import { DEFAULT_REGION, isRegion, REGION_EXCLUSIVE_TAG } from '../locations/regions';
+import { DEFAULT_REGION, DUNGEON_EXCLUSIVE_TAG, isRegion, REGION_EXCLUSIVE_TAG } from '../locations/regions';
 import {
   BossesFileSchema,
   BossRewardsFileSchema,
@@ -468,6 +468,33 @@ export function validateRegionContent(content: LoadedContent): void {
   // by the back door. That the *shipped* content always has its regions is
   // asserted in `tests/unit/regionContent.test.ts`, which is the right place
   // for an invariant about what we ship rather than what the loader accepts.
+  // Dungeon access policy. The two exclusivity tags are different promises and
+  // cannot both hold; a dungeon may be listed once per species; and a direct
+  // rescue hands a copy out for free, so it must carry a finite per-player limit.
+  for (const s of species) {
+    if (s.tags.includes(DUNGEON_EXCLUSIVE_TAG) && s.tags.includes(REGION_EXCLUSIVE_TAG)) {
+      throw new ContentValidationError(
+        `Species "${s.slug}" is tagged both "${DUNGEON_EXCLUSIVE_TAG}" and ` +
+          `"${REGION_EXCLUSIVE_TAG}". She is met in one region or never in the wild, not both.`,
+      );
+    }
+    const listed = new Set<string>();
+    for (const access of s.dungeonAccess ?? []) {
+      if (listed.has(access.dungeon)) {
+        throw new ContentValidationError(
+          `Species "${s.slug}".dungeonAccess lists dungeon "${access.dungeon}" more than once.`,
+        );
+      }
+      listed.add(access.dungeon);
+      if (access.directRescue && typeof access.perPlayerLimit !== 'number') {
+        throw new ContentValidationError(
+          `Species "${s.slug}".dungeonAccess allows a direct rescue in "${access.dungeon}" ` +
+            'without a finite perPlayerLimit. A direct rescue needs a positive whole-number limit.',
+        );
+      }
+    }
+  }
+
   if (regions.length === 0) return;
 
   const duplicateRegion = regions.map((r) => r.id).find((id, i, a) => a.indexOf(id) !== i);
@@ -559,6 +586,16 @@ export function validateRegionContent(content: LoadedContent): void {
         // Rule 1: unknown species reference.
         throw new ContentValidationError(
           `Region "${region.id}" references unknown species slug: ${entry.species}`,
+        );
+      }
+
+      // A dungeon-exclusive species is never met in the wild, so no pool —
+      // enabled or not — may list her: a disabled region is one flag from live.
+      if (found.tags.includes(DUNGEON_EXCLUSIVE_TAG)) {
+        throw new ContentValidationError(
+          `Region "${region.id}" lists species "${entry.species}", which is tagged ` +
+            `"${DUNGEON_EXCLUSIVE_TAG}". Remove her from the pool, or drop the tag if she ` +
+            'is meant to be hunted.',
         );
       }
 

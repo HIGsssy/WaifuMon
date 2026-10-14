@@ -20,6 +20,7 @@ import {
   applyPercentModifierInt,
   buddyBonusPercent,
   type AppliedBuddyBonus,
+  type BuddyBonus,
 } from '../buddyBonus/buddyBonusEffects';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import {
@@ -48,6 +49,13 @@ export interface GrantXpOptions {
   xpDelta: number;
   refId?: number | null;
   metadata?: Record<string, unknown>;
+  /**
+   * Whose `player_xp_gain` bonus boosts this award. Omitted, the player's live
+   * active Buddy — every grant outside a dungeon. A dungeon capture passes the
+   * bonus of the Buddy its run pinned at the start (or `null` for none), so the
+   * live pointer is not read and swapping Buddy mid-run changes nothing.
+   */
+  buddyBonus?: BuddyBonus | null | undefined;
 }
 
 export interface GrantXpResult {
@@ -158,7 +166,12 @@ export function createProgressionService(deps: ProgressionServiceDeps): Progress
       // Only *awards* are boosted. A zero or negative delta (an admin
       // correction, a bookkeeping row) is left exactly as the caller wrote it —
       // a bonus that also deepened a penalty would be a surprise, not a bonus.
-      const active = opts.xpDelta > 0 ? await buddyBonus?.getActiveBuddyBonus(tx, playerId) : null;
+      const active =
+        opts.xpDelta <= 0
+          ? null
+          : opts.buddyBonus !== undefined
+            ? opts.buddyBonus && { bonus: opts.buddyBonus }
+            : await buddyBonus?.getActiveBuddyBonus(tx, playerId);
       const percent = buddyBonusPercent(active?.bonus, 'player_xp_gain');
       const xpDelta = applyPercentModifierInt(opts.xpDelta, percent);
       // Reported only when it actually moved the award — a 0% or rounding-neutral

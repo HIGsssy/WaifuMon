@@ -110,6 +110,8 @@ const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
   leave: 'Way on',
   reward: 'Cache',
   event: 'Event',
+  wild_encounter: 'Encounter',
+  rescue: 'Rescue',
 };
 const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   combat: '⚔️',
@@ -120,6 +122,8 @@ const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   leave: '🚪',
   reward: '🎁',
   event: '❔',
+  wild_encounter: '❔',
+  rescue: '❔',
 };
 /** The button that carries out a pending action, when its author wrote no label. */
 const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
@@ -132,6 +136,9 @@ const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
   reward: 'Open',
   // Never drawn: an event's buttons are its choices (`eventButtons`).
   event: 'Continue',
+  // Labels only: encounter controls and screens belong to P4C1.
+  wild_encounter: 'Continue',
+  rescue: 'Continue',
 };
 
 /** Discord: five buttons to a row, five rows to a message. Three rows are the connections'. */

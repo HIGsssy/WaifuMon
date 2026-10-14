@@ -3387,6 +3387,8 @@ export const dungeonRuns = pgTable(
     rewardClaims: jsonb('reward_claims').$type<Record<string, unknown>>().notNull().default({}),
     /** Event selections by `<roomId>:<actionId>`; like claims, they outlive a retreat. */
     eventStates: jsonb('event_states').$type<Record<string, unknown>>().notNull().default({}),
+    /** Encounter selections and attempts by `<roomId>:<actionId>` (migration 0068); they outlive a retreat too. */
+    encounterStates: jsonb('encounter_states').$type<Record<string, unknown>>().notNull().default({}),
     unbankedCurrency: integer('unbanked_currency').notNull().default(0),
     unbankedWaifubux: integer('unbanked_waifubux').notNull().default(0),
     /** What the latest step did, for redisplay. */
@@ -3441,6 +3443,9 @@ export const DUNGEON_RUN_EVENT_TYPES = [
   'rewards_granted',
   'event_selected',
   'items_consumed',
+  'encounter_selected',
+  'capture_attempted',
+  'waifu_acquired',
 ] as const;
 export type DungeonRunEventType = (typeof DUNGEON_RUN_EVENT_TYPES)[number];
 
@@ -3469,13 +3474,56 @@ export const dungeonRunEvents = pgTable(
   (t) => [
     check(
       'dungeon_run_events_type_check',
-      sql`${t.type} in ('run_started','room_entered','action_skipped','action_declined','combat_wave_resolved','action_completed','action_failed','room_completed','room_retreated','connection_taken','extraction','defeat','completion','abandon','currency_banked','rewards_granted','event_selected','items_consumed')`,
+      sql`${t.type} in ('run_started','room_entered','action_skipped','action_declined','combat_wave_resolved','action_completed','action_failed','room_completed','room_retreated','connection_taken','extraction','defeat','completion','abandon','currency_banked','rewards_granted','event_selected','items_consumed','encounter_selected','capture_attempted','waifu_acquired')`,
     ),
     index('dungeon_run_events_run_idx').on(t.runId, t.id),
   ],
 );
 
 export type DungeonRunEventRow = typeof dungeonRunEvents.$inferSelect;
+
+export const DUNGEON_ACQUISITION_MODES = ['capture', 'rescue_capture', 'rescue_direct'] as const;
+export type DungeonAcquisitionMode = (typeof DUNGEON_ACQUISITION_MODES)[number];
+
+/**
+ * One row per owned copy a dungeon granted (migration 0068), written in the
+ * step transaction that created the copy. It is what a species' per-player
+ * dungeon limit is counted from, across runs, and the audit trail for
+ * exclusives. `grantKey` is the copy's own `player_waifus.grant_key`.
+ */
+export const dungeonSpeciesAcquisitions = pgTable(
+  'dungeon_species_acquisitions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    playerId: bigint('player_id', { mode: 'number' })
+      .notNull()
+      .references(() => players.id),
+    speciesId: bigint('species_id', { mode: 'number' })
+      .notNull()
+      .references(() => species.id),
+    /** No FK, like `dungeon_runs.dungeon_key`: the count outlives the dungeon. */
+    dungeonKey: text('dungeon_key').notNull(),
+    runId: bigint('run_id', { mode: 'number' })
+      .notNull()
+      .references(() => dungeonRuns.id),
+    roomId: text('room_id').notNull(),
+    actionId: text('action_id').notNull(),
+    mode: text('mode').$type<DungeonAcquisitionMode>().notNull(),
+    waifuId: bigint('waifu_id', { mode: 'number' })
+      .notNull()
+      .references(() => playerWaifus.id),
+    grantKey: text('grant_key').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('dungeon_species_acquisitions_mode_check', sql`${t.mode} in ('capture','rescue_capture','rescue_direct')`),
+    uniqueIndex('dungeon_species_acquisitions_grant_key_uq').on(t.grantKey),
+    uniqueIndex('dungeon_species_acquisitions_waifu_uq').on(t.waifuId),
+    index('dungeon_species_acquisitions_player_dungeon_species_idx').on(t.playerId, t.dungeonKey, t.speciesId),
+  ],
+);
+
+export type DungeonSpeciesAcquisitionRow = typeof dungeonSpeciesAcquisitions.$inferSelect;
 
 /**
  * Delve-wide settings (migration 0052): one row, edited in Portal Admin.
