@@ -1,8 +1,8 @@
-/** P4D1 portability against disposable PostgreSQL databases, without a P4D2 play-through. */
+/** P4D1 portability plus the P4D2 export → repair → publish → play lifecycle. */
 import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { dungeonRevisions, species, items } from '../../src/db/schema';
+import { dungeonRevisions, dungeonSpeciesAcquisitions, playerWaifus, species, items } from '../../src/db/schema';
 import { type DungeonDefinition } from '../../src/modules/dungeons/content/dungeonDefinition';
 import { DungeonLootTableBodySchema } from '../../src/modules/dungeons/content/dungeonRewards';
 import { resolveDungeonRewardDependencies } from '../../src/modules/dungeons/content/dungeonRewardSnapshot';
@@ -13,11 +13,14 @@ import {
   dungeonContentHash,
   portableHash,
   dungeonPackageIntegrityHash,
+  readDungeonPackage,
 } from '../../src/modules/dungeons/package/dungeonPackage';
 import type { DungeonImportApplyInput } from '../../src/modules/dungeons/package/dungeonImportService';
 import type { DungeonLootImportDecisions } from '../../src/modules/dungeons/package/dungeonLootImport';
 import { singleRoomDungeon } from '../helpers/dungeonFixtures';
 import { createDungeonWorld, type DungeonWorld } from '../helpers/dungeonWorld';
+import { CHARM, FINITE, attemptRoll, findSeed, installExclusiveSpecies, namedEncounter } from '../helpers/dungeonCaptureFixtures';
+import { getItemBySlug } from '../helpers/fixtures';
 
 let w: DungeonWorld;
 let seq = 0;
@@ -445,11 +448,25 @@ describe('v4 atomic imports, conflicts and isolation', () => {
     expect(results.map((x) => x.replayed).sort()).toEqual([false, true]);
     expect(await w.content.importHistory(p.dungeon.key)).toHaveLength(1);
   });
+  it('a distinct duplicate import keeps one draft, while exact replay keeps one receipt per request', async () => {
+    const p = pkg();
+    await w.content.applyImport(await request(p), 'admin');
+    const before = await state();
+    const duplicate = await request(p);
+    expect(duplicate.decisions.dungeon).toBe('unchanged');
+    expect(await w.content.applyImport(duplicate, 'admin')).toMatchObject({ result: 'unchanged', replayed: false });
+    const after = await state();
+    for (const name of ['dungeon_definitions', 'dungeon_revisions', 'dungeon_runs', 'species', 'items']) expect(after[name]).toEqual(before[name]);
+    expect((await w.content.applyImport(duplicate, 'admin')).replayed).toBe(true);
+    expect(await w.content.importHistory(p.dungeon.key)).toHaveLength(2);
+  });
   it('replacement disables publication without mutating the historical revision or its active run', async () => {
     const d = definition();
     await w.publish(d);
     const { playerId } = await w.player();
-    await w.runs.start(playerId, d.key);
+    const item = await getItemBySlug(w.t.db, 'basic_charm');
+    await w.app.inventory.addItem(w.t.db, playerId, item.id, 1);
+    const started = await w.runs.start(playerId, d.key);
     const before = await state();
     const replacement = structuredClone(d);
     replacement.name = 'Imported replacement';
@@ -462,6 +479,13 @@ describe('v4 atomic imports, conflicts and isolation', () => {
       published: null,
       draft: replacement,
     });
+    // The unpublished replacement does not stop the original pinned run.
+    const resumed = await w.restartedRuns().run(playerId, started.id);
+    expect(resumed.core.action?.encounter).toEqual(started.core.action?.encounter);
+    const selected = (await w.act(playerId, resumed, { type: 'select_item', item: item.slug })).run;
+    const attempt = await w.act(playerId, selected, { type: 'capture' });
+    expect(attempt.status).toBe('applied');
+    expect(attempt.encounterReceipts).toMatchObject([{ item: item.slug, attemptNumber: 1 }]);
   });
   it.each(['name', 'remove encounters'])(
     'refuses modified revision content (%s) even without reward snapshots',
@@ -555,5 +579,72 @@ describe('v4 atomic imports, conflicts and isolation', () => {
       await w.t.db.update(species).set({ tags: [] }).where(eq(species.slug, 'gym_oni'));
       w.speciesAccess.delete('gym_oni');
     }
+  });
+
+  it('exports real v4, repairs missing species/charm and incompatible destination policy, then captures and enforces destination limits', async () => {
+    const source = await createDungeonWorld();
+    try {
+      expect(source.t.pool.options.connectionString).not.toBe(w.t.pool.options.connectionString);
+      await installExclusiveSpecies(source);
+      const d = namedEncounter('p4d2_import_lifecycle', FINITE);
+      const charm = 'p4d2_portable_charm';
+      const { id: _id, ...baseItem } = await getItemBySlug(source.t.db, CHARM);
+      await source.t.db.insert(items).values({ ...baseItem, slug: charm, name: 'Portable test charm' });
+      const action = d.rooms[0]!.actions[0]!;
+      if (action.type !== 'wild_encounter') throw new Error('fixture');
+      action.capture.allowedItems = [charm];
+      source.speciesAccess.set(FINITE, [{ dungeon: d.key, perPlayerLimit: 1 }]);
+      await source.publish(d);
+      const p = DungeonPackageV4Schema.parse(await source.content.exportPackage(d.key, 'published', 'creator'));
+      expect(readDungeonPackage(p).ok).toBe(true);
+      expect(p.dependencies).toMatchObject({ requiredSpecies: [{ slug: FINITE, dungeonExclusive: true }], captureItems: [charm] });
+      const plan = await w.content.planImport(p);
+      expect(plan.encounterDependencies).toMatchObject({ requiredSpecies: [{ status: 'missing' }], captureItems: [{ status: 'missing' }] });
+      const initial = await state();
+      await expect(w.content.applyImport(await request(p), 'creator')).rejects.toMatchObject({ code: 'DUNGEON_IMPORT_INVALID' });
+      expect(await state()).toEqual(initial);
+      const repair = await request(p, true);
+      const imported = await w.content.applyImport(repair, 'creator');
+      expect(imported.publishable).toBe(false);
+      expect((await w.content.applyImport(repair, 'creator')).replayed).toBe(true);
+      expect(await w.content.importHistory(d.key)).toHaveLength(1);
+      expect(await w.content.get(d.key)).toMatchObject({ enabled: false, published: null, draft: d });
+      await expect(w.content.publish(d.key, { expectedRevision: 1 }, 'creator')).rejects.toMatchObject({ code: 'DUNGEON_INVALID' });
+      await installExclusiveSpecies(w);
+      await w.t.db.insert(items).values({ ...baseItem, slug: charm, name: 'Destination test charm' });
+      w.speciesAccess.set(FINITE, [{ dungeon: 'different_dungeon', perPlayerLimit: 1 }]);
+      expect((await w.content.planImport(p)).encounterDependencies!.requiredSpecies[0]!.status).toBe('restricted');
+      await expect(w.content.publish(d.key, { expectedRevision: 1 }, 'creator')).rejects.toMatchObject({ code: 'DUNGEON_INVALID' });
+      // Only destination configuration authorizes capture. Export evidence grants no access.
+      w.speciesAccess.set(FINITE, [{ dungeon: d.key, perPlayerLimit: 1 }]);
+      const published = await w.content.publish(d.key, { expectedRevision: 1 }, 'creator');
+      await w.content.setEnabled(d.key, true, 'creator');
+      const seed = findSeed(s => attemptRoll(s) < 0.01);
+      const capture = async (playerId: number) => {
+        await w.app.inventory.addItem(w.t.db, playerId, (await getItemBySlug(w.t.db, charm)).id, 2);
+        let run = await w.runs.start(playerId, d.key, { seed });
+        expect(run.core.action?.encounter).toMatchObject({ species: FINITE, available: true });
+        run = (await w.act(playerId, run, { type: 'select_item', item: charm })).run;
+        const result = await w.act(playerId, run, { type: 'capture' });
+        expect(result.encounterReceipts).toMatchObject([{ success: true, acquired: { speciesSlug: FINITE } }]);
+        expect((await w.act(playerId, result.run, { type: 'move', connectionId: 'c_out' })).run.status).toBe('completed');
+        const [grant] = await w.t.db.select().from(dungeonSpeciesAcquisitions).where(eq(dungeonSpeciesAcquisitions.playerId, playerId));
+        expect(grant).toMatchObject({ dungeonKey: d.key, mode: 'capture', runId: run.id });
+        expect((await w.t.db.select().from(playerWaifus).where(eq(playerWaifus.id, grant!.waifuId)))[0]).toMatchObject({ playerId, grantKey: grant!.grantKey, acquiredVia: 'dungeon_capture' });
+        expect((await w.runs.history(run.id)).filter(e => e.type === 'waifu_acquired')).toHaveLength(1);
+        expect(await w.app.inventory.getQuantity(playerId, (await getItemBySlug(w.t.db, charm)).id)).toBe(1);
+      };
+      const { playerId } = await w.player();
+      await capture(playerId);
+      const second = await w.runs.start(playerId, d.key, { seed });
+      expect(second.core.action?.encounter).toBeFalsy();
+      expect(second.core.recent).toContainEqual(expect.objectContaining({ outcome: 'unavailable' }));
+      await w.act(playerId, second, { type: 'move', connectionId: 'c_out' });
+      expect(await w.t.db.select().from(dungeonSpeciesAcquisitions).where(eq(dungeonSpeciesAcquisitions.playerId, playerId))).toHaveLength(1);
+      await capture((await w.player()).playerId);
+      expect((await w.content.revisions(d.key))![0]!.revisionId).toBe(published.revision.revisionId);
+      // Neither import nor destination play creates source ownership.
+      expect(await source.t.db.select().from(dungeonSpeciesAcquisitions)).toEqual([]);
+    } finally { await source.cleanup(); }
   });
 });
