@@ -2196,3 +2196,141 @@ export class BossSpawnRefusedError extends AppError {
     this.reason = String(reason);
   }
 }
+
+// ── Region Pools ─────────────────────────────────────────────────────────────
+
+/** The shape a Region Pool issue travels in. Mirrors `regionPools/regionPoolValidation`. */
+export interface RegionPoolIssueDetail {
+  id: string;
+  code: string;
+  severity: 'error' | 'warning';
+  message: string;
+  acknowledgementRequired: boolean;
+  species?: string;
+  rarity?: string;
+  index?: number;
+  regions?: string[];
+}
+
+const issueList = (issues: unknown): RegionPoolIssueDetail[] =>
+  Array.isArray(issues) ? [...(issues as RegionPoolIssueDetail[])] : [];
+const errorSummary = (issues: RegionPoolIssueDetail[]): string =>
+  issues
+    .filter((i) => i?.severity === 'error')
+    .map((i) => i.message)
+    .join('; ');
+
+/** No such region, or the region has no pool. */
+export class RegionPoolNotFoundError extends AppError {
+  constructor(regionId: string) {
+    super('REGION_POOL_NOT_FOUND', `No region pool for "${String(regionId)}"`, 'That region has no pool.');
+  }
+}
+
+/** No published revision with that number in this region. */
+export class RegionPoolRevisionNotFoundError extends AppError {
+  constructor(regionId: string, revision: number) {
+    super(
+      'REGION_POOL_REVISION_NOT_FOUND',
+      `Region "${String(regionId)}" has no revision ${String(revision)}`,
+      'That revision does not exist.',
+    );
+  }
+}
+
+/** A draft failed structural validation; nothing was written. */
+export class RegionPoolInvalidError extends AppError {
+  readonly issues: RegionPoolIssueDetail[];
+  constructor(issues: readonly RegionPoolIssueDetail[]) {
+    const list = issueList(issues);
+    const summary = errorSummary(list);
+    super('REGION_POOL_INVALID', `Invalid region pool: ${summary || 'unknown problem'}`, summary || 'That pool is not valid.');
+    this.issues = list;
+  }
+}
+
+/** A write named a draft revision someone else has since replaced. Nothing was written. */
+export class RegionPoolStaleError extends AppError {
+  constructor(
+    readonly regionId: string,
+    readonly expectedDraftRevision: number,
+    readonly currentDraftRevision: number,
+    readonly updatedBy: string | null,
+    readonly updatedAt: Date,
+  ) {
+    super(
+      'REGION_POOL_STALE',
+      `Region pool "${String(regionId)}" draft is at revision ${String(currentDraftRevision)}, not ${String(expectedDraftRevision)}`,
+      'This pool was changed by someone else since you opened it. Reload to see their changes.',
+    );
+  }
+}
+
+/**
+ * A publish or rollback named a review that no longer matches the draft or the
+ * species it depends on. Validate again; nothing was written.
+ */
+export class RegionPoolReviewStaleError extends AppError {
+  readonly issues: RegionPoolIssueDetail[];
+  constructor(
+    issues: readonly RegionPoolIssueDetail[],
+    readonly reviewHash: string,
+  ) {
+    super(
+      'REGION_POOL_REVIEW_STALE',
+      'The reviewed pool or its species changed since validation',
+      'Something changed since you reviewed this pool. Review the current problems and try again.',
+    );
+    this.issues = issueList(issues);
+  }
+}
+
+/** Publish-level errors refuse the publish or rollback. Nothing was written. */
+export class RegionPoolPublishBlockedError extends AppError {
+  readonly issues: RegionPoolIssueDetail[];
+  constructor(issues: readonly RegionPoolIssueDetail[]) {
+    const list = issueList(issues);
+    const summary = errorSummary(list);
+    super(
+      'REGION_POOL_PUBLISH_BLOCKED',
+      `Region pool cannot be published: ${summary || 'unknown problem'}`,
+      summary || 'This pool cannot be published yet.',
+    );
+    this.issues = list;
+  }
+}
+
+/** Warnings that must be acknowledged were not. Nothing was written. */
+export class RegionPoolAcknowledgementRequiredError extends AppError {
+  readonly missing: string[];
+  readonly issues: RegionPoolIssueDetail[];
+  constructor(missing: readonly string[], issues: readonly RegionPoolIssueDetail[]) {
+    const ids = Array.isArray(missing) ? [...missing].map(String) : [];
+    super(
+      'REGION_POOL_ACKNOWLEDGEMENT_REQUIRED',
+      `Unacknowledged warnings: ${ids.join(', ') || 'unknown'}`,
+      'Review and acknowledge every warning before publishing.',
+    );
+    this.missing = ids;
+    this.issues = issueList(issues);
+  }
+}
+
+/** The region ships no pool file to load from. */
+export class RegionPoolShippedUnavailableError extends AppError {
+  constructor(regionId: string) {
+    super(
+      'REGION_POOL_SHIPPED_UNAVAILABLE',
+      `Region "${String(regionId)}" has no shipped pool in the loaded content`,
+      'This region ships no pool to load.',
+    );
+  }
+}
+
+/** An analysis scenario names something the analyser cannot honestly model. */
+export class RegionPoolScenarioInvalidError extends AppError {
+  constructor(message: string) {
+    const text = typeof message === 'string' ? message : 'That analysis scenario is not valid.';
+    super('REGION_POOL_SCENARIO_INVALID', text, text);
+  }
+}

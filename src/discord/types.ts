@@ -62,6 +62,7 @@ import type { EquipmentWorkshopService } from '../modules/equipment/equipmentWor
 import type { ArtworkAssetService } from '../modules/artworkAssets/artworkAssetService';
 import type { BossArtworkService } from '../modules/bosses/bossArtworkService';
 import type { EnemyCatalogueService } from '../modules/enemies/enemyService';
+import type { RegionPoolService } from '../modules/regionPools/regionPoolService';
 import type { BossDefinitionService } from '../modules/bosses/bossDefinitionService';
 import type { SceneCompositionService } from '../modules/artworkAssets/sceneComposition';
 import type { DungeonLootTableService } from '../modules/dungeons/dungeonLootTableService';
@@ -262,6 +263,8 @@ export interface AppServices {
   artworkAssets?: ArtworkAssetService | undefined;
   /** The Enemy Catalogue: DB-backed combat enemies, shared by dungeons and Combat Trials. */
   enemies?: EnemyCatalogueService | undefined;
+  /** Region Pools: drafts, publication, rollback, drift and odds (Portal Admin). */
+  regionPools?: RegionPoolService | undefined;
   dungeonSceneSprites?: SceneSpriteService | undefined;
   /** Boss Management: DB-backed boss definitions and their availability schedules (Portal Admin). */
   bossDefinitions?: BossDefinitionService | undefined;

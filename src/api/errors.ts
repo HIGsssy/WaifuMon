@@ -369,6 +369,17 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   BOSS_SPAWN_REFUSED: 409,
   /** Admin: an enemy save named a revision someone else has since replaced. */
   ENEMY_STALE: 409,
+  // Region Pools: drafts name the draft revision they edited; publish and
+  // rollback also name the review they are based on.
+  REGION_POOL_NOT_FOUND: 404,
+  REGION_POOL_REVISION_NOT_FOUND: 404,
+  REGION_POOL_INVALID: 400,
+  REGION_POOL_SCENARIO_INVALID: 400,
+  REGION_POOL_STALE: 409,
+  REGION_POOL_REVIEW_STALE: 409,
+  REGION_POOL_PUBLISH_BLOCKED: 422,
+  REGION_POOL_ACKNOWLEDGEMENT_REQUIRED: 422,
+  REGION_POOL_SHIPPED_UNAVAILABLE: 422,
   /** Admin: creating an enemy under a key another enemy already has. */
   ENEMY_KEY_TAKEN: 409,
   /** Admin: deleting an enemy that content references or Git ships — disable it instead. */

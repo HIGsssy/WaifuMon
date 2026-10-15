@@ -18,6 +18,8 @@ import { registerCommands } from './discord/commandRegistry';
 import type { AppContext } from './discord/types';
 import { createAdminContentService } from './modules/content/adminContentService';
 import { createContentReloader } from './modules/content/reloadService';
+import { contentRegionCatalogue } from './modules/regionPools/regionCatalogue';
+import { createRegionPoolService } from './modules/regionPools/regionPoolService';
 import { resolveExistingAssetFile } from './modules/assets/assetContainment';
 import { createCurrencyService } from './modules/currency/currencyService';
 import { createEssenceAwardService } from './modules/currency/essenceAwardService';
@@ -914,6 +916,14 @@ async function main(): Promise<void> {
       progressionCurrency,
       artworkAssets,
       enemies: enemyCatalogue,
+      // Region Pools. `huntTables` is the very object the hunt was built with:
+      // the hunt reads tables.json once, so the odds must too.
+      regionPools: createRegionPoolService({
+        db,
+        getContent: () => contentSnapshot,
+        catalogue: contentRegionCatalogue(() => contentSnapshot),
+        huntTables: content.tables,
+      }),
       bossDefinitions,
       bossArtwork,
       sceneComposition,

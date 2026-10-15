@@ -77,6 +77,14 @@ export const ALL_PORTAL_PERMISSIONS = [
   // Dungeon editor's enemy pickers need only `dungeons.read`.
   'enemies.read',
   'enemies.write',
+  // Region Pools: which Waifumon each region's hunt can meet, and at what
+  // region-local weight. Drafts plus immutable published revisions, so the
+  // same three-way split as dungeons: `write` saves drafts (never live),
+  // `publish` publishes and rolls back (live for the next hunt). Probability
+  // analysis and drift reports write nothing and need only `read`.
+  'regions.read',
+  'regions.write',
+  'regions.publish',
   // Boss Management. Three grants, because authoring and operating are
   // different jobs: `write` covers the definitions — create, edit, lifecycle
   // (Draft/Active/Disabled), duplicate, delete and import — and reaches only
@@ -135,6 +143,10 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'enemies.read': 'View the Enemy Catalogue: stats, artwork and where each enemy is used.',
   'enemies.write':
     'Create, edit, enable/disable, duplicate and delete enemies (affects future dungeon runs and Combat Trial fights only).',
+  'regions.read':
+    'View Region Pools: each region\'s published and draft pool, revision history, drift and encounter odds.',
+  'regions.write': 'Edit Region Pool drafts (no effect on hunting until published).',
+  'regions.publish': 'Publish Region Pools and roll them back (changes who players meet on their next hunt).',
   'bosses.read':
     'View Boss Management: boss definitions, availability schedules, active and past encounters, and scheduler diagnostics.',
   'bosses.write':

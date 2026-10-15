@@ -1067,6 +1067,18 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/enemies/{key}/duplicate',
       'PUT /api/v1/admin/enemies/{key}',
       'PUT /api/v1/admin/enemies/{key}/enabled',
+      // Region Pools: drafts (`regions.write` — save, discard, load or merge the
+      // shipped pool) never reach hunts; publish and rollback (`regions.publish`)
+      // name the draft revision and review they are based on. `validate` and
+      // `analysis` write nothing but carry a body; they need `regions.read`.
+      'POST /api/v1/admin/region-pools/{regionId}/analysis',
+      'POST /api/v1/admin/region-pools/{regionId}/draft/discard',
+      'POST /api/v1/admin/region-pools/{regionId}/draft/load-shipped',
+      'POST /api/v1/admin/region-pools/{regionId}/draft/merge-shipped',
+      'POST /api/v1/admin/region-pools/{regionId}/publish',
+      'POST /api/v1/admin/region-pools/{regionId}/rollback',
+      'POST /api/v1/admin/region-pools/{regionId}/validate',
+      'PUT /api/v1/admin/region-pools/{regionId}/draft',
       // Boss Management (`bosses.write`): create, save, lifecycle, duplicate,
       // delete and apply an import — writes name the revision they edited —
       // plus Spawn Now and End Encounter, which go through the boss encounter

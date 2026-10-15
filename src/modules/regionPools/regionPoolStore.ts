@@ -149,22 +149,31 @@ export interface RegionPoolSyncResult {
   coverage: RegionPoolCoverage;
 }
 
-/** Serialises every Region Pool sync: two processes starting at once, or a reload racing a start. */
+/**
+ * Serialises every Region Pool write: two processes starting at once, a reload
+ * racing a start, and every admin save, publish and rollback. One lock for all
+ * regions, because a publish must see every other region's published pool to
+ * keep a region-exclusive species in one place. Hunts never take it.
+ */
 const REGION_POOL_LOCK = sql`select pg_advisory_xact_lock(hashtextextended('region_pools', 0))`;
 
-async function recordEvent(
+/** Take the Region Pool lock for the rest of `tx`. */
+export async function lockRegionPools(tx: DbOrTx): Promise<void> {
+  await tx.execute(REGION_POOL_LOCK);
+}
+
+/** Append one audit event. `actor` defaults to the startup system actor. */
+export async function recordRegionPoolEvent(
   tx: DbOrTx,
   regionId: string,
   action: RegionPoolEventAction,
   details: Record<string, unknown>,
+  actor: string | null = REGION_POOL_SYSTEM_ACTOR,
 ): Promise<void> {
-  await tx.insert(regionPoolEvents).values({
-    regionId,
-    action,
-    actor: REGION_POOL_SYSTEM_ACTOR,
-    details,
-  });
+  await tx.insert(regionPoolEvents).values({ regionId, action, actor, details });
 }
+
+const recordEvent = recordRegionPoolEvent;
 
 async function speciesFacts(tx: DbOrTx): Promise<{
   idBySlug: Map<string, number>;
@@ -186,7 +195,7 @@ async function speciesFacts(tx: DbOrTx): Promise<{
 }
 
 /** The projection rows for one region, as `slug → weight`. */
-async function projectionOf(tx: DbOrTx, regionId: Region): Promise<Map<string, number>> {
+async function projectionOf(tx: DbOrTx, regionId: string): Promise<Map<string, number>> {
   const rows = await tx
     .select({ slug: species.slug, weight: regionEncounterPools.weight })
     .from(regionEncounterPools)
@@ -327,10 +336,11 @@ async function reportShippedDrift(
  * Rebuilds one region's projection when it differs from what it should be.
  * Returns true when rows were rewritten.
  */
-async function projectRegion(
+export async function projectRegion(
   tx: DbOrTx,
-  regionId: Region,
+  regionId: string,
   publishedRevisionId: number | null,
+  actor: string | null = REGION_POOL_SYSTEM_ACTOR,
 ): Promise<{ changed: boolean; entries: number }> {
   const desired = publishedRevisionId
     ? await tx
@@ -356,12 +366,13 @@ async function projectRegion(
       .insert(regionEncounterPools)
       .values(desired.map((d) => ({ regionId, speciesId: d.speciesId, weight: d.weight })));
   }
-  await recordEvent(tx, regionId, 'projection_rebuilt', {
-    publishedRevisionId,
-    before: before.size,
-    after: after.size,
-    diff,
-  });
+  await recordEvent(
+    tx,
+    regionId,
+    'projection_rebuilt',
+    { publishedRevisionId, before: before.size, after: after.size, diff },
+    actor,
+  );
   return { changed: true, entries: after.size };
 }
 
@@ -451,7 +462,7 @@ export async function syncRegionPools(
   logger: Logger,
 ): Promise<RegionPoolSyncResult> {
   const result = await db.transaction(async (tx) => {
-    await tx.execute(REGION_POOL_LOCK);
+    await lockRegionPools(tx);
     const facts = await speciesFacts(tx);
     const out: RegionPoolSyncResult = {
       bootstrapped: [],

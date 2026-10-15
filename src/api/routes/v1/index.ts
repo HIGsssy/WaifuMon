@@ -47,6 +47,7 @@ import { adminRewardTableRoutes } from './admin/rewardTables';
 import { adminDungeonRoutes } from './admin/dungeons';
 import { adminArtworkAssetRoutes } from './admin/artworkAssets';
 import { adminEnemyRoutes } from './admin/enemies';
+import { adminRegionPoolRoutes } from './admin/regionPools';
 import { adminBossRoutes } from './admin/bosses';
 import { adminResultPresentationRoutes } from './admin/resultPresentations';
 import { adminGalleryRoutes } from './admin/gallery';
@@ -153,6 +154,10 @@ export const v1Routes =
     // Skipped when the artwork asset service is not wired.
     await app.register(adminArtworkAssetRoutes(ctx));
     await app.register(adminEnemyRoutes(ctx));
+
+    // Admin: Region Pools — drafts, publish/rollback, drift and odds. Skipped
+    // when the Region Pool service is not wired.
+    await app.register(adminRegionPoolRoutes(ctx));
     await app.register(adminBossRoutes(ctx));
 
     // Admin: Result Presentations (hunt-find and release flavor/artwork).
