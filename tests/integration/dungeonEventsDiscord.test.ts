@@ -167,7 +167,7 @@ describe('the event screen', () => {
     expect(choiceButtons(screen).map((b) => partsOf(b).args)).toEqual(
       ['use_key', 'pick_lock', 'force', 'leave'].map((choiceId) => [String(runId), String(row.step), choiceId]),
     );
-    expect(buttonsOf(screen).map((b) => b.label)).toEqual(expect.arrayContaining(['Abandon', 'Back to Waifumon']));
+    expect(buttonsOf(screen).map((b) => b.label)).toEqual(expect.arrayContaining(['Abandon', 'Delve menu']));
     // No single "carry out" button: an event is answered with a choice.
     expect(buttonsOf(screen).some((b) => partsOf(b).action === 'act')).toBe(false);
   });

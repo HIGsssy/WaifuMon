@@ -27,7 +27,7 @@ import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { dungeonRunSceneArtwork, dungeonZoneArtwork, speciesArtwork } from '../dungeonArtwork';
 import { emitEvents } from '../gameEventEmitter';
 import { dungeonEncounterDescriptors } from '../gameEventBuilders';
-import { duplicatePromptComponents } from './waifumonCollection';
+import { conversionResultPayload, duplicatePromptComponents } from './waifumonCollection';
 import { sendRareAnnouncement } from './waifumonHunt';
 import type { TrialArt, TrialArtwork } from '../combatTrialPresenter';
 import {
@@ -40,6 +40,8 @@ import {
   buildDungeonHome,
   buildExtractConfirm,
   buildRunScreen,
+  dgId,
+  dungeonCaptureNavigation,
   lockedDungeonsView,
   type DungeonScreenOptions,
 } from '../dungeonPresenter';
@@ -379,12 +381,16 @@ function isEncounterRollback(err: unknown): err is DungeonCaptureItemUnavailable
 }
 
 /** The Keep / Convert prompt for a duplicate this press created, as a hunt offers it. Never throws. */
-async function duplicateRows(ctx: AppContext, playerId: number, receipts: readonly DungeonEncounterReceipt[]): Promise<ActionRowBuilder<ButtonBuilder>[]> {
+async function duplicateRows(ctx: AppContext, playerId: number, view: DungeonRunView, receipts: readonly DungeonEncounterReceipt[]): Promise<ActionRowBuilder<ButtonBuilder>[]> {
+  if (view.status !== 'active') return [];
   const dup = receipts.find((r) => r.acquired?.isDuplicate && !(r.type === 'rescue_grant' && r.replayed));
   if (!dup?.acquired || !ctx.services.collection) return [];
   try {
     const preview = await ctx.services.collection.previewConversionEssence(playerId, dup.acquired.rarity, 'convert');
-    return [duplicatePromptComponents(dup.acquired.waifuId, preview)];
+    return [duplicatePromptComponents(dup.acquired.waifuId, preview, {
+      keep: dgId.keepDuplicate(view.id, view.step, dup.acquired.waifuId),
+      convert: dgId.convertDuplicate(view.id, view.step, dup.acquired.waifuId),
+    })];
   } catch (err) {
     ctx.logger.warn({ err, playerId, waifuId: dup.acquired.waifuId }, 'dungeons: duplicate prompt unavailable');
     return [];
@@ -443,7 +449,7 @@ async function encounterStep(
       try {
         const result = await s.act(prov.playerId, target.runId, { ...input, expectedStep: target.step });
         committed = result.status === 'applied' ? (result.encounterReceipts ?? []) : [];
-        return await runScreen(ctx, prov.playerId, result.run, actionNotice(result), { receipts: committed, extraRows: await duplicateRows(ctx, prov.playerId, committed) });
+        return await runScreen(ctx, prov.playerId, result.run, actionNotice(result), { receipts: committed, extraRows: await duplicateRows(ctx, prov.playerId, result.run, committed) });
       } catch (err) {
         if (!isEncounterRollback(err)) throw err;
         return runScreen(ctx, prov.playerId, await s.run(prov.playerId, target.runId), err.userMessage);
@@ -470,6 +476,44 @@ export async function handleDungeonCapture(ctx: AppContext, i: ButtonInteraction
   const parsed = parseRunStep(args, 0);
   if (!parsed) return respondEphemeral(i, MALFORMED);
   return encounterStep(ctx, i, prov, parsed, { type: 'capture' });
+}
+
+/** Dungeon-only post-acquisition decisions. IDs bind run + result step + newly granted copy. */
+async function duplicateDecision(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[], decision: 'keep' | 'convert') {
+  const parsed = parseRunStep(args, 1);
+  const waifuId = parseRunId(parsed?.rest[0]);
+  if (!parsed || waifuId == null || !Number.isSafeInteger(waifuId) || !Number.isSafeInteger(parsed.runId)) return respondEphemeral(i, MALFORMED);
+  return run(ctx, i, prov, async (s) => {
+    try {
+      const context = { runId: parsed.runId, step: parsed.step };
+      if (decision === 'keep') {
+        await ctx.services.collection.keepDungeonCaptureDuplicate(prov.playerId, waifuId, context);
+        const view = await s.run(prov.playerId, parsed.runId);
+        return { content: '💜 Kept in your collection~', components: dungeonCaptureNavigation(view) };
+      }
+      const result = await ctx.services.collection.convertDuplicateToEssence(prov.playerId, waifuId, { dungeonCapture: context });
+      const view = await s.run(prov.playerId, parsed.runId);
+      return conversionResultPayload(ctx, result, result.species.name, dungeonCaptureNavigation(view));
+    } catch (err) {
+      if (!(err instanceof AppError)) throw err;
+      // Only resume the ID this button named. Never substitute a later active run.
+      try {
+        const view = await s.run(prov.playerId, parsed.runId);
+        return { content: err.userMessage, components: dungeonCaptureNavigation(view) };
+      } catch (missing) {
+        if (!(missing instanceof DungeonRunNotFoundError)) throw missing;
+        return { content: RUN_NOT_FOUND, components: [] };
+      }
+    }
+  });
+}
+
+export async function handleDungeonDuplicateKeep(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  return duplicateDecision(ctx, i, prov, args, 'keep');
+}
+
+export async function handleDungeonDuplicateConvert(ctx: AppContext, i: ButtonInteraction, prov: Provisioned, args: string[]) {
+  return duplicateDecision(ctx, i, prov, args, 'convert');
 }
 
 /** `dg|res|<runId>|<step>` — a direct rescue: no charm, no roll. */

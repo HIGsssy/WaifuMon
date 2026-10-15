@@ -14,6 +14,10 @@
 import { and, asc, count, countDistinct, desc, eq, ilike, inArray, isNull, ne, or, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
+  dungeonRunEvents,
+  dungeonRuns,
+  dungeonSpeciesAcquisitions,
+  playerCurrencies,
   playerWaifus,
   players,
   species,
@@ -34,6 +38,7 @@ import {
   type GroupedView,
 } from './collectionGrouping';
 import {
+  DungeonCaptureDecisionUnavailableError,
   NotADuplicateError,
   WaifuAlreadyReleasedError,
   WaifuAtMaxLevelError,
@@ -165,6 +170,13 @@ export interface ConvertOptions {
   /** When true, bypass the favorite-guard (second confirmation). */
   force?: boolean;
   now?: Date;
+  /** Restricts this operation to the duplicate acquired at this dungeon result. */
+  dungeonCapture?: DungeonCaptureDecision;
+}
+
+export interface DungeonCaptureDecision {
+  runId: number;
+  step: number;
 }
 
 export interface WaifuProgress {
@@ -294,6 +306,10 @@ export interface CollectionService {
     waifuId: number,
     opts?: ConvertOptions,
   ): Promise<ReleaseResult>;
+  /** Keep is read-only; validate the same grant context as a dungeon conversion. */
+  keepDungeonCaptureDuplicate(playerId: number, waifuId: number, context: DungeonCaptureDecision): Promise<void>;
+  /** Persistent origin, including released copies, for safe handling of old generic buttons. */
+  dungeonCaptureOrigin(playerId: number, waifuId: number): Promise<{ runId: number } | null>;
   /**
    * Manual release from inspect: soft-release + grant `floor(dupEssence ×
    * releaseFraction)`.
@@ -855,6 +871,54 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
    */
   type ReleaseGuard = { kind: 'release' } | { kind: 'convert'; allowFavorite: boolean };
 
+  async function lockDungeonCaptureDecision(
+    tx: DbOrTx,
+    playerId: number,
+    waifuId: number,
+    context: DungeonCaptureDecision,
+  ): Promise<string> {
+    const refused = () => { throw new DungeonCaptureDecisionUnavailableError(); };
+    if (
+      ![playerId, waifuId, context.runId].every(n => Number.isSafeInteger(n) && n > 0) ||
+      !Number.isSafeInteger(context.step) || context.step < 0
+    ) return refused();
+    // Same order as a dungeon capture: run → currencies → player → copy.
+    // Ending/advancing the run cannot race a scoped conversion past this check.
+    const [run] = await tx.select().from(dungeonRuns)
+      .where(and(eq(dungeonRuns.id, context.runId), eq(dungeonRuns.playerId, playerId)))
+      .for('update');
+    if (!run || run.status !== 'active' || run.step !== context.step) return refused();
+    await tx.select({ id: playerCurrencies.playerId }).from(playerCurrencies)
+      .where(eq(playerCurrencies.playerId, playerId)).for('update');
+    await tx.select({ id: players.id }).from(players)
+      .where(eq(players.id, playerId)).for('update');
+    const [grant] = await tx.select({ grantKey: dungeonSpeciesAcquisitions.grantKey })
+      .from(dungeonSpeciesAcquisitions)
+      .innerJoin(dungeonRunEvents, and(
+        eq(dungeonRunEvents.runId, dungeonSpeciesAcquisitions.runId),
+        eq(dungeonRunEvents.playerId, dungeonSpeciesAcquisitions.playerId),
+        eq(dungeonRunEvents.type, 'waifu_acquired'),
+        eq(dungeonRunEvents.step, context.step),
+        sql`${dungeonRunEvents.payload}->>'grantKey' = ${dungeonSpeciesAcquisitions.grantKey}`,
+        sql`${dungeonRunEvents.payload}->>'waifuId' = ${String(waifuId)}`,
+        sql`${dungeonRunEvents.payload}->>'isDuplicate' = 'true'`,
+        sql`coalesce(${dungeonRunEvents.payload}->>'replayed', 'false') <> 'true'`,
+      ))
+      .where(and(
+        eq(dungeonSpeciesAcquisitions.playerId, playerId),
+        eq(dungeonSpeciesAcquisitions.runId, context.runId),
+        eq(dungeonSpeciesAcquisitions.waifuId, waifuId),
+      ));
+    if (!grant) return refused();
+    return grant.grantKey;
+  }
+
+  function assertDungeonCopy(copy: PlayerWaifuRow, grantKey: string): void {
+    if (copy.grantKey !== grantKey || !['dungeon_capture', 'dungeon_rescue'].includes(copy.acquiredVia ?? '')) {
+      throw new DungeonCaptureDecisionUnavailableError();
+    }
+  }
+
   async function softRelease(
     playerId: number,
     waifuId: number,
@@ -862,8 +926,10 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
     now: Date,
     guard: ReleaseGuard,
     requireDuplicate: boolean,
+    dungeonCapture?: DungeonCaptureDecision,
   ): Promise<ReleaseResult> {
     return db.transaction(async (tx) => {
+      const dungeonGrantKey = dungeonCapture ? await lockDungeonCaptureDecision(tx, playerId, waifuId, dungeonCapture) : null;
       // Lock the owned-waifu row.
       const [locked] = await tx
         .select()
@@ -872,6 +938,7 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         .for('update');
       if (!locked) throw new WaifuNotOwnedError(waifuId);
       if (locked.releasedAt != null) throw new WaifuAlreadyReleasedError(waifuId);
+      if (dungeonGrantKey) assertDungeonCopy(locked, dungeonGrantKey);
       // Both protection reads happen before either can throw, so the release
       // path can name a copy that is favourite *and* buddy in one message
       // rather than sending the player round twice.
@@ -1109,7 +1176,24 @@ export function createCollectionService(deps: CollectionServiceDeps): Collection
         opts.now ?? new Date(),
         { kind: 'convert', allowFavorite: opts.force === true },
         true,
+        opts.dungeonCapture,
       );
+    },
+    async keepDungeonCaptureDuplicate(playerId, waifuId, context) {
+      await db.transaction(async (tx) => {
+        const grantKey = await lockDungeonCaptureDecision(tx, playerId, waifuId, context);
+        const [copy] = await tx.select().from(playerWaifus)
+          .where(and(eq(playerWaifus.id, waifuId), eq(playerWaifus.playerId, playerId)))
+          .for('update');
+        if (!copy || copy.releasedAt) throw new DungeonCaptureDecisionUnavailableError();
+        assertDungeonCopy(copy, grantKey);
+      });
+    },
+    async dungeonCaptureOrigin(playerId, waifuId) {
+      const [origin] = await db.select({ runId: dungeonSpeciesAcquisitions.runId })
+        .from(dungeonSpeciesAcquisitions)
+        .where(and(eq(dungeonSpeciesAcquisitions.playerId, playerId), eq(dungeonSpeciesAcquisitions.waifuId, waifuId)));
+      return origin ?? null;
     },
     async previewConversionEssence(playerId, rarity, kind) {
       // The same two inputs `softRelease` uses, in the same order: the rarity

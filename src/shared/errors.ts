@@ -15,6 +15,17 @@ export class AppError extends Error {
   }
 }
 
+/** A post-capture decision must still name this player's current dungeon grant. */
+export class DungeonCaptureDecisionUnavailableError extends AppError {
+  constructor() {
+    super(
+      'DUNGEON_CAPTURE_DECISION_UNAVAILABLE',
+      'Dungeon duplicate decision does not match the current run, step and acquisition',
+      'That capture decision is no longer available. Your Delve may have moved on or ended.',
+    );
+  }
+}
+
 export class ConfigError extends AppError {
   constructor(message: string) {
     super('CONFIG_INVALID', message);

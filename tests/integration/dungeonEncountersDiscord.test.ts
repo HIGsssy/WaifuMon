@@ -11,7 +11,7 @@
 import { AttachmentBuilder } from 'discord.js';
 import { and, eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { dungeonRuns, playerActiveEffects, playerInventory, players, playerWaifus, species } from '../../src/db/schema';
+import { dungeonRuns, dungeonSpeciesAcquisitions, encounters, playerActiveEffects, playerDailyQuests, playerInventory, playerProgressionEvents, players, playerWaifus, species } from '../../src/db/schema';
 
 vi.mock('../../src/discord/assets/attachRenderedCard', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../src/discord/assets/attachRenderedCard')>()),
@@ -35,7 +35,10 @@ import {
   handleDungeonRun,
   handleDungeonAct,
   handleDungeonMove,
+  handleDungeonDuplicateKeep,
+  handleDungeonDuplicateConvert,
 } from '../../src/discord/commands/waifumonDungeon';
+import { duplicatePromptComponents, handleDuplicateKeep, handleDuplicateConvert } from '../../src/discord/commands/waifumonCollection';
 import {
   CAPTURE_ITEM_REQUIRED_NOTICE,
   CHARM_SPENT_PER_ATTEMPT,
@@ -166,6 +169,8 @@ const HANDLERS: Record<string, Handler> = {
   run: handleDungeonRun,
   act: handleDungeonAct,
   mv: handleDungeonMove,
+  dk: handleDungeonDuplicateKeep,
+  dc: handleDungeonDuplicateConvert,
 };
 const press = (prov: Provisioned, screen: Payload, label: RegExp) => {
   const { action, args } = partsOf(buttonOf(screen, label));
@@ -271,7 +276,7 @@ describe('the offered encounter', () => {
     expect(buttonOf(screen, /^Capture$/)).toMatchObject({ disabled: true, custom_id: dgId.capture(runId, step) });
     expect(buttonOf(screen, /Leave her/).custom_id).toBe(dgId.leaveEncounter(runId, step));
     expect(buttonsOf(screen).some((b) => b.custom_id!.includes(CHARM))).toBe(false);
-    expect(buttonsOf(screen).map((b) => b.label)).toEqual(expect.arrayContaining(['Abandon', 'Back to Waifumon']));
+    expect(buttonsOf(screen).map((b) => b.label)).toEqual(expect.arrayContaining(['Abandon', 'Delve menu']));
     // No internal ids, slugs or rolls on the screen.
     const text = JSON.stringify(embed);
     for (const leak of [RARE, CHARM, 'grant', 'seed', 'roll']) expect(text).not.toContain(leak);
@@ -384,7 +389,8 @@ describe('capture attempts', () => {
     expect(told).toMatch(/\+\d+ XP \(incl\. new dex\)/);
     expect(embedOf(caught).image?.url).toBe('attachment://waifumon-card.webp');
     // Her flag opened the nap: the run carries on to it.
-    expect(buttonOf(caught, /^Nap$/)).toBeDefined();
+    expect(buttonOf(caught, /^Continue the Delve$/)).toBeDefined();
+    expect(buttonOf(await press(prov, caught, /^Continue the Delve$/), /^Nap$/)).toBeDefined();
     const copies = await copiesOf(playerId);
     expect(copies.filter((c) => c.acquiredVia === 'dungeon_capture')).toHaveLength(1);
     // Post-commit: one rare announcement, one feed event, a session entry.
@@ -446,8 +452,9 @@ describe('capture attempts', () => {
     const told = fieldOf(caught, /💖 You captured Neko Barista/)!.value;
     expect(told).toContain('You already have her — this one is a duplicate.');
     expect(told).toContain('guaranteed capture');
-    const dup = buttonsOf(caught).filter((b) => partsOf(b).scope === 'dup');
-    expect(dup.map((b) => partsOf(b).action)).toEqual(['keep', 'convert']);
+    const dup = buttonsOf(caught).filter((b) => ['dk', 'dc'].includes(partsOf(b).action));
+    expect(dup.map((b) => partsOf(b).scope)).toEqual(['dg', 'dg']);
+    expect(dup.map((b) => partsOf(b).action)).toEqual(['dk', 'dc']);
     // Not announced: an N capture is below the rare threshold.
     expect(announced.some((m) => m.embeds?.[0]?.toJSON().title?.includes('Neko Barista'))).toBe(false);
   });
@@ -719,6 +726,217 @@ describe('refusals and rollbacks', () => {
   });
 });
 
+describe('dungeon capture navigation and scoped duplicate decisions', () => {
+  const noMainMenu = (screen: Payload) => {
+    expect(buttonsOf(screen).some(b => /Back to (Waifumon|Menu)/i.test(b.label ?? ''))).toBe(false);
+    expect(buttonsOf(screen).some(b => partsOf(b).scope === 'menu')).toBe(false);
+  };
+  const state = async (playerId: number, runId: number) => ({
+    run: await rowOf(runId), copies: await copiesOf(playerId), history: await w.runs.history(runId),
+    wallet: await w.app.currency.getBalances(playerId), charms: await held(playerId, CONTRACT),
+    effects: await w.t.db.select().from(playerActiveEffects).where(eq(playerActiveEffects.playerId, playerId)),
+    xp: await w.t.db.select().from(playerProgressionEvents).where(eq(playerProgressionEvents.playerId, playerId)),
+    quests: await w.t.db.select().from(playerDailyQuests).where(eq(playerDailyQuests.playerId, playerId)),
+    ledger: await w.t.db.select().from(dungeonSpeciesAcquisitions).where(eq(dungeonSpeciesAcquisitions.playerId, playerId)),
+  });
+  const captured = async (duplicate = true) => {
+    const d = await publish(wild(COMMON, {}, { results: { captured: { flags: [{ flag: 'lever', value: true }] } } }));
+    const offer = await atEncounter(d, { charms: { [CONTRACT]: 2 } });
+    const original = duplicate ? await insertOwnedWaifu(w.t.db, { playerId: offer.playerId, speciesId: await speciesId(COMMON) }) : null;
+    const caught = await press(offer.prov, await choose(offer.prov, offer.screen, CONTRACT), /Capture — Mythic Contract/);
+    const copy = (await copiesOf(offer.playerId)).find(c => c.grantKey === `dungeon:${offer.runId}:${ROOM}:${ACTION}`)!;
+    expect(copy).toBeDefined();
+    noMainMenu(caught);
+    return { ...offer, caught, copy, original, definition: d };
+  };
+
+  it('a new capture offers Continue the Delve and read-only resume preserves every gameplay record', async () => {
+    const c = await captured(false);
+    expect(buttonsOf(c.caught).some(b => ['dk', 'dc'].includes(partsOf(b).action))).toBe(false);
+    const before = await state(c.playerId, c.runId);
+    const resumed = await press(c.prov, c.caught, /^Continue the Delve$/);
+    noMainMenu(resumed);
+    expect(buttonOf(resumed, /^Nap$/)).toBeDefined();
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+  });
+
+  it('Keep confirms the exact captured duplicate, offers Continue, and keeps the pending activity unchanged', async () => {
+    const c = await captured();
+    const before = await state(c.playerId, c.runId);
+    const kept = await press(c.prov, c.caught, /Keep Duplicate/);
+    expect(kept.content).toContain('Kept');
+    noMainMenu(kept);
+    noMainMenu(await press(c.prov, kept, /^Continue the Delve$/));
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+    // A repeated Keep is the same harmless validation, with no grant or credit.
+    await press(c.prov, c.caught, /Keep Duplicate/);
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+  });
+
+  it('Convert uses the normal payout, releases only the acquired copy, and resumes without advancing', async () => {
+    const c = await captured();
+    const before = await state(c.playerId, c.runId);
+    const expected = await w.app.collection.previewConversionEssence(c.playerId, 'N', 'convert');
+    const converted = await press(c.prov, c.caught, /Convert to Essence/);
+    noMainMenu(converted);
+    expect(await w.app.currency.getBalances(c.playerId)).toMatchObject({ essence: before.wallet.essence + expected.finalAmount });
+    expect((await copiesOf(c.playerId)).find(copy => copy.id === c.copy.id)!.releasedAt).not.toBeNull();
+    expect((await copiesOf(c.playerId)).find(copy => copy.id === c.original!.id)!.releasedAt).toBeNull();
+    expect(await rowOf(c.runId)).toEqual(before.run);
+    expect(await w.runs.history(c.runId)).toEqual(before.history);
+    const committed = await state(c.playerId, c.runId);
+    noMainMenu(await press(c.prov, converted, /^Continue the Delve$/));
+    expect(await state(c.playerId, c.runId)).toEqual(committed);
+    const replay = await press(c.prov, c.caught, /Convert to Essence/);
+    noMainMenu(replay);
+    expect(replay.content).toBe('You already let her go~');
+    expect(await state(c.playerId, c.runId)).toEqual(committed);
+  });
+
+  it('concurrent Convert presses award Essence and quest credit once', async () => {
+    const c = await captured();
+    await w.t.db.insert(playerDailyQuests).values({ playerId: c.playerId, questDate: new Date().toISOString().slice(0,10),
+      questSlug: 'nav_convert', titleSnapshot: 'Convert', descriptionSnapshot: 'Convert', type: 'duplicate_converted', target: 10, progress: 0, rewardsJson: {} });
+    const before = await w.app.currency.getBalances(c.playerId);
+    const expected = await w.app.collection.previewConversionEssence(c.playerId, 'N', 'convert');
+    const results = await Promise.all(Array.from({ length: 3 }, () => press(c.prov, c.caught, /Convert to Essence/)));
+    for (const screen of results) noMainMenu(screen);
+    expect((await w.app.currency.getBalances(c.playerId)).essence).toBe(before.essence + expected.finalAmount);
+    expect((await w.t.db.select().from(playerDailyQuests).where(eq(playerDailyQuests.playerId, c.playerId))).find(q => q.questSlug === 'nav_convert')!.progress).toBe(1);
+  });
+
+  it.each(['keep', 'convert'] as const)('rejects %s for another owned copy, a foreign copy, a non-duplicate acquisition and mismatched result step', async decision => {
+    const c = await captured();
+    const handler = decision === 'keep' ? handleDungeonDuplicateKeep : handleDungeonDuplicateConvert;
+    const resultStep = (await rowOf(c.runId)).step;
+    const foreign = await w.player();
+    const foreignCopy = await insertOwnedWaifu(w.t.db, { playerId: foreign.playerId, speciesId: await speciesId(COMMON) });
+    const before = await state(c.playerId, c.runId);
+    for (const [copyId, step] of [[c.original!.id, resultStep], [foreignCopy.id, resultStep], [c.copy.id, resultStep - 1]]) {
+      const refused = await call(handler, c.prov, [String(c.runId), String(step), String(copyId)]);
+      expect(refused.content).toContain('no longer available');
+      noMainMenu(refused);
+      expect(await state(c.playerId, c.runId)).toEqual(before);
+    }
+    const unique = await captured(false);
+    const uniqueBefore = await state(unique.playerId, unique.runId);
+    expect((await call(handler, unique.prov, [String(unique.runId), String((await rowOf(unique.runId)).step), String(unique.copy.id)])).content).toContain('no longer available');
+    expect(await state(unique.playerId, unique.runId)).toEqual(uniqueBefore);
+  });
+
+  it('rejects a different player or run, and malformed IDs, without touching either collection', async () => {
+    const c = await captured();
+    const another = await captured();
+    const args = partsOf(buttonOf(c.caught, /Convert to Essence/)).args;
+    const before = await state(c.playerId, c.runId), otherBefore = await state(another.playerId, another.runId);
+    expect((await call(handleDungeonDuplicateConvert, another.prov, args)).content).toBe('That run could not be found.');
+    expect((await call(handleDungeonDuplicateConvert, c.prov, [String(another.runId), args[1]!, args[2]!])).content).toBe('That run could not be found.');
+    for (const invalid of [[], [...args, 'extra'], ['0', args[1]!, args[2]!], [args[0]!, '-1', args[2]!], [args[0]!, args[1]!, '9007199254740992']]) {
+      expect((await call(handleDungeonDuplicateConvert, c.prov, invalid)).content).toContain('malformed');
+    }
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+    expect(await state(another.playerId, another.runId)).toEqual(otherBefore);
+  });
+
+  it('a process restart and refreshed message retain secure decision and run context', async () => {
+    const c = await captured();
+    const real = ctx.services.dungeonRuns!;
+    (ctx.services as { dungeonRuns: DungeonRunService }).dungeonRuns = w.restartedRuns();
+    try {
+      const before = await state(c.playerId, c.runId);
+      const kept = await press(c.prov, c.caught, /Keep Duplicate/);
+      expect(buttonOf(await press(c.prov, kept, /^Continue the Delve$/), /^Nap$/)).toBeDefined();
+      expect(await state(c.playerId, c.runId)).toEqual(before);
+    } finally { (ctx.services as { dungeonRuns: DungeonRunService }).dungeonRuns = real; }
+  });
+
+  it.each(['abandoned', 'completed'] as const)('a run %s before the decision refuses Keep/Convert and offers no invalid Continue', async end => {
+    const c = await captured();
+    let run = await w.runs.run(c.playerId, c.runId);
+    if (end === 'abandoned') await w.act(c.playerId, run, { type: 'abandon' });
+    else {
+      run = (await w.act(c.playerId, run, { type: 'advance' })).run;
+      await w.act(c.playerId, run, { type: 'move', connectionId: 'c_out' });
+    }
+    const before = await state(c.playerId, c.runId);
+    for (const label of [/Keep Duplicate/, /Convert to Essence/]) {
+      const refused = await press(c.prov, c.caught, label);
+      expect(refused.content).toContain('no longer available');
+      expect(buttonsOf(refused).map(b => b.label)).toEqual(['Delve menu']);
+    }
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+    // An old Continue still names the ended run, even with a new active run.
+    const next = await w.runs.start(c.playerId, c.definition.key);
+    await press(c.prov, c.caught, /^Continue the Delve$/);
+    expect(await rowOf(next.id)).toMatchObject({ step: next.step, status: 'active' });
+    expect((await call(handleDungeonDuplicateConvert, c.prov, partsOf(buttonOf(c.caught, /Convert to Essence/)).args)).content).toContain('no longer available');
+    expect(await rowOf(next.id)).toMatchObject({ step: next.step, status: 'active' });
+  });
+
+  it('a stale decision cannot select the next copy, even when its copy ID is substituted', async () => {
+    const d = singleRoomDungeon([
+      { id: 'meet', ...wild(COMMON) } as never,
+      { id: 'second', ...wild(COMMON) } as never,
+    ], input => { input.key = `enc_dc_${++keySeq}`; });
+    await w.publish(d);
+    const c = await atEncounter(d, { charms: { [CONTRACT]: 2 } });
+    await insertOwnedWaifu(w.t.db, { playerId: c.playerId, speciesId: await speciesId(COMMON) });
+    const first = await press(c.prov, await choose(c.prov, c.screen, CONTRACT), /Capture — Mythic Contract/);
+    const secondOffer = await press(c.prov, first, /^Continue the Delve$/);
+    expect(menuOf(secondOffer)).toBeDefined(); // Continue did not resolve the pending encounter.
+    const second = await press(c.prov, await choose(c.prov, secondOffer, CONTRACT), /Capture — Mythic Contract/);
+    const old = partsOf(buttonOf(first, /Convert to Essence/)).args;
+    const latest = partsOf(buttonOf(second, /Convert to Essence/)).args;
+    const before = await state(c.playerId, c.runId);
+    expect((await call(handleDungeonDuplicateConvert, c.prov, [old[0]!, old[1]!, latest[2]!])).content).toContain('no longer available');
+    expect((await call(handleDungeonDuplicateConvert, c.prov, [latest[0]!, latest[1]!, old[2]!])).content).toContain('no longer available');
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+  });
+
+  it('keeps favourite and pinned-fighter protection; scoped conversion is not a collection escape hatch', async () => {
+    const c = await captured();
+    await w.t.db.update(playerWaifus).set({ isFavorite: true }).where(eq(playerWaifus.id, c.copy.id));
+    const before = await state(c.playerId, c.runId);
+    const refused = await press(c.prov, c.caught, /Convert to Essence/);
+    expect(refused.content).toMatch(/favou?rite/i);
+    noMainMenu(refused);
+    const fighterId = (await w.runs.run(c.playerId, c.runId)).fighter.waifuId;
+    await expect(w.app.collection.releaseWaifu(c.playerId, fighterId)).rejects.toMatchObject({ reasons: expect.arrayContaining(['in_dungeon']) });
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+  });
+
+  it.each(['keep', 'convert'] as const)('old generic dungeon %s buttons fail safely to Delve navigation without mutating copies', async decision => {
+    const c = await captured();
+    const before = await state(c.playerId, c.runId);
+    const screen = await call(decision === 'keep' ? handleDuplicateKeep : handleDuplicateConvert, c.prov, [String(c.copy.id)]);
+    expect(screen.content).toContain('older dungeon capture button');
+    noMainMenu(screen);
+    expect(buttonOf(screen, /^Continue the Delve$/)).toBeDefined();
+    expect(await state(c.playerId, c.runId)).toEqual(before);
+  });
+
+  it('ordinary world capture duplicate IDs, Keep/Convert and Back to Menu remain unchanged', async () => {
+    const { playerId } = await w.player();
+    const [p] = await w.t.db.select().from(players).where(eq(players.id, playerId));
+    const prov = { playerId, guildDbId: p!.guildId } as Provisioned;
+    await insertOwnedWaifu(w.t.db, { playerId, speciesId: await speciesId(COMMON) });
+    await give(playerId, CONTRACT, 1);
+    const [encounter] = await w.t.db.insert(encounters).values({ playerId, speciesId: await speciesId(COMMON), channelId: 'nav-world', state: 'active', expiresAt: new Date(Date.now() + 60_000) }).returning();
+    const captured = await w.app.capture.attemptCapture(playerId, encounter!.id, CONTRACT);
+    expect(captured.isDuplicate).toBe(true);
+    const preview = await w.app.collection.previewConversionEssence(playerId, captured.species.rarity, 'convert');
+    const row = duplicatePromptComponents(captured.newWaifu!.id, preview).toJSON().components;
+    expect(row.map(b => partsOf(b).scope)).toEqual(['dup', 'dup']);
+    expect(row.map(b => partsOf(b).action)).toEqual(['keep', 'convert']);
+    const kept = await call(handleDuplicateKeep, prov, [String(captured.newWaifu!.id)]);
+    expect(buttonsOf(kept).some(b => partsOf(b).scope === 'menu')).toBe(true);
+    const before = await w.app.currency.getBalances(playerId);
+    const converted = await call(handleDuplicateConvert, prov, [String(captured.newWaifu!.id)]);
+    expect(buttonsOf(converted).some(b => partsOf(b).scope === 'menu')).toBe(true);
+    expect((await w.app.currency.getBalances(playerId)).essence).toBe(before.essence + preview.finalAmount);
+  });
+});
+
 describe('Discord limits', () => {
   it('keeps a long-named, crowded charm menu inside Discord’s limits', async () => {
     const definition = await publish(wild(COMMON, {}, { label: 'L'.repeat(80), intro: 'I'.repeat(600) }), (d) => {
@@ -734,6 +952,8 @@ describe('Discord limits', () => {
     }
     expect(dgId.charm(Number.MAX_SAFE_INTEGER, 9_999_999).length).toBeLessThanOrEqual(100);
     expect(dgId.encounterGone(Number.MAX_SAFE_INTEGER, 9_999_999).length).toBeLessThanOrEqual(100);
+    expect(dgId.keepDuplicate(Number.MAX_SAFE_INTEGER, 9_999_999, Number.MAX_SAFE_INTEGER).length).toBeLessThanOrEqual(100);
+    expect(dgId.convertDuplicate(Number.MAX_SAFE_INTEGER, 9_999_999, Number.MAX_SAFE_INTEGER).length).toBeLessThanOrEqual(100);
     expect(fieldOf(screen, /🎯 Capture/)!.value).toContain(CHARM_SPENT_PER_ATTEMPT);
   });
 

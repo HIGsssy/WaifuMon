@@ -1903,14 +1903,15 @@ export async function handleCollectionList(
 export function duplicatePromptComponents(
   waifuId: number,
   preview: EssencePreview,
+  ids?: { keep: string; convert: string },
 ): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(buildCustomId('dup', 'keep', String(waifuId)))
+      .setCustomId(ids?.keep ?? buildCustomId('dup', 'keep', String(waifuId)))
       .setLabel('💜 Keep Duplicate')
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
-      .setCustomId(buildCustomId('dup', 'convert', String(waifuId)))
+      .setCustomId(ids?.convert ?? buildCustomId('dup', 'convert', String(waifuId)))
       .setLabel(`✨ Convert to Essence (+${preview.finalAmount})`)
       .setStyle(ButtonStyle.Primary),
   );
@@ -1936,6 +1937,16 @@ async function paintConversionResult(
   name: string,
   extraRows: ActionRowBuilder<ButtonBuilder>[] = [],
 ): Promise<void> {
+  await respondEphemeral(interaction, await conversionResultPayload(ctx, result, name, withBackRow(extraRows)));
+}
+
+/** Shared committed conversion presentation; navigation belongs to the origin. */
+export async function conversionResultPayload(
+  ctx: AppContext,
+  result: ReleaseResult,
+  name: string,
+  components: ActionRowBuilder<ButtonBuilder>[],
+) {
   const presentation = await resolvePresentationFor(ctx, 'collection.converted_to_essence');
   const screen = buildConversionScreen(
     {
@@ -1963,11 +1974,29 @@ async function paintConversionResult(
       return null;
     }
   });
-  await respondEphemeral(interaction, {
+  return {
     embeds: [embed],
-    components: withBackRow(extraRows),
+    components,
     files,
+  };
+}
+
+/** Old dungeon prompts had generic dup IDs. Never process them as world captures. */
+async function oldDungeonDuplicate(ctx: AppContext, interaction: ButtonInteraction, prov: Provisioned, waifuId: number): Promise<boolean> {
+  const origin = await ctx.services.collection.dungeonCaptureOrigin(prov.playerId, waifuId);
+  if (!origin) return false;
+  const view = await ctx.services.dungeonRuns?.run(prov.playerId, origin.runId);
+  const active = view?.status === 'active';
+  await respondEphemeral(interaction, {
+    content: active
+      ? 'This older dungeon capture button is out of date. Your copy has not been changed. Continue the Delve to resume.'
+      : 'That Delve has ended. This older capture button has not changed your collection.',
+    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(new ButtonBuilder()
+      .setCustomId(active ? buildCustomId('dg', 'run', String(origin.runId)) : buildCustomId('dg', 'home'))
+      .setLabel(active ? 'Continue the Delve' : 'Delve menu')
+      .setStyle(ButtonStyle.Primary))],
   });
+  return true;
 }
 
 /**
@@ -1986,7 +2015,10 @@ export async function handleDuplicateKeep(
   ctx: AppContext,
   interaction: ButtonInteraction,
   prov: Provisioned,
+  args: string[] = [],
 ): Promise<void> {
+  const waifuId = Number(args[0]);
+  if (Number.isSafeInteger(waifuId) && waifuId > 0 && await oldDungeonDuplicate(ctx, interaction, prov, waifuId)) return;
   await respondEphemeral(interaction, {
     content: '💜 Kept in your collection~',
     components: withBackRow(),
@@ -2009,6 +2041,7 @@ export async function handleDuplicateConvert(
     return;
   }
   try {
+    if (await oldDungeonDuplicate(ctx, interaction, prov, waifuId)) return;
     // Post-capture path — the just-created row is never a favorite, so the
     // default (no force) is safe. The duplicate guard is satisfied because the
     // player already owned an earlier active copy of this species.

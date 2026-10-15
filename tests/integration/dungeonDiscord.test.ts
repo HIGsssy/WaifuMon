@@ -276,7 +276,7 @@ describe('the home', () => {
     expect(fieldOf(screen, 'Nebula Nurse')!.value).toContain(`HP **${MAX_HP} / ${MAX_HP}**`);
     expect(fieldOf(screen, 'Unbanked Ascension Tokens')!.value).toBe('0 Ascension Tokens');
     expect(fieldOf(screen, 'Secured')!.value).toBe('Nothing yet.');
-    expect(labelsOf(screen)).toEqual(['Resume', 'Abandon', 'Back to Waifumon']);
+    expect(labelsOf(screen)).toEqual(['Resume', 'Abandon']);
     expect(routeOf(buttonOf(screen, 'Resume'))).toBe(`dg|run|${runId}`);
     expect(routeOf(buttonOf(screen, 'Abandon'))).toBe(`dg|abq|${runId}`);
 
@@ -331,7 +331,7 @@ describe('a fight', () => {
     expect(embedOf(screen).description).toContain('Wave 1 of 2');
     expect(fieldOf(screen, 'Nebula Nurse')!.value).toContain(`HP **${MAX_HP} / ${MAX_HP}**`);
     expect(fieldOf(screen, 'Rooms cleared')!.value).toBe('0 / 5');
-    expect(labelsOf(screen)).toEqual(['Fight', 'Abandon', 'Back to Waifumon']);
+    expect(labelsOf(screen)).toEqual(['Fight', 'Abandon', 'Delve menu']);
     const fight = buttonOf(screen, 'Fight');
     expect(fight.custom_id).toBe(dgId.advance(run.id, 0));
     expect(routeOf(fight)).toBe(`dg|act|${run.id}|0|a`);
@@ -353,7 +353,7 @@ describe('a fight', () => {
     expect(await runRow(runId)).toMatchObject({ status: 'active', step: 1, currentHp: MAX_HP - WAVE_DAMAGE });
 
     // Wave 2 reads as the next wave, not as a fresh fight — and names step 1.
-    expect(labelsOf(after)).toEqual(['Next wave', 'Abandon', 'Back to Waifumon']);
+    expect(labelsOf(after)).toEqual(['Next wave', 'Abandon', 'Delve menu']);
     const next = buttonOf(after, 'Next wave');
     expect(next.custom_id).toBe(dgId.advance(runId, 1));
     expect(routeOf(next)).toBe(`dg|act|${runId}|1|a`);
@@ -422,7 +422,7 @@ describe('the ways on', () => {
     ]);
     expect(ways.map((b) => b.custom_id)).toEqual([dgId.move(runId, step, 'c_main'), dgId.move(runId, step, 'c_side')]);
     // The gate is no extraction point: there is nothing to extract from.
-    expect(labelsOf(gate)).toEqual(['→ Pump Room', 'Side door', 'Abandon', 'Back to Waifumon']);
+    expect(labelsOf(gate)).toEqual(['→ Pump Room', 'Side door', 'Abandon', 'Delve menu']);
   });
 
   it('moving takes the connection into the next room, and an optional action can be skipped', async () => {
@@ -439,7 +439,7 @@ describe('the ways on', () => {
     expect(await eventsOf(runId, 'connection_taken')).toHaveLength(1);
 
     // The locker is optional: Open, or Skip — both drawn for this step.
-    expect(labelsOf(locker)).toEqual(['Open', 'Skip', 'Abandon', 'Back to Waifumon']);
+    expect(labelsOf(locker)).toEqual(['Open', 'Skip', 'Abandon', 'Delve menu']);
     expect(routeOf(buttonOf(locker, 'Open'))).toBe(`dg|act|${runId}|${after.step}|a`);
     expect(routeOf(buttonOf(locker, 'Skip'))).toBe(`dg|act|${runId}|${after.step}|d`);
     const skipped = await clearRoom(prov, await press(prov, locker, 'Skip'));

@@ -124,6 +124,8 @@ export const dgId = {
   leaveEncounter: (runId: number, step: number) => buildCustomId('dg', 'cl', String(runId), String(step)),
   /** An encounter whose WaifuMon can no longer be had: resolves it as unavailable, never spends or grants. */
   encounterGone: (runId: number, step: number) => buildCustomId('dg', 'cu', String(runId), String(step)),
+  keepDuplicate: (runId: number, step: number, waifuId: number) => buildCustomId('dg', 'dk', String(runId), String(step), String(waifuId)),
+  convertDuplicate: (runId: number, step: number, waifuId: number) => buildCustomId('dg', 'dc', String(runId), String(step), String(waifuId)),
 };
 
 const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
@@ -193,6 +195,13 @@ function menuButton(): ButtonBuilder {
 
 function homeButton(label = 'Delve'): ButtonBuilder {
   return button(dgId.home(), label, ButtonStyle.Secondary, '⛏️');
+}
+
+/** Repainting a capture result never moves the dungeon cursor. */
+export function dungeonCaptureNavigation(view: DungeonRunView): ActionRowBuilder<ButtonBuilder>[] {
+  return view.status === 'active'
+    ? [row(button(dgId.run(view.id), 'Continue the Delve', ButtonStyle.Primary), homeButton('Delve menu'))]
+    : [row(homeButton('Delve menu'))];
 }
 
 /** The main menu's entry to dungeons. */
@@ -467,7 +476,6 @@ export function buildDungeonHome(view: DungeonHomeView, opts: DungeonScreenOptio
           button(dgId.run(run.id), 'Resume', ButtonStyle.Primary, '▶️'),
           button(dgId.abandonConfirm(run.id), 'Abandon', ButtonStyle.Danger),
         ),
-        row(menuButton()),
       ],
       files: files(art),
     };
@@ -570,7 +578,7 @@ export function buildDungeonDetail(view: DungeonDetailView, opts: DungeonScreenO
   return {
     content: truncate(opts.status ?? '', 2000),
     embeds: [embed],
-    components: [row(...actions), row(homeButton('All Dungeons'), menuButton())],
+    components: [row(...actions), row(homeButton('All Dungeons'), ...(view.activeRunId == null ? [menuButton()] : []))],
     files: files(art),
   };
 }
@@ -1175,10 +1183,13 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
   applyArt(embed, art);
 
   const components: Row[] = [];
+  const acquired = opts.encounterReceipts?.some((r) => r.acquired && !(r.type === 'rescue_grant' && r.replayed));
   if (over) {
     components.push(...(opts.extraRows ?? []), row(homeButton('Delve Again'), menuButton()));
   } else {
-    if (core.phase === 'action' && core.action?.encounter) {
+    if (acquired) {
+      components.push(...dungeonCaptureNavigation(view));
+    } else if (core.phase === 'action' && core.action?.encounter) {
       components.push(...encounterRows(view, core.action, core.action.encounter, opts.itemName));
     } else if (core.phase === 'action' && core.action) {
       components.push(row(...actionButtons(view, core.action)));
@@ -1187,7 +1198,8 @@ export function buildRunScreen(view: DungeonRunView, opts: DungeonScreenOptions)
     }
     const last: ButtonBuilder[] = [];
     if (core.canExtract) last.push(button(dgId.extractConfirm(view.id), 'Extract', ButtonStyle.Success, '🚪'));
-    last.push(button(dgId.abandonConfirm(view.id), 'Abandon', core.stuck ? ButtonStyle.Danger : ButtonStyle.Secondary), menuButton());
+    last.push(button(dgId.abandonConfirm(view.id), 'Abandon', core.stuck ? ButtonStyle.Danger : ButtonStyle.Secondary));
+    if (!acquired) last.push(homeButton('Delve menu'));
     components.push(...(opts.extraRows ?? []), row(...last));
   }
   return { content: truncate(opts.status ?? '', 2000), embeds: [embed], components, files: files(art) };

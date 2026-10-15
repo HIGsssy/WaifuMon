@@ -109,6 +109,8 @@ import {
   handleDungeonAbandonConfirm,
   handleDungeonAct,
   handleDungeonCapture,
+  handleDungeonDuplicateKeep,
+  handleDungeonDuplicateConvert,
   handleDungeonCharm,
   handleDungeonChoose,
   handleDungeonEncounterGone,
@@ -476,6 +478,8 @@ export function createDiscordClient(ctx: AppContext): Client {
       // Capture uses the selection stored on the run.
       'dg:ci': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) => handleDungeonCharm(ctx, i, prov, args),
       'dg:cap': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonCapture(ctx, i, prov, args),
+      'dg:dk': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonDuplicateKeep(ctx, i, prov, args),
+      'dg:dc': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonDuplicateConvert(ctx, i, prov, args),
       'dg:res': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonRescue(ctx, i, prov, args),
       'dg:cl': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonLeaveEncounter(ctx, i, prov, args),
       'dg:cu': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonEncounterGone(ctx, i, prov, args),
@@ -554,8 +558,8 @@ export function createDiscordClient(ctx: AppContext): Client {
       // Affection gifts — inspect surfaces the indicator, this accepts it.
       'gift:claim': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleGiftClaim(ctx, i, prov, args),
-      'dup:keep': (i: ButtonInteraction, prov: Provisioned) =>
-        handleDuplicateKeep(ctx, i, prov),
+      'dup:keep': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
+        handleDuplicateKeep(ctx, i, prov, args),
       'dup:convert': (i: ButtonInteraction, prov: Provisioned, args: string[]) =>
         handleDuplicateConvert(ctx, i, prov, args),
       // Boss encounters. Every one of these lives on a *public* message in the

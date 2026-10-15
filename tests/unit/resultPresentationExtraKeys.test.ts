@@ -318,6 +318,7 @@ describe('collection.converted_to_essence', () => {
       logger: { warn, error: vi.fn(), info: vi.fn(), debug: vi.fn() },
       services: {
         collection: {
+          dungeonCaptureOrigin: vi.fn(async () => null),
           convertDuplicateToEssence,
           getOwned: vi.fn(async () => ({ waifu, species })),
         },
