@@ -484,6 +484,13 @@
       "when": 1821650400000,
       "tag": "0068_dungeon_encounters",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1821736800000,
+      "tag": "0069_region_pools",
+      "breakpoints": true
     }
   ]
 }

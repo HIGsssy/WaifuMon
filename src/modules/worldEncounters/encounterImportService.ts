@@ -66,6 +66,7 @@ import {
 import type { LoadedEncounter } from './types';
 import { resolveRace } from '../cards/race';
 import { REGION_EXCLUSIVE_TAG } from '../locations/regions';
+import { projectedRegionPoolSlugs } from '../regionPools/regionPoolStore';
 
 export class EncounterImportRejectedError extends AppError {
   readonly plan: ImportPlan;
@@ -145,11 +146,19 @@ export function createEncounterPromotionService(
 
   async function targetState(tx: DbOrTx = deps.db): Promise<ImportTargetState> {
     const content = deps.getContent();
-    const [existingEncounters, existingVendors, equipmentDefinitions] = await Promise.all([
-      loadAllEncounters(tx),
-      loadAllVendors(tx),
-      listRewardableDefinitions(tx),
-    ]);
+    const [existingEncounters, existingVendors, equipmentDefinitions, regionPools] =
+      await Promise.all([
+        loadAllEncounters(tx),
+        loadAllVendors(tx),
+        listRewardableDefinitions(tx),
+        // Released regions only, read from the projection the selectors draw
+        // from: the database owns pool membership, so the region files can be
+        // stale once a pool has been published.
+        projectedRegionPoolSlugs(
+          tx,
+          content.regions.filter((r) => r.enabled).map((r) => r.id),
+        ),
+      ]);
     return {
       existingEncounters,
       existingVendors,
@@ -168,12 +177,7 @@ export function createEncounterPromotionService(
         enabled: s.enabled !== false,
         regionExclusive: s.tags.includes(REGION_EXCLUSIVE_TAG),
       })),
-      // Enabled regions only — the seeder skips a disabled region's pool.
-      regionPools: new Map(
-        content.regions
-          .filter((r) => r.enabled)
-          .map((r) => [r.id, new Set(r.encounterPool.map((e) => e.species))]),
-      ),
+      regionPools,
       ...(deps.artworkExists ? { artworkExists: deps.artworkExists } : {}),
     };
   }

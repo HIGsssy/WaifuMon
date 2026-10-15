@@ -14,7 +14,7 @@ import {
 } from '../../src/modules/power/seductivePowerBackfill';
 import { loadContent } from '../../src/modules/content/loader';
 import type { LoadedContent } from '../../src/modules/content/schemas';
-import { seedContent } from '../../src/modules/content/seeder';
+import { applyContent } from '../../src/modules/content/reloadService';
 import { createCurrencyService } from '../../src/modules/currency/currencyService';
 import { createEssenceAwardService } from '../../src/modules/currency/essenceAwardService';
 import { createDailyService } from '../../src/modules/daily/dailyService';
@@ -258,7 +258,9 @@ export async function bootstrapApp(
       },
     },
   };
-  await seedContent(t.db, content, t.logger);
+  // The production lifecycle: seed species and items, then bootstrap and
+  // project Region Pools, exactly as startup and Reload Content do.
+  await applyContent(t.db, content, t.logger);
   const gear = buildEquipmentServices(t.db, opts.equipmentRng ? { rng: opts.equipmentRng } : {});
   const equipmentRewards = createEquipmentRewardService({
     equipment: gear.equipment,

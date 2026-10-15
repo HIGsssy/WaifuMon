@@ -19,7 +19,7 @@ import {
   regionEncounterPools,
   species as speciesTable,
 } from '../../src/db/schema';
-import { seedContent } from '../../src/modules/content/seeder';
+import { applyContent } from '../../src/modules/content/reloadService';
 import { createHuntService, type HuntService } from '../../src/modules/hunt/huntService';
 import {
   InsufficientFundsError,
@@ -272,10 +272,10 @@ describe('its residents live there and nowhere else', () => {
       const drawn = await sample(12);
       expect(drawn.some((slug) => packSlugs.includes(slug))).toBe(false);
     } finally {
-      // Restored by the real seeder rather than by a hand-rolled copy of it:
-      // it rebuilds both region tables from content on every run, so this puts
+      // Restored by the real startup lifecycle rather than by a hand-rolled
+      // copy of it: it re-projects every published Region Pool, so this puts
       // back exactly what bootstrapping wrote.
-      await seedContent(t.db, app.content, t.logger);
+      await applyContent(t.db, app.content, t.logger);
     }
   });
 });

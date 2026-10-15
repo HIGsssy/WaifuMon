@@ -1382,7 +1382,10 @@ export const bossParticipations = pgTable(
  * region explicitly is what lets the hunt fall back to a *curated* pool rather
  * than to the whole species table.
  *
- * Seeded from region content on every content load, so JSON stays canonical.
+ * A **projection**, not a source: since migration 0069 it is written only by
+ * `modules/regionPools/regionPoolStore.ts`, from each released region's
+ * published `region_pool_revisions` row. The hunt and the species selectors
+ * read it exactly as before; nothing else may write it.
  */
 export const regionEncounterPools = pgTable(
   'region_encounter_pools',
@@ -1405,6 +1408,163 @@ export const regionEncounterPools = pgTable(
     index('region_encounter_pools_region_idx').on(t.regionId),
   ],
 );
+
+/** One authored pool entry, as a draft and the bootstrap evidence carry it. */
+export interface RegionPoolDraftEntry {
+  species: string;
+  weight: number;
+}
+
+/**
+ * Region Pools (migration 0069) — one row per canonical region: its mutable
+ * **draft** and the pointer to the published revision the runtime projection
+ * is built from.
+ *
+ * The database is authoritative for pool membership and region-local weights.
+ * The region file's `encounterPool` only bootstraps a region that has no row
+ * here, once; afterwards a changed file is reported as drift and never applied.
+ * Whether a region is released stays the region file's `enabled` flag.
+ *
+ * `draftRevision` is the optimistic lock a future editor must name.
+ */
+export const regionPools = pgTable(
+  'region_pools',
+  {
+    regionId: text('region_id').primaryKey(),
+    draftEntries: jsonb('draft_entries').$type<RegionPoolDraftEntry[]>().notNull(),
+    draftRevision: integer('draft_revision').notNull().default(1),
+    draftHash: text('draft_hash').notNull(),
+    /** The revision the projection is built from. FK in the migration. */
+    publishedRevisionId: bigint('published_revision_id', { mode: 'number' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Discord id of the admin who last wrote the draft, or a system actor. */
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('region_pools_region_check', sql`${t.regionId} in (${sql.raw(REGION_SQL_LIST)})`),
+    check('region_pools_draft_revision_check', sql`${t.draftRevision} >= 1`),
+    check('region_pools_draft_hash_check', sql`${t.draftHash} ~ '^sha256:[a-f0-9]{64}$'`),
+    check('region_pools_draft_entries_check', sql`jsonb_typeof(${t.draftEntries}) = 'array'`),
+  ],
+);
+
+export type RegionPoolRow = typeof regionPools.$inferSelect;
+
+export const REGION_POOL_REVISION_SOURCES = ['bootstrap', 'editor', 'rollback', 'import'] as const;
+export type RegionPoolRevisionSource = (typeof REGION_POOL_REVISION_SOURCES)[number];
+
+/** A species as she stood when a revision was published. Evidence only. */
+export interface RegionPoolManifestEntry {
+  species: string;
+  rarity: string;
+  enabled: boolean;
+  tags: string[];
+}
+
+/**
+ * A published region pool (migration 0069). **Immutable** — a trigger refuses
+ * any update or delete, of the revision and of its entries alike. A new
+ * publish or a rollback is always a new revision.
+ */
+export const regionPoolRevisions = pgTable(
+  'region_pool_revisions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    regionId: text('region_id')
+      .notNull()
+      .references(() => regionPools.regionId),
+    /** 1, 2, 3… per region. */
+    number: integer('number').notNull(),
+    contentHash: text('content_hash').notNull(),
+    source: text('source').$type<RegionPoolRevisionSource>().notNull(),
+    rolledBackFrom: bigint('rolled_back_from', { mode: 'number' }),
+    /** The draft revision that was published. */
+    draftRevision: integer('draft_revision').notNull(),
+    /** Each entry's species facts at publish time, for drift reports. Never read by a hunt. */
+    speciesManifest: jsonb('species_manifest').$type<RegionPoolManifestEntry[]>().notNull(),
+    publishedBy: text('published_by'),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('region_pool_revisions_number_check', sql`${t.number} >= 1`),
+    check('region_pool_revisions_hash_check', sql`${t.contentHash} ~ '^sha256:[a-f0-9]{64}$'`),
+    check(
+      'region_pool_revisions_source_check',
+      sql`${t.source} in ('bootstrap','editor','rollback','import')`,
+    ),
+    check(
+      'region_pool_revisions_manifest_check',
+      sql`jsonb_typeof(${t.speciesManifest}) = 'array'`,
+    ),
+    uniqueIndex('region_pool_revisions_region_number_uq').on(t.regionId, t.number),
+  ],
+);
+
+export type RegionPoolRevisionRow = typeof regionPoolRevisions.$inferSelect;
+
+/** One species of a published revision. `position` is the authored order the projection keeps. */
+export const regionPoolRevisionEntries = pgTable(
+  'region_pool_revision_entries',
+  {
+    revisionId: bigint('revision_id', { mode: 'number' })
+      .notNull()
+      .references(() => regionPoolRevisions.id),
+    speciesId: bigint('species_id', { mode: 'number' })
+      .notNull()
+      .references(() => species.id),
+    weight: integer('weight').notNull(),
+    position: integer('position').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.revisionId, t.speciesId] }),
+    check(
+      'region_pool_revision_entries_weight_check',
+      sql`${t.weight} > 0 and ${t.weight} <= 1000000`,
+    ),
+    check('region_pool_revision_entries_position_check', sql`${t.position} >= 0`),
+    uniqueIndex('region_pool_revision_entries_position_uq').on(t.revisionId, t.position),
+  ],
+);
+
+export type RegionPoolRevisionEntryRow = typeof regionPoolRevisionEntries.$inferSelect;
+
+export const REGION_POOL_EVENT_ACTIONS = [
+  'bootstrapped',
+  'draft_saved',
+  'draft_discarded',
+  'draft_reset_to_shipped',
+  'published',
+  'rolled_back',
+  'projection_rebuilt',
+  'drift_detected',
+] as const;
+export type RegionPoolEventAction = (typeof REGION_POOL_EVENT_ACTIONS)[number];
+
+/**
+ * Append-only audit trail of Region Pools (migration 0069), in the shape of
+ * `dungeon_content_events`. No FK on `regionId`: the trail outlives anything.
+ */
+export const regionPoolEvents = pgTable(
+  'region_pool_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    regionId: text('region_id').notNull(),
+    action: text('action').$type<RegionPoolEventAction>().notNull(),
+    actor: text('actor'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'region_pool_events_action_check',
+      sql`${t.action} in ('bootstrapped','draft_saved','draft_discarded','draft_reset_to_shipped','published','rolled_back','projection_rebuilt','drift_detected')`,
+    ),
+    index('region_pool_events_region_idx').on(t.regionId, t.id.desc()),
+  ],
+);
+
+export type RegionPoolEventRow = typeof regionPoolEvents.$inferSelect;
 
 /** How a pass or route came to be owned. Purchases are audited; grants are not. */
 export const TRAVEL_GRANT_SOURCES = ['purchase', 'admin'] as const;

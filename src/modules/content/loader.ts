@@ -1512,43 +1512,6 @@ function listJsonFiles(dir: string): string[] {
 }
 
 /**
- * Warns about enabled species that no enabled region's pool lists.
- *
- * Be precise about what this means, because it is worse than it sounds: such a
- * species is, for practical purposes, **unobtainable**. The hunt only reaches
- * the global species table when *no* region pool covers the rolled rarity at
- * all, and the shipped Waifu Valley pool covers every rarity — so an unpooled
- * species is not "rarer", she simply never appears. That is almost always what
- * has happened when someone adds a species to `content/species/` and forgets
- * the region file.
- *
- * Still a warning rather than a failure, and deliberately so: failing the boot
- * would mean a content author cannot land a Waifumon and her artwork in one
- * commit and her pool entry in the next, turning a five-second fix into a
- * production outage. The message therefore has to carry the weight the
- * severity does not — it names the count, lists the slugs, and says the word
- * "unobtainable" rather than the reassuring "fallback".
- */
-function warnOnUnpooledSpecies(
-  species: SpeciesContent[],
-  regions: RegionContent[],
-  logger: Logger,
-): void {
-  if (regions.length === 0) return;
-  const pooled = new Set(
-    regions.filter((r) => r.enabled).flatMap((r) => r.encounterPool.map((e) => e.species)),
-  );
-  const orphans = species.filter((s) => s.enabled && !pooled.has(s.slug)).map((s) => s.slug);
-  if (orphans.length === 0) return;
-  logger.warn(
-    { tag: 'regions/unpooled-species', count: orphans.length, slugs: orphans },
-    `${orphans.length} enabled species are in no enabled region's encounter pool and are ` +
-      'therefore UNOBTAINABLE — no hunt can draw them. Add them to a region file in ' +
-      `content/regions/ or to an expansion's region.json. Affected: ${orphans.join(', ')}`,
-  );
-}
-
-/**
  * The same `itemId` listed more than once inside one reward group.
  *
  * A **warning**, never a refusal, because weighted quantity variants are a
@@ -1641,7 +1604,9 @@ export function loadContent(contentDir: string, assetsDir: string, logger: Logge
     logger,
   );
   const validatedBosses = validateBossAssets(content.bosses, assetsDir, logger);
-  warnOnUnpooledSpecies(validatedSpecies, content.regions, logger);
+  // Unpooled-species and empty-tier warnings are reported after Region Pools
+  // are projected (`regionPools/regionPoolStore`): the database, not the
+  // region files, decides what a hunt can reach.
   warnOnRepeatedRewardItems(content.expeditionRewards, logger);
   warnOnMissingCombatArtwork(content, assetsDir, logger);
 

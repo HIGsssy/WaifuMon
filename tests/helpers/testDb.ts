@@ -23,7 +23,11 @@ export function silentLogger(): Logger {
   return createLogger('fatal');
 }
 
-export async function createTestDb(): Promise<TestDb> {
+/**
+ * `migrationsFolder` lets a migration test stop short of head (a copy of
+ * `drizzle/` with a trimmed journal) and run the remaining migrations itself.
+ */
+export async function createTestDb(opts: { migrationsFolder?: string } = {}): Promise<TestDb> {
   const adminUrl = inject('adminDatabaseUrl');
   const dbName = `waifumon_test_${randomBytes(6).toString('hex')}`;
 
@@ -37,7 +41,7 @@ export async function createTestDb(): Promise<TestDb> {
   const pool = new Pool({ connectionString: url.toString(), max: 10 });
   const db = createDb(pool);
   const logger = silentLogger();
-  await runMigrations(db, logger, path.resolve(__dirname, '..', '..', 'drizzle'));
+  await runMigrations(db, logger, opts.migrationsFolder ?? path.resolve(__dirname, '..', '..', 'drizzle'));
 
   return {
     db,

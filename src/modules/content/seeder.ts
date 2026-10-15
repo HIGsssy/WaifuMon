@@ -1,6 +1,6 @@
 import { notInArray } from 'drizzle-orm';
 import type { Db } from '../../db/client';
-import { items, regionEncounterPools, species } from '../../db/schema';
+import { items, species } from '../../db/schema';
 import type { Logger } from '../../shared/logger';
 import type { LoadedContent } from './schemas';
 
@@ -9,8 +9,6 @@ export interface SeedSummary {
   species: number;
   disabledItems: number;
   disabledSpecies: number;
-  /** Region → species rows written for enabled regions. */
-  regionPoolEntries: number;
 }
 
 /**
@@ -97,57 +95,17 @@ export async function seedContent(db: Db, content: LoadedContent, logger: Logger
       .where(notInArray(species.slug, speciesSlugs))
       .returning({ slug: species.slug });
 
-    // ── Region membership ──────────────────────────────────────────────
-    //
-    // The region-encounter table is rebuilt from scratch on every seed rather
-    // than upserted, and that is deliberate. It holds no player state
-    // whatsoever — every row is a pure projection of the region files — so
-    // "delete and re-insert" is both correct and the only way removals
-    // propagate. Species and items get the opposite treatment (upsert, then
-    // disable the missing) precisely because rows there are pointed at by owned
-    // waifus and inventories and must never disappear. Shop membership now
-    // lives on the item itself (`items.shop_regions`, upserted above), so there
-    // is no separate junction to rebuild.
-    //
-    // Inside the same transaction as the species upserts, so a pool can
-    // reference a species this very seed introduced, and so a reader never
-    // observes a half-rebuilt pool.
-    const speciesIdBySlug = new Map(
-      (await tx.select({ id: species.id, slug: species.slug }).from(species)).map((r) => [
-        r.slug,
-        r.id,
-      ]),
-    );
-
-    await tx.delete(regionEncounterPools);
-
-    let regionPoolEntries = 0;
-    for (const region of content.regions) {
-      // A disabled region is unreleased content: seeding its pool would let a
-      // hunt query reach a place the Locations screen refuses to show.
-      if (!region.enabled) continue;
-
-      const poolRows = region.encounterPool.flatMap((entry) => {
-        const speciesId = speciesIdBySlug.get(entry.species);
-        if (speciesId === undefined) return [];
-        // An entry that names no weight inherits the species' own authoring
-        // default, so "the usual rates here" needs no numbers in the file.
-        const fallback = content.species.find((s) => s.slug === entry.species);
-        const weight = entry.weight ?? Math.max(1, fallback?.perSpeciesWeight ?? 1);
-        return [{ regionId: region.id, speciesId, weight }];
-      });
-      if (poolRows.length > 0) {
-        await tx.insert(regionEncounterPools).values(poolRows);
-        regionPoolEntries += poolRows.length;
-      }
-    }
+    // Region Pools are no longer written here. Since migration 0069 the
+    // database owns them: `modules/regionPools/regionPoolStore.syncRegionPools`
+    // bootstraps a region once from its file and projects the published
+    // revision into `region_encounter_pools`. A seed that rebuilt that table
+    // from JSON would silently undo every published pool on the next restart.
 
     const summary: SeedSummary = {
       items: content.items.length,
       species: content.species.length,
       disabledItems: disabledItems.length,
       disabledSpecies: disabledSpecies.length,
-      regionPoolEntries,
     };
     logger.info(summary, 'content seeded');
     return summary;

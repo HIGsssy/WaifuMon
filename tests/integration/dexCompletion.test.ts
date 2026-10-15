@@ -11,7 +11,7 @@
 import { eq, inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { regionEncounterPools, species } from '../../src/db/schema';
-import { seedContent } from '../../src/modules/content/seeder';
+import { applyContent } from '../../src/modules/content/reloadService';
 import type { LoadedContent, RegionContent } from '../../src/modules/content/schemas';
 import { bootstrapApp, insertOwnedWaifu, provisionPlayer, type App } from '../helpers/fixtures';
 import { createTestDb, type TestDb } from '../helpers/testDb';
@@ -45,7 +45,7 @@ afterAll(async () => {
 
 /** Put the shipped content back, so no case can be carried by the last one. */
 afterEach(async () => {
-  await seedContent(t.db, app.content, t.logger);
+  await applyContent(t.db, app.content, t.logger);
 });
 
 /** A content set narrowed to the given slugs, regions pruned to match. */
@@ -66,7 +66,7 @@ const denominator = async (): Promise<number> =>
 
 describe('the denominator', () => {
   it('counts the base species when only base content is loaded', async () => {
-    await seedContent(t.db, contentWith(baseSlugs), t.logger);
+    await applyContent(t.db, contentWith(baseSlugs), t.logger);
     expect(await denominator()).toBe(baseSlugs.length);
     // The number the bug reported forever: whatever the base set happens to be
     // today, and nothing beyond it.
@@ -74,23 +74,23 @@ describe('the denominator', () => {
   });
 
   it('grows when an expansion is enabled', async () => {
-    await seedContent(t.db, contentWith(baseSlugs), t.logger);
+    await applyContent(t.db, contentWith(baseSlugs), t.logger);
     const before = await denominator();
 
     // Exactly what enabling a pack and reloading content does.
-    await seedContent(t.db, contentWith([...baseSlugs, ...foothillsSlugs]), t.logger);
+    await applyContent(t.db, contentWith([...baseSlugs, ...foothillsSlugs]), t.logger);
     expect(await denominator()).toBe(before + foothillsSlugs.length);
   });
 
   it('does not count a pack that is switched off again', async () => {
-    await seedContent(t.db, contentWith([...baseSlugs, ...foothillsSlugs]), t.logger);
+    await applyContent(t.db, contentWith([...baseSlugs, ...foothillsSlugs]), t.logger);
     const withPack = await denominator();
 
     // A disabled pack drops out of the content set; the seeder then disables
     // the rows whose slugs vanished rather than deleting them, because owned
     // copies still point at them. Disabled rows are not collectable, so they
     // are not part of the target.
-    await seedContent(t.db, contentWith(baseSlugs), t.logger);
+    await applyContent(t.db, contentWith(baseSlugs), t.logger);
     expect(await denominator()).toBe(withPack - foothillsSlugs.length);
 
     const rows = await t.db
@@ -108,7 +108,7 @@ describe('the denominator', () => {
       ...disabled,
       species: disabled.species.map((s) => (s.slug === victim ? { ...s, enabled: false } : s)),
     };
-    await seedContent(t.db, patched, t.logger);
+    await applyContent(t.db, patched, t.logger);
     expect(await denominator()).toBe(rest.length);
   });
 
