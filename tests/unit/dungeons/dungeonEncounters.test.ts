@@ -24,7 +24,6 @@ import {
 } from '../../../src/modules/dungeons/engine/sandbox';
 import { validateDungeonDefinition } from '../../../src/modules/dungeons/validation/dungeonValidation';
 import {
-  dungeonEncounterPackageIssues,
   dungeonSpeciesUnavailableReason,
 } from '../../../src/modules/dungeons/validation/dungeonEncounterValidation';
 import {
@@ -893,8 +892,6 @@ describe('validation, policy, sandbox and gates', () => {
   it('allows structural preview while explicitly blocking package v1/v2/v3', () => {
     const d = definition();
     expect(validateDungeonDefinition(d).definition).toEqual(d);
-    expect(dungeonEncounterPackageIssues(d)[0]!.message).toMatch(/package v4/);
-    expect(dungeonEncounterPackageIssues(testDungeon())).toEqual([]);
     const source = {
       environment: 'test',
       origin: 'draft' as const,
@@ -902,14 +899,14 @@ describe('validation, policy, sandbox and gates', () => {
       publishedRevision: null,
     };
     expect(() => buildDungeonPackage({ definition: d, source })).toThrow(
-      /package v4/,
+      /source catalogue evidence/,
     );
     const pkg = buildDungeonPackage({ definition: testDungeon(), source });
     for (const schemaVersion of [1, 2, 3]) {
       const read = readDungeonPackage({ ...pkg, schemaVersion, dungeon: d });
       expect(read.ok).toBe(false);
       expect(
-        read.issues.some((i) => i.code === 'package_encounters_unsupported'),
+        read.issues.some((i) => i.code === 'package_schema_version'),
       ).toBe(true);
     }
   });

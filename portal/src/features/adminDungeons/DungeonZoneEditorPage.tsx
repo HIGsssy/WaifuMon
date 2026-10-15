@@ -596,6 +596,11 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
         >
           <Card className="space-y-3 p-4">
             <h2>Export</h2>
+            <p>
+              Encounter and Rescue packages use v4. Packages containing managed Scene Sprite
+              placements are unavailable until sprite dependencies can be bundled safely; remove
+              placements from a copy to export it.
+            </p>
             {dirty && <p>Save your draft changes before exporting the draft or rolling back.</p>}
             <div className="flex gap-2">
               <Button

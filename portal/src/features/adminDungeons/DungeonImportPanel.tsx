@@ -12,6 +12,7 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import {
   decisionsComplete,
   INCOMPLETE_REWARD_CODES,
+  INCOMPLETE_ENCOUNTER_CODES,
   draftOperation,
   importBlockers,
   IMPORT_BODY_LIMIT,
@@ -417,6 +418,78 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                   </ul>
                 </div>
               )}
+              {plan.encounterDependencies && (
+                <div className="space-y-2">
+                  <h3 className="font-semibold">Dungeon encounters and rescues</h3>
+                  <p>
+                    {plan.encounterDependencies.encounterCount} encounters ·{' '}
+                    {plan.encounterDependencies.poolCount} species pools
+                  </p>
+                  <p>
+                    This import creates a disabled, unpublished draft. Species, capture items and
+                    central access policies are never imported. Destination policy controls
+                    publication and acquisition.
+                  </p>
+                  <h4 className="font-medium">Required species</h4>
+                  {plan.encounterDependencies.requiredSpecies.length === 0 && (
+                    <p>No species required by reachable encounters.</p>
+                  )}
+                  <ul>
+                    {plan.encounterDependencies.requiredSpecies.map((species) => (
+                      <li
+                        key={species.slug}
+                        className={species.status === 'available' ? '' : 'text-danger'}
+                      >
+                        {species.name} ({species.slug}):{' '}
+                        {species.status === 'available'
+                          ? 'Available here'
+                          : `${species.status.replaceAll('_', ' ')} — repair before publication`}
+                        <p>
+                          Rarity: exported {species.sourceRarity}, here{' '}
+                          {species.targetRarity ?? 'missing'}. Uses: {species.modes.join(', ')}.
+                        </p>
+                        {species.modes.includes('direct') && (
+                          <p>
+                            Direct rescue: {species.directRescue ? 'authorized' : 'not authorized'};
+                            per-player limit: {species.perPlayerLimit ?? 'not configured'}.
+                          </p>
+                        )}
+                        {species.changes.map((change) => (
+                          <p key={change}>{change}</p>
+                        ))}
+                      </li>
+                    ))}
+                  </ul>
+                  <h4 className="font-medium">Capture items</h4>
+                  <p>
+                    Explicitly permitted charms are checked against these encounters. Global charm
+                    availability remains a live destination check.
+                  </p>
+                  {plan.encounterDependencies.captureItems.length === 0 && (
+                    <p>No specific capture items named.</p>
+                  )}
+                  <ul>
+                    {plan.encounterDependencies.captureItems.map((item) => (
+                      <li
+                        key={item.key}
+                        className={item.status === 'available' ? '' : 'text-danger'}
+                      >
+                        {item.name} ({item.key}):{' '}
+                        {item.status === 'available'
+                          ? 'Available here'
+                          : `${item.status.replaceAll('_', ' ')} — repair before publication`}
+                        {item.guaranteed !== null && (
+                          <p>
+                            {item.guaranteed
+                              ? 'Guaranteed capture'
+                              : `Capture rarities: ${item.rarities?.join(', ') ?? 'all'}`}
+                          </p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <DungeonLootImportReview
                 plan={plan}
                 choices={lootTables}
@@ -465,7 +538,9 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                       i.code,
                     ) ||
                     (!!plan.lootTables &&
-                      (INCOMPLETE_REWARD_CODES as readonly string[]).includes(i.code)),
+                      (INCOMPLETE_REWARD_CODES as readonly string[]).includes(i.code)) ||
+                    (!!plan.encounterDependencies &&
+                      (INCOMPLETE_ENCOUNTER_CODES as readonly string[]).includes(i.code)),
                 )) && (
                 <label className="block">
                   <input
@@ -473,8 +548,8 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                     checked={allowMissing}
                     onChange={(e) => setAllowMissing(e.target.checked)}
                   />{' '}
-                  Accept permitted missing dependencies and unavailable rewards as an incomplete
-                  draft. Repair them before publication.
+                  Accept permitted missing dependencies and unavailable rewards or encounters as an
+                  incomplete draft. Repair them before publication.
                 </label>
               )}
               {warnings.length > 0 && (
@@ -497,7 +572,7 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                   ? 'Warning'
                   : blockers.includes(issue)
                     ? 'Blocking error'
-                    : plan.lootTables && allowMissing
+                    : (plan.lootTables || plan.encounterDependencies) && allowMissing
                       ? 'Publication blocker accepted for incomplete draft'
                       : 'Dependency addressed by decisions'}
                 : {issue.message} <span className="text-xs">({issue.path})</span>

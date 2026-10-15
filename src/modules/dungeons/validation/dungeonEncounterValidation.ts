@@ -3,7 +3,6 @@ import {
   ACTION_OUTCOMES,
   isEncounterAction,
   encounterSpecies,
-  hasDungeonEncounters,
   type DungeonDefinition,
   type DungeonSpeciesAccess,
   type DungeonCondition,
@@ -53,22 +52,6 @@ export interface DungeonEncounterValidationSource {
       >['capture']
     >,
   ): boolean;
-}
-/** Encounter content cannot be exported until package v4 can carry its species and charm dependencies. */
-export function dungeonEncounterPackageIssues(
-  definition: DungeonDefinition,
-): DungeonIssue[] {
-  return hasDungeonEncounters(definition)
-    ? [
-        {
-          code: 'schema',
-          severity: 'error',
-          path: 'rooms',
-          message:
-            'Dungeons with WaifuMon encounters cannot be exported yet: packages cannot carry their species and charm dependencies until package v4.',
-        },
-      ]
-    : [];
 }
 function contradictory(condition: DungeonCondition | undefined): boolean {
   if (condition?.type !== 'all') return false;

@@ -5,7 +5,8 @@ import { resolveAppearanceAssetOrLegacyPath } from '../appearance/assetResolver'
 import { buildSpeciesManifest, compareSpeciesManifest, speciesManifestSchema, type SpeciesRevisionStatus } from './dungeonSpeciesManifest';
 import { dungeonSpeciesPolicy, dungeonEncounterSpeciesSlugs } from './dungeonSpeciesPolicy';
 import { dungeonSpeciesUnavailableReason } from './validation/dungeonEncounterValidation';
-import { dungeonEncounterPackageIssues } from './validation/dungeonEncounterValidation';
+import { explicitCaptureDependencyIssues, type EncounterImportCatalogue } from './package/dungeonEncounterImport';
+import { PackageSpeciesEvidenceSchema } from './package/dungeonEncounterDependencies';
 import { loadDungeonEncounterValidationSource, type DungeonSpeciesAccessLookup } from './dungeonSpeciesPolicy';
 import { sceneSpriteCatalogue, freezeSceneSprites, readSceneSpriteSnapshot, pinnedSceneSpriteCatalogue } from './sceneSprites/sceneSpriteSnapshot';
 import { hasSceneSprites } from './sceneSprites/sceneSpriteDefinition';
@@ -104,7 +105,7 @@ import {
   type DungeonRewardDependencyChange,
   type DungeonRewardSnapshot,
 } from './content/dungeonRewardSnapshot';
-import { dungeonDependencies, dungeonRequiredItems, dungeonUsesEvents } from './content/dungeonDefinition';
+import { dungeonDependencies, dungeonRequiredItems, dungeonUsesEvents, hasDungeonEncounters } from './content/dungeonDefinition';
 import { equipmentSelectorKey } from '../equipment/rewardSelector';
 import { buildPreviewRewardSnapshot, previewRewardContext, testRollDungeonRewards, type DungeonTestRollRequest, type DungeonTestRollResult } from './dungeonRewardPreview';
 import { assertDungeonRewardDependencies } from './dungeonRewardValidation';
@@ -587,6 +588,29 @@ function parseStoredLayout(raw: unknown): DungeonLayout {
 export function createDungeonContentService(deps: DungeonContentServiceDeps): DungeonContentService {
   const { db } = deps;
 
+  function validateContentDefinition(raw: unknown, context?: DungeonValidationContext) {
+    const report = validateDungeonDefinition(raw, context);
+    if (report.definition && context?.encounterSource)
+      report.issues.push(...explicitCaptureDependencyIssues(report.definition, context.encounterSource));
+    return report;
+  }
+
+  async function loadEncounterImportContext(tx: DbOrTx): Promise<EncounterImportCatalogue> {
+    const speciesRows = await tx.select().from(species).orderBy(asc(species.slug));
+    const itemRows = await tx.select().from(items).orderBy(asc(items.slug));
+    // Snapshot loaded content once: plan hashes and eligibility use the same policy.
+    const access = new Map(speciesRows.map(row => [row.slug,
+      structuredClone([...(deps.getSpeciesAccess?.(row.slug) ?? [])]).sort((a, b) => a.dungeon < b.dungeon ? -1 : a.dungeon > b.dungeon ? 1 : 0)]));
+    return {
+      source: await loadDungeonEncounterValidationSource(tx, slug => access.get(slug)),
+      species: speciesRows.map(row => ({ name: row.name, ...PackageSpeciesEvidenceSchema.parse({ slug: row.slug, rarity: row.rarity, enabled: row.enabled,
+        regionExclusive: row.tags.includes('region_exclusive'), dungeonExclusive: row.tags.includes('dungeon_exclusive'),
+        dungeonAccess: access.get(row.slug)! }) })),
+      items: itemRows.map(row => ({ slug: row.slug, name: row.name, enabled: row.enabled, category: row.category,
+        captureRarities: row.captureRarities, isGuaranteedCapture: row.isGuaranteedCapture })),
+    };
+  }
+
   async function validationContext(tx: DbOrTx = db, rewardContext?: DungeonValidationContext): Promise<DungeonValidationContext> {
     const [enemies, tables, currencies, managed, sceneSprites, encounterSource] = await Promise.all([
       deps.enemies.definitions(tx),
@@ -706,7 +730,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     const published = await publishedInfo(tx, row);
     const draft = parseStoredDefinition(row.dungeonKey, row.draft);
     const ctx = await validationContext(tx);
-    const { issues } = validateDungeonDefinition(draft, ctx);
+    const { issues } = validateContentDefinition(draft, ctx);
     let speciesDiffer: boolean | undefined;
     if (published) {
       const content = parseStoredDefinition(row.dungeonKey, published.content);
@@ -726,7 +750,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   }
 
   function requireShape(raw: unknown): DungeonDefinition {
-    const { definition, issues } = validateDungeonDefinition(raw);
+    const { definition, issues } = validateContentDefinition(raw);
     if (!definition) throw new DungeonInvalidError(issues);
     return definition;
   }
@@ -824,7 +848,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       // Checked as it will stand once the new tables exist, without creating them.
       const overrides = previewRewardContext(await validationContext(tx), Object.fromEntries(conversion.tables.map((t) => [t.key, t.body])));
       const prefix = `rooms[${r}].actions[${a}]`;
-      issues = [...overrides.issues, ...validateDungeonDefinition(definition, overrides.context).issues].filter((i) => i.path.startsWith(prefix));
+      issues = [...overrides.issues, ...validateContentDefinition(definition, overrides.context).issues].filter((i) => i.path.startsWith(prefix));
     }
     const bodies = conversion.tables.map((t) => t.body);
     const paysWaifubux = bodies.some((body) =>
@@ -935,7 +959,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   }
 
   const service: DungeonContentService = {
-    ...createDungeonImportService({ ...deps, loadRewardContext: loadDungeonRewardContext, reservedKeys: RESERVED_DUNGEON_KEYS, resolveManagedArtwork: resolveManagedArtworkIds }),
+    ...createDungeonImportService({ ...deps, loadRewardContext: loadDungeonRewardContext, loadEncounterContext: loadEncounterImportContext, reservedKeys: RESERVED_DUNGEON_KEYS, resolveManagedArtwork: resolveManagedArtworkIds }),
     validationContext,
 
     async list() {
@@ -1024,7 +1048,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
     },
 
     async validate(raw) {
-      const { definition, issues } = validateDungeonDefinition(raw, await validationContext());
+      const { definition, issues } = validateContentDefinition(raw, await validationContext());
       return {
         definition,
         contentHash: definition ? dungeonContentHash(definition) : null,
@@ -1207,7 +1231,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
             enabled: row.enabled,
             revision: revision?.number ?? null,
             ...(revision ? judge(revision) : { status: 'unpublished' as const, problems: [], notices: [] }),
-            draftErrors: validateDungeonDefinition(row.draft, ctx).issues.filter((i) => i.severity === 'error').length,
+            draftErrors: validateContentDefinition(row.draft, ctx).issues.filter((i) => i.severity === 'error').length,
             activeRuns: revision ? (activeRuns.get(revision.id) ?? 0) : 0,
             activeRevisions: revisions
               .filter((r) => r.dungeonKey === row.dungeonKey && !publishedIds.has(r.id) && activeRuns.has(r.id))
@@ -1224,7 +1248,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         const ctx = await validationContext(tx);
         const pinned = options.snapshot === undefined ? undefined : readDungeonRewardSnapshot(options.snapshot);
         const overrides = previewRewardContext({ ...ctx, ...(pinned ? snapshotRewardContext(pinned, ctx.items) : {}) }, options.tables);
-        const report = validateDungeonDefinition(raw, overrides.context);
+        const report = validateContentDefinition(raw, overrides.context);
         const issues = [...overrides.issues, ...report.issues];
         if (report.definition && hasDungeonRewardBundles(report.definition) && options.snapshot !== undefined && !pinned) {
           throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot',
@@ -1323,7 +1347,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           : undefined;
         const spriteCatalogue = await sceneSpriteCatalogue(tx, deps.artworkStorage, true);
         const ctx = { ...await validationContext(tx, rewards), sceneSprites: spriteCatalogue };
-        const { issues } = validateDungeonDefinition(definition, ctx);
+        const { issues } = validateContentDefinition(definition, ctx);
         if (hasErrors(issues)) throw new DungeonInvalidError(issues);
 
         const current = await publishedInfo(tx, row);
@@ -1433,7 +1457,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         const pinnedSprites = await pinnedSceneSpriteCatalogue(tx, target.sceneSpriteSnapshot, deps.artworkStorage);
         if (hasSceneSprites(targetDefinition) && !readSceneSpriteSnapshot(target.sceneSpriteSnapshot)) throw new DungeonInvalidError([{ code: 'scene_sprite_snapshot_invalid', severity: 'error', path: 'rooms', message: 'This revision has no usable frozen scene sprites. Publish the draft again.' }]);
         ctx.sceneSprites = pinnedSprites;
-        const { issues } = validateDungeonDefinition(target.content, snapshot ? { ...ctx, ...snapshotRewardContext(snapshot, ctx.items) } : ctx);
+        const { issues } = validateContentDefinition(target.content, snapshot ? { ...ctx, ...snapshotRewardContext(snapshot, ctx.items) } : ctx);
         if (snapshot) issues.push(...snapshotLiveIssues(targetDefinition, snapshot, await loadSnapshotLiveDependencies(tx, snapshot, { lock: true })));
         if (hasErrors(issues)) throw new DungeonInvalidError(issues);
         const [updated] = await tx
@@ -1532,6 +1556,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           definition = parseStoredDefinition(key, revision.content);
           layout = parseStoredLayout(revision.layout);
           revisionNumber = revision.number;
+          if (revision.contentHash !== dungeonContentHash(definition))
+            throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'contentHash', message: `Revision ${revision.number} content integrity failed. Export refused.` }]);
           if (hasDungeonRewardBundles(definition)) {
             const snapshot = readDungeonRewardSnapshot(revision.rewardSnapshot);
             if (!snapshot || revision.contentHash !== dungeonContentHash(definition) || revision.gameplayHash !== dungeonGameplayHash(revision.contentHash, snapshot.hash))
@@ -1542,12 +1568,16 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         // Reward-free events still need structural verification and field-level
         // authoring errors. Published exports never consult mutable catalogues here.
         if (dungeonUsesEvents(definition)) {
-          const { issues } = validateDungeonDefinition(definition);
+          const { issues } = validateContentDefinition(definition);
           if (hasErrors(issues)) throw new DungeonInvalidError(issues);
         }
         if (hasSceneSprites(definition)) throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'rooms', message: 'Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely. Remove placements from a copy to export it.' }]);
-        const encounterGate = dungeonEncounterPackageIssues(definition);
-        if (encounterGate.length) throw new DungeonInvalidError(encounterGate);
+        let encounterCatalogue: EncounterImportCatalogue | undefined;
+        if (hasDungeonEncounters(definition)) {
+          encounterCatalogue = await loadEncounterImportContext(tx);
+          const { issues } = validateContentDefinition(definition, { encounterSource: encounterCatalogue.source });
+          if (hasErrors(issues)) throw new DungeonInvalidError(issues);
+        }
         const enemies = new Map((await deps.enemies.definitions(tx)).map((e) => [e.key, e]));
         let pkg: DungeonPackage;
         try {
@@ -1555,6 +1585,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
             definition,
             layout,
             enemies,
+            species: encounterCatalogue ? new Map(encounterCatalogue.species.map(({ name: _name, ...evidence }) => [evidence.slug, evidence])) : undefined,
             rewardSnapshot,
             lootTableMetadata,
             source: {

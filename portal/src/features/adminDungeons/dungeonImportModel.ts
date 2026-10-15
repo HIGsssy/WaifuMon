@@ -12,6 +12,19 @@ export const INCOMPLETE_REWARD_CODES = [
   'reward_shards_unset',
 ] as const;
 
+export const INCOMPLETE_ENCOUNTER_CODES = [
+  'species_missing',
+  'species_disabled',
+  'species_not_permitted',
+  'rescue_direct_not_permitted',
+  'rescue_direct_limit_missing',
+  'capture_item_missing',
+  'capture_item_disabled',
+  'capture_item_not_capture',
+  'capture_item_incompatible',
+  'capture_no_usable_item',
+] as const;
+
 export const IMPORT_BODY_LIMIT = 2 * 1024 * 1024;
 export const requestBytes = (body: unknown) =>
   new TextEncoder().encode(JSON.stringify(body)).byteLength;
@@ -39,7 +52,10 @@ export function importBlockers(plan: DungeonImportPlan, decisions: DungeonImport
     return !(
       decisions.allowMissingDependencies &&
       (['reward_table_missing', 'region_missing', 'currency_missing'].includes(issue.code) ||
-        (!!plan.lootTables && (INCOMPLETE_REWARD_CODES as readonly string[]).includes(issue.code)))
+        (!!plan.lootTables &&
+          (INCOMPLETE_REWARD_CODES as readonly string[]).includes(issue.code)) ||
+        (!!plan.encounterDependencies &&
+          (INCOMPLETE_ENCOUNTER_CODES as readonly string[]).includes(issue.code)))
     );
   });
 }

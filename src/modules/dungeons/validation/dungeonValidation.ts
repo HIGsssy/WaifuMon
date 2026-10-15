@@ -78,6 +78,7 @@ export const DUNGEON_ISSUE_CODES = [
   'capture_item_missing',
   'capture_item_not_capture',
   'capture_item_disabled',
+  'capture_item_incompatible',
   'capture_no_usable_item',
   'capture_settings_invalid',
   'rescue_direct_not_permitted',

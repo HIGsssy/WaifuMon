@@ -1,5 +1,6 @@
 import { hasDungeonEncounters } from '../content/dungeonEncounters';
 import { hasSceneSprites } from '../sceneSprites/sceneSpriteDefinition';
+import { PackageRequiredSpeciesSchema, encounterDependencyRequirements, packageRequiredSpecies, type PackageSpeciesEvidence } from './dungeonEncounterDependencies';
 /**
  * The Dungeon Content Package — one dungeon as a portable, versioned file.
  *
@@ -67,9 +68,9 @@ import { validateDungeonRewards } from '../validation/dungeonRewardValidation';
 import { validateDungeonDefinition, type DungeonIssue } from '../validation/dungeonValidation';
 
 export const DUNGEON_PACKAGE_FORMAT = 'waifumon-dungeon-package' as const;
-export const DUNGEON_PACKAGE_SCHEMA_VERSION = 3 as const;
+export const DUNGEON_PACKAGE_SCHEMA_VERSION = 4 as const;
 /** The versions this build can read. */
-export const DUNGEON_PACKAGE_SUPPORTED_VERSIONS: readonly number[] = [1, 2, 3];
+export const DUNGEON_PACKAGE_SUPPORTED_VERSIONS: readonly number[] = [1, 2, 3, 4];
 export const DUNGEON_PACKAGE_MAX_BUNDLED_ENEMIES = 2000;
 
 const EVENTS_REQUIRE_V3 = 'Event content requires a complete version 3 package. Export this dungeon again as v3.';
@@ -150,7 +151,16 @@ export const DungeonPackageV3Schema = DungeonPackageV2Schema.extend({
   dependencies: DungeonPackageV2DependenciesSchema.extend({ requiredItems: z.array(key) }),
   rewardSnapshot: DungeonRewardSnapshotSchema.nullable(),
 });
-export const DungeonPackageSchema = z.discriminatedUnion('schemaVersion', [DungeonPackageV1Schema, DungeonPackageV2Schema, DungeonPackageV3Schema]);
+export const DungeonPackageV4Schema = DungeonPackageV3Schema.extend({
+  schemaVersion: z.literal(4),
+  dependencies: DungeonPackageV3Schema.shape.dependencies.extend({
+    requiredSpecies: z.array(PackageRequiredSpeciesSchema).max(2000),
+    captureItems: z.array(key).max(4000),
+  }),
+  dependenciesHash: sha256,
+  integrityHash: sha256,
+});
+export const DungeonPackageSchema = z.discriminatedUnion('schemaVersion', [DungeonPackageV1Schema, DungeonPackageV2Schema, DungeonPackageV3Schema, DungeonPackageV4Schema]);
 export type DungeonPackage = z.infer<typeof DungeonPackageSchema>;
 
 // ── hashing ─────────────────────────────────────────────────────────────────
@@ -174,6 +184,8 @@ export function packagedEnemyHash(enemy: CombatEnemyDefinition): string {
 // ── build ───────────────────────────────────────────────────────────────────
 
 export interface BuildDungeonPackageInput {
+  /** Read-only export evidence. Never bundled or applied as species definitions. */
+  species?: ReadonlyMap<string, PackageSpeciesEvidence> | undefined;
   definition: DungeonDefinition;
   layout?: DungeonLayout | undefined;
   source: { environment: string; origin: 'draft' | 'revision'; draftRevision: number | null; publishedRevision: number | null };
@@ -216,7 +228,7 @@ export function packageDependencies(
 export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPackage {
   const definition = DungeonDefinitionSchema.parse(input.definition);
   if (hasSceneSprites(definition)) throw new Error('Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely.');
-  if (hasDungeonEncounters(definition)) throw new Error('Dungeon encounter packages are unavailable until package v4.');
+  const usesEncounters = hasDungeonEncounters(definition);
   const usesEvents = dungeonUsesEvents(definition);
   const deps = dungeonDependencies(definition);
   const layout = pruneDungeonLayout(
@@ -244,16 +256,17 @@ export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPac
     },
   };
   const hasRewards = hasDungeonRewardBundles(definition);
-  if (!hasRewards && !usesEvents) return DungeonPackageV1Schema.parse(legacy);
+  if (!hasRewards && !usesEvents && !usesEncounters) return DungeonPackageV1Schema.parse(legacy);
   const snapshot = hasRewards ? readDungeonRewardSnapshot(input.rewardSnapshot) : null;
   if (hasRewards && !snapshot) throw new Error('Cannot export rewards: reward snapshot is missing, invalid or unsupported.');
   const envelope = {
     ...legacy,
-    schemaVersion: usesEvents ? 3 : 2,
+    schemaVersion: usesEncounters ? 4 : usesEvents ? 3 : 2,
     dependencies: {
       ...legacy.dependencies,
       ...(snapshot ? rewardManifests(snapshot) : { dungeonLootTables: [], items: [], equipment: [] }),
-      ...(usesEvents ? { requiredItems: dungeonRequiredItems(definition) } : {}),
+      ...(usesEvents || usesEncounters ? { requiredItems: dungeonRequiredItems(definition) } : {}),
+      ...(usesEncounters ? { requiredSpecies: packageRequiredSpecies(definition, input.species), captureItems: encounterDependencyRequirements(definition).captureItems } : {}),
     },
     bundled: {
       ...legacy.bundled,
@@ -266,7 +279,8 @@ export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPac
     rewardSnapshot: snapshot,
     rewardSnapshotHash: input.source.origin === 'revision' && snapshot ? snapshot.hash : null,
   };
-  const pkg = usesEvents ? DungeonPackageV3Schema.parse(envelope) : DungeonPackageV2Schema.parse(envelope);
+  const v4 = usesEncounters ? { ...envelope, dependenciesHash: portableHash(envelope.dependencies) } : null;
+  const pkg = v4 ? DungeonPackageV4Schema.parse({ ...v4, integrityHash: dungeonPackageIntegrityHash(v4) }) : usesEvents ? DungeonPackageV3Schema.parse(envelope) : DungeonPackageV2Schema.parse(envelope);
   const read = readDungeonPackage(pkg);
   if (!read.ok) throw new Error(`Cannot export package: ${read.issues.filter((i) => i.severity === 'error').map((i) => `${i.path}: ${i.message}`).join('; ')}`);
   return pkg;
@@ -280,6 +294,15 @@ function rewardManifests(snapshot: DungeonRewardSnapshot) {
       selectorKey, candidateKeys: snapshot.equipmentPools[selectorKey]!.map((c) => c.key).sort(),
     })),
   };
+}
+
+export function portableHash(value: unknown): string {
+  return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
+}
+/** Integrity, not a signature: binds all v4 content/evidence/metadata, excluding this hash itself. */
+export function dungeonPackageIntegrityHash(value: Record<string, unknown>): string {
+  const { integrityHash: _integrityHash, ...body } = value;
+  return portableHash(body);
 }
 
 /**
@@ -313,6 +336,7 @@ export const DUNGEON_PACKAGE_ISSUE_CODES = [
   'package_bundle_duplicate',
   'package_bundle_missing',
   'package_reward_snapshot_invalid',
+  'package_integrity_mismatch',
 ] as const;
 export type DungeonPackageIssueCode = (typeof DUNGEON_PACKAGE_ISSUE_CODES)[number];
 
@@ -383,9 +407,9 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
   for (const issue of dungeon.issues) issues.push({ ...issue, path: issue.path ? `dungeon.${issue.path}` : 'dungeon' });
   if (!dungeon.definition) return { package: null, issues, ok: false };
   if (hasSceneSprites(dungeon.definition)) return fail('package_scene_sprites_unsupported', 'dungeon.rooms', 'Packages containing Scene Sprites are temporarily unavailable; this package cannot carry their frozen artwork dependencies safely.');
-  if (hasDungeonEncounters(dungeon.definition)) return fail('package_encounters_unsupported', 'dungeon.rooms', 'Dungeon encounters require package v4; v1/v2/v3 cannot carry their dependencies.');
+  if (envelope.schemaVersion !== 4 && hasDungeonEncounters(dungeon.definition)) return fail('package_schema_version', 'schemaVersion', 'Dungeon encounters require package v4; v1/v2/v3 cannot carry their dependencies.');
   // Whatever version the envelope claims, versions 1 and 2 never held events.
-  if (envelope.schemaVersion !== 3 && dungeonUsesEvents(dungeon.definition)) return fail('package_schema_version', 'dungeon', EVENTS_REQUIRE_V3);
+  if (envelope.schemaVersion < 3 && dungeonUsesEvents(dungeon.definition)) return fail('package_schema_version', 'dungeon', EVENTS_REQUIRE_V3);
 
   const parsed = DungeonPackageSchema.safeParse(value);
   if (!parsed.success) {
@@ -442,8 +466,31 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
     }
   });
 
-  if (pkg.schemaVersion === 3) {
-    if (!dungeonUsesEvents(pkg.dungeon)) error('package_schema_version', 'dungeon', 'v3 requires event content');
+  if (pkg.schemaVersion === 4) {
+    if (!hasDungeonEncounters(pkg.dungeon)) error('package_schema_version', 'dungeon', 'v4 requires encounter or species-pool content');
+    if (pkg.dependenciesHash !== portableHash(pkg.dependencies)) error('package_integrity_mismatch', 'dependenciesHash', 'The v4 dependency hash does not match its manifest.');
+    if (pkg.integrityHash !== dungeonPackageIntegrityHash(pkg)) error('package_integrity_mismatch', 'integrityHash', 'The v4 package integrity hash does not match its content and dependency evidence.');
+    const sortedUnique = (keys: string[]) => canonicalJson(keys) === canonicalJson([...new Set(keys)].sort());
+    for (const [name, keys] of [
+      ['enemies', pkg.dependencies.enemies.map(e => e.key)],
+      ['rewardTables', pkg.dependencies.rewardTables.map(t => t.id)],
+      ['regions', pkg.dependencies.regions], ['currencies', pkg.dependencies.currencies],
+    ] as const)
+      if (!sortedUnique(keys)) error('package_dependencies_mismatch', `dependencies.${name}`, 'V4 dependency manifests must be sorted and duplicate-free.');
+    if (pkg.dependencies.species.length) error('package_dependencies_mismatch', 'dependencies.species', 'Reserved species manifest must be empty; v4 species evidence belongs in requiredSpecies.');
+    const requirements = encounterDependencyRequirements(pkg.dungeon);
+    if (canonicalJson(pkg.dependencies.requiredSpecies.map(({ slug, modes }) => ({ slug, modes }))) !== canonicalJson(requirements.species))
+      error('package_dependencies_mismatch', 'dependencies.requiredSpecies', 'Required species and capture/direct requirements must match reachable encounter content exactly.');
+    if (canonicalJson(pkg.dependencies.captureItems) !== canonicalJson(requirements.captureItems))
+      error('package_dependencies_mismatch', 'dependencies.captureItems', 'Capture items must match explicit rules of reachable encounters exactly.');
+    for (const [i, evidence] of pkg.dependencies.requiredSpecies.entries()) {
+      if (new Set(evidence.dungeonAccess.map((a) => a.dungeon)).size !== evidence.dungeonAccess.length ||
+          canonicalJson(evidence.dungeonAccess) !== canonicalJson([...evidence.dungeonAccess].sort((a, b) => a.dungeon < b.dungeon ? -1 : a.dungeon > b.dungeon ? 1 : 0)))
+        error('package_dependencies_mismatch', `dependencies.requiredSpecies[${i}].dungeonAccess`, 'Species access evidence must be sorted and duplicate-free.');
+    }
+  }
+  if (pkg.schemaVersion === 3 || pkg.schemaVersion === 4) {
+    if (pkg.schemaVersion === 3 && !dungeonUsesEvents(pkg.dungeon)) error('package_schema_version', 'dungeon', 'v3 requires event content');
     if (canonicalJson(pkg.dependencies.requiredItems) !== canonicalJson(dungeonRequiredItems(pkg.dungeon)))
       error('package_dependencies_mismatch', 'dependencies.requiredItems', 'the required inventory items do not match reachable event choices');
   }
@@ -458,8 +505,8 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
       if (pkg.bundled.dungeonLootTables.length) error('package_bundle_unreferenced', 'bundled.dungeonLootTables', 'a reward-free package cannot bundle loot tables');
       return { package: pkg, issues, ok: issues.every((i) => i.severity !== 'error') };
     }
-    if (!hasRewards && pkg.schemaVersion === 3)
-      error('package_reward_snapshot_invalid', 'rewardSnapshot', 'a reward-free v3 package must have null reward evidence');
+    if (!hasRewards && pkg.schemaVersion >= 3)
+      error('package_reward_snapshot_invalid', 'rewardSnapshot', 'a reward-free v3/v4 package must have null reward evidence');
     if (!hasRewards && pkg.schemaVersion === 2)
       error('package_reward_snapshot_invalid', 'dungeon', 'v2 requires a Phase 2 reward bundle');
     if (!readDungeonRewardSnapshot(snapshot) ||

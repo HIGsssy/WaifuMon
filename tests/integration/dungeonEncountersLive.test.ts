@@ -231,11 +231,11 @@ describe('publication and species policy', () => {
     }
   };
 
-  it('publishes an ordinary species and still refuses to export it', async () => {
+  it('publishes an ordinary species and exports v4 dependency evidence', async () => {
     const definition = await publishEncounter(wild(COMMON));
     expect(await w.content.revisions(definition.key)).toHaveLength(1);
-    await expect(w.content.exportPackage(definition.key, 'published', 'test')).rejects.toMatchObject({
-      issues: [expect.objectContaining({ message: expect.stringMatching(/package v4/) })],
+    expect(await w.content.exportPackage(definition.key, 'published', 'test')).toMatchObject({
+      schemaVersion: 4, dependencies: { requiredSpecies: [expect.objectContaining({ slug: COMMON, rarity: 'N' })] },
     });
   });
 
@@ -279,7 +279,7 @@ describe('publication and species policy', () => {
 
   it('refuses an encounter no permitted charm could capture', async () => {
     // A rope for SSR and above, against an N species.
-    expect(await issuesOf(wild(COMMON, { allowedItems: ['shibari_rope'] }))).toEqual(['capture_no_usable_item']);
+    expect(await issuesOf(wild(COMMON, { allowedItems: ['shibari_rope'] }))).toEqual(['capture_no_usable_item', 'capture_item_incompatible']);
   });
 
   it('rolls back to an encounter revision under the same policy', async () => {
@@ -424,7 +424,7 @@ describe('odds, charms and Microdose', () => {
   });
 
   it('honours an encounter restricted to named charms and closed to guaranteed items', async () => {
-    const definition = await publishEncounter(wild(COMMON, { allowedItems: [CHARM, CONTRACT], allowGuaranteedItems: false }));
+    const definition = await publishEncounter(wild(COMMON, { allowedItems: [CHARM], allowGuaranteedItems: false }));
     const { playerId } = await w.player();
     for (const slug of [CHARM, 'silk_charm', CONTRACT]) await give(playerId, slug, 1);
     const run = await w.runs.start(playerId, definition.key);

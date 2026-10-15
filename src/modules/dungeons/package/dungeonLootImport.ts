@@ -6,7 +6,7 @@ import { DungeonKeySchema } from '../content/dungeonIdentifiers';
 import { DungeonLootTableBodySchema } from '../content/dungeonRewards';
 import { dungeonLootBodyHash } from '../content/dungeonRewardSnapshot';
 import type { DungeonIssueDetail } from '../../../shared/errors';
-import type { DungeonPackageV2Schema, DungeonPackageV3Schema } from './dungeonPackage';
+import type { DungeonPackageV2Schema, DungeonPackageV3Schema, DungeonPackageV4Schema } from './dungeonPackage';
 
 export const DungeonLootImportDecisionSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('create') }).strict(),
@@ -32,7 +32,7 @@ export interface DungeonLootImportCreation {
 }
 const tierSchema = z.enum(['common', 'rare', 'boss', 'legendary']).nullable();
 
-export function planDungeonLootImport(pkg: V2Package | z.infer<typeof DungeonPackageV3Schema>, rows: readonly DungeonLootTableRow[], choices: DungeonLootImportDecisions = {}) {
+export function planDungeonLootImport(pkg: V2Package | z.infer<typeof DungeonPackageV3Schema> | z.infer<typeof DungeonPackageV4Schema>, rows: readonly DungeonLootTableRow[], choices: DungeonLootImportDecisions = {}) {
   const live = new Map(rows.map(row => [row.tableKey, row]));
   const reserved = new Set([...live.keys(), ...pkg.bundled.dungeonLootTables.map(t => t.key)]);
   const suggestedKeys = new Set(reserved);

@@ -31,6 +31,7 @@ import { dungeonDependencies, dungeonRequiredItems } from '../content/dungeonDef
 import { pruneDungeonLayout } from '../content/dungeonLayout';
 import { validateDungeonDefinition, type DungeonValidationContext } from '../validation/dungeonValidation';
 import { dungeonContentHash, packagedEnemyHash, readDungeonPackage, type ReadDungeonPackageResult } from './dungeonPackage';
+import { reviewEncounterDependencies, INCOMPLETE_ENCOUNTER_CODES, type EncounterImportCatalogue } from './dungeonEncounterImport';
 
 const hashSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/);
 const importIssueSchema = z.object({
@@ -81,6 +82,11 @@ export const DungeonImportPlanSchema = z.object({
     eventCount: z.number().int().nonnegative(), poolCount: z.number().int().nonnegative(),
     requiredItems: z.array(z.object({ key: z.string(), name: z.string(), status: z.enum(['available', 'missing', 'disabled']) })),
   }).optional(),
+  encounterDependencies: z.object({
+    encounterCount: z.number().int().nonnegative(), poolCount: z.number().int().nonnegative(),
+    requiredSpecies: z.array(z.object({ slug: z.string(), name: z.string(), status: z.enum(['available', 'missing', 'disabled', 'restricted', 'direct_rescue_not_permitted', 'direct_limit_missing']), modes: z.array(z.enum(['capture', 'direct'])), sourceRarity: z.string(), targetRarity: z.string().nullable(), changes: z.array(z.string()), perPlayerLimit: z.union([z.number(), z.literal('unlimited')]).nullable(), directRescue: z.boolean() })),
+    captureItems: z.array(z.object({ key: z.string(), name: z.string(), status: z.enum(['available', 'missing', 'disabled', 'not_capture', 'incompatible']), rarities: z.array(z.string()).nullable(), guaranteed: z.boolean().nullable() })),
+  }).optional(),
   rewardSource: z.object({ origin: z.enum(['draft', 'revision']), snapshotHash: hashSchema.nullable(), resolverVersion: z.number().int().nullable() }).optional(),
 });
 export const DungeonImportResultSchema = z.object({
@@ -96,7 +102,7 @@ export const DungeonImportResultSchema = z.object({
   createdLootTables: z.array(z.string()).optional(),
   reusedLootTables: z.array(z.string()).optional(),
   tableKeyChanges: z.record(z.string()).optional(),
-  sourceSchemaVersion: z.union([z.literal(2), z.literal(3)]).optional(),
+  sourceSchemaVersion: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
   rewardSnapshotHash: hashSchema.nullable().optional(),
 });
 export const DungeonImportHistorySchema = z.object({
@@ -172,6 +178,7 @@ export interface DungeonImportDeps {
   assetsDir?: string | undefined;
   /** Injected catalogue read keeps pure import-planning helpers free of DB reachability. */
   loadRewardContext?: ((tx: DbOrTx, options: { lock?: boolean }) => Promise<DungeonValidationContext>) | undefined;
+  loadEncounterContext?: ((tx: DbOrTx) => Promise<EncounterImportCatalogue>) | undefined;
   artworkStorage?: Pick<ArtworkStorage, 'exists'> | undefined;
   /**
    * The asset each managed reference (`<category>:<hash>`) means here, by the
@@ -226,7 +233,8 @@ export function readImportPackage(raw: unknown): ReadDungeonPackageResult {
         issues: [...read.issues, { code: 'package_schema_version', severity: 'error', path: 'schemaVersion', message: 'Phase 2 rewards require a complete v2 package for import. Export it again as v2.' }] };
       return read;
     case 2:
-    case 3: return read;
+    case 3:
+    case 4: return read;
     default: return { package: null, ok: false, issues: [{ code: 'package_schema_version', severity: 'error', path: 'schemaVersion', message: 'Unsupported import version.' }] };
   }
 }
@@ -302,6 +310,14 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       rewards = { ...rewards, lootTables: effectiveTables };
     }
     const definition = loot?.definition ?? pkg.dungeon;
+    let encounter: ReturnType<typeof reviewEncounterDependencies> | undefined;
+    let encounterCatalogue: EncounterImportCatalogue | undefined;
+    if (pkg.schemaVersion === 4) {
+      if (!deps.loadEncounterContext) refused('DUNGEON_IMPORT_INVALID', 'schemaVersion', 'Encounter catalogue validation is unavailable. Import refused.');
+      if (lock) await tx.execute(sql`LOCK TABLE species IN SHARE MODE`);
+      encounterCatalogue = await deps.loadEncounterContext(tx);
+      encounter = reviewEncounterDependencies(pkg, definition, encounterCatalogue);
+    }
 
     const enemyQuery = tx
       .select()
@@ -361,6 +377,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
     const itemSlugs = [...(deps.getItemSlugs?.() ?? [])].sort();
     const context: DungeonValidationContext = {
       ...rewards,
+      ...(encounterCatalogue ? { encounterSource: encounterCatalogue.source } : {}),
       enemies: new Map(enemies.map((e) => [e.enemyKey, { enabled: e.enabled }])),
       rewardTables: new Map(tables.map((t) => [t.tableId, { enabled: t.enabled }])),
       currencies: new Map(currencies.map((c) => [c.currencyKey, { enabled: c.enabled }])),
@@ -394,7 +411,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         path: `dependencies.rewardTables.${t.tableId}.${i.path}`,
       })),
     );
-    const eventDependencies = pkg.schemaVersion === 3 ? {
+    const eventDependencies = pkg.schemaVersion === 3 || pkg.schemaVersion === 4 ? {
       eventCount: pkg.dungeon.events?.length ?? 0,
       poolCount: pkg.dungeon.eventPools?.length ?? 0,
       requiredItems: dungeonRequiredItems(definition).map(key => {
@@ -415,6 +432,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       ...(loot?.issues ?? []),
       ...dependencyIssues,
       ...requiredItemIssues,
+      ...(encounter?.issues ?? []),
       ...validateDungeonDefinition(definition, context).issues.map((i) => ({
         ...i,
         path: `dungeon.${i.path}`,
@@ -543,6 +561,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
     const packageHash = importHash(pkg);
     const planHash = importHash({
       packageHash,
+      ...(encounterCatalogue ? { encounterSpecies: encounterCatalogue.species, captureItems: encounterCatalogue.items } : {}),
       ...(loot ? {
         lootChoices,
         lootTables: loot.tablePlans.map(table => ({
@@ -595,6 +614,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       plan: {
         ...empty,
         ...(eventDependencies ? { eventDependencies } : {}),
+        ...(encounter ? { encounterDependencies: encounter.dependencies } : {}),
         target,
         planHash,
         enemies: enemyPlans,
@@ -764,6 +784,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
                 ...plan.issues.filter((i) => i.severity === 'warning'),
                 ...dependencyIssues,
                 ...plan.issues.filter(i => i.path.startsWith('dependencies.requiredItems.')),
+                ...plan.issues.filter(i => i.path.startsWith('dependencies.requiredSpecies.') || i.path.startsWith('dependencies.captureItems.')),
                 ...validateDungeonDefinition(definition, context).issues.map((i) => ({
                   ...i,
                   path: `dungeon.${i.path}`,
@@ -779,6 +800,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
               (i) =>
                 i.severity === 'error' &&
                 !(input.decisions.allowMissingDependencies && (MISSING_DEPENDENCIES.has(i.code) ||
+                  pkg.schemaVersion === 4 && (INCOMPLETE_ENCOUNTER_CODES as readonly string[]).includes(i.code) ||
                   pkg.schemaVersion !== 1 && ['event_item_missing', 'event_item_disabled', 'reward_item_missing', 'reward_item_disabled', 'reward_item_capped', 'reward_equipment_empty', 'reward_table_archived', 'reward_table_invalid', 'reward_shards_unset'].includes(i.code))),
             ),
           ];

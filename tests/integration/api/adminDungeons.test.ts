@@ -266,6 +266,20 @@ describe('package import API', () => {
     expect(await w.content.get(definition.key)).toMatchObject({ enabled: false, published: null, draft: definition });
     expect(data<Json>(await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', request))).toMatchObject({ replayed: true, importId: data<Json>(applied).importId });
   });
+  it('v4 export, review and apply retain species/capture dependency fields over HTTP', async () => {
+    const definition = singleRoomDungeon([{ id: 'meet', type: 'wild_encounter', source: { kind: 'species', species: 'neko_barista' }, intro: 'Hello.', capture: { allowedItems: ['basic_charm'] } }], d => { d.key = 'v4_api_source'; });
+    await w.content.create({ definition }, 'source');
+    const response = await as(READER_TOKEN, 'GET', '/admin/dungeons/definitions/v4_api_source/export?origin=draft');
+    expect(response.statusCode, response.body).toBe(200);
+    const pkg = data<Json>(response);
+    expect(pkg).toMatchObject({ schemaVersion: 4, dependencies: { requiredSpecies: [expect.objectContaining({ slug: 'neko_barista', rarity: 'N' })], captureItems: ['basic_charm'] } });
+    const preview = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg });
+    expect(preview.statusCode, preview.body).toBe(200); const plan = data<Json>(preview);
+    expect(plan).toMatchObject({ validPackage: true, encounterDependencies: { encounterCount: 1, requiredSpecies: [{ slug: 'neko_barista', status: 'available', sourceRarity: 'N', targetRarity: 'N' }], captureItems: [{ key: 'basic_charm', status: 'available' }] } });
+    const applied = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: plan.target.expectedRevision, decisions: { dungeon: 'replace', enemies: {}, allowMissingDependencies: false } });
+    expect(applied.statusCode, applied.body).toBe(200); expect(data<Json>(applied)).toMatchObject({ sourceSchemaVersion: 4, publishable: true });
+    expect(await w.content.get(definition.key)).toMatchObject({ enabled: false, published: null });
+  });
   it('v2 conflict preview and copy application return reward-aware contracts and an unchanged destination table', async () => {
     const { pkg, table, body } = v2ApiPackage();
     const loot = createDungeonLootTableService({ db: w.t.db });

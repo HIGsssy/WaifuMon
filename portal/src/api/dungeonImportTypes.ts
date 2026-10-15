@@ -68,6 +68,36 @@ export interface DungeonImportPlan {
         }>;
       }
     | undefined;
+  encounterDependencies?:
+    | {
+        encounterCount: number;
+        poolCount: number;
+        requiredSpecies: Array<{
+          slug: string;
+          name: string;
+          status:
+            | 'available'
+            | 'missing'
+            | 'disabled'
+            | 'restricted'
+            | 'direct_rescue_not_permitted'
+            | 'direct_limit_missing';
+          modes: Array<'capture' | 'direct'>;
+          sourceRarity: string;
+          targetRarity: string | null;
+          changes: string[];
+          perPlayerLimit: number | 'unlimited' | null;
+          directRescue: boolean;
+        }>;
+        captureItems: Array<{
+          key: string;
+          name: string;
+          status: 'available' | 'missing' | 'disabled' | 'not_capture' | 'incompatible';
+          rarities: string[] | null;
+          guaranteed: boolean | null;
+        }>;
+      }
+    | undefined;
   rewardSource?:
     | { origin: 'draft' | 'revision'; snapshotHash: string | null; resolverVersion: number | null }
     | undefined;
@@ -98,6 +128,6 @@ export interface DungeonImportResult {
   createdLootTables?: string[] | undefined;
   reusedLootTables?: string[] | undefined;
   tableKeyChanges?: Record<string, string> | undefined;
-  sourceSchemaVersion?: 2 | 3 | undefined;
+  sourceSchemaVersion?: 2 | 3 | 4 | undefined;
   rewardSnapshotHash?: string | null | undefined;
 }

@@ -64,16 +64,15 @@ const row = {
   layout: {},
 };
 
-describe('encounter package gate', () => {
-  // Publication, rollback and live play opened in P4B2B (see
-  // tests/integration/dungeonEncountersLive.test.ts). Export stays closed
-  // until package v4 can carry species and charm dependencies.
+describe('Scene Sprite package gate with encounters', () => {
   it('blocks export before any revision, inventory or ownership write', async () => {
-    const { db, insert, update } = readOnlyDb([[row]]);
+    const spriteDefinition = structuredClone(definition);
+    spriteDefinition.rooms[0]!.sceneSprites = [{ id: 'sprite', spriteKey: 'managed' }];
+    const { db, insert, update } = readOnlyDb([[{ ...row, draft: spriteDefinition }]]);
     const enemies = { definitions: vi.fn(async () => []) };
     const service = createDungeonContentService({ db, enemies, getRegions: () => [] });
     await expect(service.exportPackage('gated', 'draft', 'tester')).rejects.toMatchObject({
-      issues: [expect.objectContaining({ message: expect.stringMatching(/package v4/) })],
+      issues: [expect.objectContaining({ message: expect.stringMatching(/Scene Sprites/) })],
     });
     expect(insert).not.toHaveBeenCalled();
     expect(update).not.toHaveBeenCalled();
