@@ -211,6 +211,18 @@ const EnemyEditorPage = lazy(() =>
     default: m.EnemyEditorPage,
   })),
 );
+// Region Pools: which Waifumon each region's hunt can meet. Gated on
+// `regions.read`; drafts need `regions.write`, publish/rollback `regions.publish`.
+const RegionPoolsListPage = lazy(() =>
+  import('@/features/adminRegionPools/RegionPoolsListPage').then((m) => ({
+    default: m.RegionPoolsListPage,
+  })),
+);
+const RegionPoolEditorPage = lazy(() =>
+  import('@/features/adminRegionPools/RegionPoolEditorPage').then((m) => ({
+    default: m.RegionPoolEditorPage,
+  })),
+);
 // Boss Management: boss definitions, availability schedules and live boss
 // activity. Gated on `bosses.read`; definition edits need `bosses.write`; Spawn Now and End Encounter need `bosses.operate`.
 const BossesListPage = lazy(() =>
@@ -575,6 +587,25 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="enemies.read">
                 <EnemyEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Region Pools. The API re-checks every request; the editor is
+          // read-only without `regions.write`, and publishing needs `regions.publish`.
+          {
+            path: 'admin/region-pools',
+            element: (
+              <RequirePortalPermission permission="regions.read">
+                <RegionPoolsListPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/region-pools/:regionId',
+            element: (
+              <RequirePortalPermission permission="regions.read">
+                <RegionPoolEditorPage />
               </RequirePortalPermission>
             ),
           },

@@ -3,6 +3,9 @@
  * structured refusals the editor renders beside species and rarity tiers;
  * and that reads never write.
  */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { asc } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
@@ -39,6 +42,8 @@ const TOKENS: Record<string, string> = {
 let t: TestDb;
 let app: App;
 let api: ZodFastify;
+/** Empty until a test writes the one species file it needs. */
+const assetsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'rp-admin-assets-'));
 
 beforeAll(async () => {
   t = await createTestDb();
@@ -113,6 +118,7 @@ beforeAll(async () => {
       getContent: () => app.content,
       portalAuthorization,
       adminBearerAllowed: false,
+      assetsDir,
     },
   });
 });
@@ -120,6 +126,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await api?.close();
   await t.cleanup();
+  fs.rmSync(assetsDir, { recursive: true, force: true });
 });
 
 type Json = Record<string, any>;
@@ -221,6 +228,40 @@ describe('permissions', () => {
     expect((await call('stranger', 'GET', '/admin/region-pools')).json().error.code).toBe('PORTAL_PERMISSION_DENIED');
     const anon = await api.inject({ method: 'GET', url: '/api/v1/admin/region-pools' });
     expect(anon.statusCode).toBe(401);
+  });
+
+  it('serves species thumbnails on regions.read alone (the reader holds no dungeons.read)', async () => {
+    const sp = app.content.species.find((s) => s.enabled)!;
+    const url = `/admin/region-pools/species/artwork?slug=${sp.slug}&width=256`;
+    // Nothing on disk yet: 404, which the editor draws as its placeholder.
+    expect((await call('reader', 'GET', url)).statusCode).toBe(404);
+
+    const look = app.appearance.currentAppearance(app.appearance.speciesContent(sp.slug)!, null);
+    const file = path.join(assetsDir, `${look.assetId.kind}/${look.assetId.slug}/${look.assetId.variant}.png`);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const bytes = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGNkYPj/n4GBgYGJAQoAHxcCAr7uqmIAAAAASUVORK5CYII=', 'base64');
+    fs.writeFileSync(file, bytes);
+
+    const art = await call('reader', 'GET', url);
+    expect(art.statusCode).toBe(200);
+    expect(art.headers['content-type']).toBe('image/png');
+    expect(art.headers['cache-control']).toBe('private, max-age=300, must-revalidate');
+    expect(art.rawPayload).toEqual(bytes);
+    const cached = await api.inject({
+      method: 'GET',
+      url: `/api/v1${url}`,
+      cookies: { wm_portal_session: 'reader', wm_portal_csrf: CSRF },
+      headers: { 'if-none-match': art.headers.etag as string },
+    });
+    expect(cached.statusCode).toBe(304);
+
+    // No region permission, no artwork.
+    expect((await call('stranger', 'GET', url)).statusCode).toBe(403);
+    expect((await api.inject({ method: 'GET', url: `/api/v1${url}` })).statusCode).toBe(401);
+    // Addressed by slug only.
+    expect((await call('reader', 'GET', '/admin/region-pools/species/artwork?slug=..%2Fsecret')).statusCode).toBe(400);
+    expect((await call('reader', 'GET', `/admin/region-pools/species/artwork?slug=${sp.slug}&width=123`)).statusCode).toBe(400);
+    expect((await call('reader', 'GET', '/admin/region-pools/species/artwork?slug=no_such_species')).statusCode).toBe(404);
   });
 
   it('read cannot write, write cannot publish, publish cannot save drafts', async () => {

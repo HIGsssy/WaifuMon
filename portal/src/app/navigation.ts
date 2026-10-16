@@ -21,6 +21,7 @@ import {
   Castle,
   Compass,
   Crown,
+  Earth,
   FlaskConical,
   Gauge,
   Gift,
@@ -86,6 +87,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Reward Tables',
     icon: Gift,
     requiresPermission: 'rewards.read',
+  },
+  {
+    // Region encounter pools: drafts, publication, odds and history.
+    to: '/admin/region-pools',
+    label: 'Admin — Region Pools',
+    icon: Earth,
+    requiresPermission: 'regions.read',
   },
   {
     to: '/admin/dungeons',

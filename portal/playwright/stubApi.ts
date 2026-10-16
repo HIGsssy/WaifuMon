@@ -484,6 +484,9 @@ export const ALL_PORTAL_PERMISSIONS: readonly string[] = [
   'presentations.read',
   'presentations.write',
   'gallery.read',
+  'regions.read',
+  'regions.write',
+  'regions.publish',
   'system.metrics.read',
 ];
 

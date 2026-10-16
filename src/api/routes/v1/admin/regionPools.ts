@@ -25,6 +25,8 @@ import { dataSchema, ok } from '../../../plugins/responseEnvelope';
 import { commonErrorResponses, errorSchema, notFoundResponse } from '../../../schemas/common';
 import { requirePortalPermission } from '../../../plugins/portalPermissions';
 import { ApiErrorWithDetails } from '../../../errors';
+import { artworkWidthQueryField, sendArtwork } from '../../../artworkResponse';
+import { resolveAppearanceAssetOrLegacyPath } from '../../../../modules/appearance/assetResolver';
 import {
   AppError,
   RegionPoolAcknowledgementRequiredError,
@@ -358,6 +360,39 @@ export const adminRegionPoolRoutes =
         },
       },
       async (req) => ok(req, { species: await pools.speciesCatalogue() }),
+    );
+
+    /**
+     * A picker/editor thumbnail, so `regions.read` alone is enough to see the
+     * species being placed. Addressed by slug only, never by path: the loaded
+     * species' ungated default appearance (no level-gated look, no other
+     * variant), resolved and served exactly as the Dungeon picker's route does.
+     * Anything else is 404 and the Portal draws its placeholder.
+     */
+    app.get(
+      '/admin/region-pools/species/artwork',
+      {
+        ...read,
+        schema: {
+          tags,
+          summary: 'Species default artwork for the Region Pool editor and picker',
+          querystring: z.object({ slug: z.string().min(1).max(100).regex(/^[a-z0-9_-]+$/), width: artworkWidthQueryField }),
+          response: {
+            304: z.null().describe('The artwork is unchanged — the ETag matched.'),
+            ...notFoundResponse,
+            ...commonErrorResponses,
+          },
+        },
+      },
+      async (req, reply) => {
+        const assetsDir = ctx.assetsDir ?? './assets';
+        const sp = ctx.services.appearance.speciesContent(req.query.slug);
+        const look = sp && ctx.services.appearance.currentAppearance(sp, null);
+        const file = sp && look && resolveAppearanceAssetOrLegacyPath({ assetsDir }, look.assetId, sp.imagePath);
+        if (!file) throw new AppError('NOT_FOUND', 'Species artwork not found', 'No artwork for that WaifuMon.');
+        await sendArtwork(assetsDir, req, reply, file, 'private, max-age=300, must-revalidate');
+        return reply;
+      },
     );
 
     app.get(
