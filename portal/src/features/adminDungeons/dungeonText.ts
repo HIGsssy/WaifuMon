@@ -290,7 +290,7 @@ export interface FriendlyIssue {
 }
 /** Where in the event or pool editor an issue belongs. */
 export interface EventIssueTarget {
-  kind: 'event' | 'pool' | 'speciesPool';
+  kind: 'event' | 'pool' | 'speciesPool' | 'speciesAccess';
   id: string;
   choiceId?: string;
   entryId?: string;
@@ -512,11 +512,25 @@ function friendlyEventIssue(
   };
 }
 
+/** Encounter issues the dungeon's own Species access can repair. */
+const ACCESS_CODES: string[] = ['species_not_permitted', 'rescue_direct_not_permitted', 'rescue_direct_limit_missing'];
+
 export function friendlyIssue(
   issue: DungeonIssue,
   definition: DungeonDefinition,
   reference?: DungeonReferenceData,
 ): FriendlyIssue {
+  const inSpeciesAccess = /^speciesPolicies\[(\d+)\]/.exec(issue.path);
+  if (inSpeciesAccess) {
+    const slug = definition.speciesPolicies?.[Number(inSpeciesAccess[1])]?.species ?? '';
+    return {
+      issue, level: issue.code === INCOMPLETE_CODE ? 'finish' : issue.severity === 'error' ? 'fix' : 'review',
+      title: `Species access${slug ? ` for “${slug}”` : ''}: ${issue.message}`,
+      help: issue.code === 'species_policy_unused' ? 'Add her to a pool or encounter, or remove this entry.' : 'Open Species access to repair this entry.',
+      target: null, actionId: null,
+      eventTarget: { kind: 'speciesAccess', id: slug },
+    };
+  }
   const inSpeciesPool = /^speciesPools\[(\d+)\](?:\.entries\[(\d+)\])?/.exec(issue.path);
   if (inSpeciesPool) {
     const pool = definition.speciesPools?.[Number(inSpeciesPool[1])];
@@ -539,9 +553,15 @@ export function friendlyIssue(
     const pool = definition.speciesPools?.find((p) => p.id === (action.source?.kind === 'pool' ? action.source.poolId : ''));
     const slug = quoted(issue.message);
     const entry = pool?.entries.find((e) => 'species' in e && e.species === slug);
+    if (pool && slug && ACCESS_CODES.includes(issue.code)) return {
+      issue, level: 'fix', title: `WaifuMon pool “${pool.name}”: ${issue.message}`,
+      help: 'Give her terms in this dungeon’s Species access, or replace her in this pool.',
+      target: room ? { kind: 'room', id: room.id } : null, actionId: action.id,
+      eventTarget: { kind: 'speciesAccess', id: slug },
+    };
     if (pool) return {
       issue, level: 'fix', title: `WaifuMon pool “${pool.name}”: ${issue.message}`,
-      help: 'Replace or remove the unavailable species in this pool, or arrange a central policy update separately.',
+      help: 'Replace or remove the unavailable species in this pool.',
       target: room ? { kind: 'room', id: room.id } : null, actionId: action.id,
       eventTarget: { kind: 'speciesPool', id: pool.id, ...(entry ? { entryId: entry.id } : {}), field: 'species' },
     };
@@ -552,13 +572,14 @@ export function friendlyIssue(
       species_pool_missing: 'Choose an existing WaifuMon pool. The missing reference stays in this draft until you replace it.',
       species_missing: 'Choose an existing WaifuMon or repair the selected pool.',
       species_disabled: 'Choose an enabled WaifuMon. Central species policy is read-only here.',
-      species_not_permitted: 'Choose a species permitted in this dungeon or arrange a central policy update.',
-      rescue_direct_not_permitted: 'Direct grants need explicit species authorization for this dungeon. Use capture rescue or choose an authorized species.',
-      rescue_direct_limit_missing: 'Direct grants require a finite per-player acquisition limit for this dungeon across runs.',
+      species_not_permitted: 'Give her terms in this dungeon’s Species access, or choose another species.',
+      rescue_direct_not_permitted: 'Allow Direct Rescue for her in this dungeon’s Species access, or use a capture rescue.',
+      rescue_direct_limit_missing: 'Direct Rescue needs a finite per-player limit in this dungeon’s Species access.',
       capture_settings_invalid: 'Set 1–3 attempts and choose at least one valid charm for an authored subset.',
       result_flag_undeclared: 'Declare the run flag in Dungeon settings or replace this result flag.',
     };
-    return { issue, level: issue.code === INCOMPLETE_CODE ? 'finish' : issue.severity === 'error' ? 'fix' : 'review', title: `${roomLabel(room)}, ${activityOf(action).title}: ${issue.message}`, help: help[issue.code] ?? 'Open this activity to repair its source, rules, conditions, result flags or outcome routes.', target: room ? { kind: 'room', id: room.id } : null, actionId: action.id };
+    const accessSlug = ACCESS_CODES.includes(issue.code) && action.source?.kind === 'species' ? action.source.species : '';
+    return { issue, level: issue.code === INCOMPLETE_CODE ? 'finish' : issue.severity === 'error' ? 'fix' : 'review', title: `${roomLabel(room)}, ${activityOf(action).title}: ${issue.message}`, help: help[issue.code] ?? 'Open this activity to repair its source, rules, conditions, result flags or outcome routes.', target: room ? { kind: 'room', id: room.id } : null, actionId: action.id, ...(accessSlug ? { eventTarget: { kind: 'speciesAccess' as const, id: accessSlug } } : {}) };
   }
   const R = roomLabel(room);
   const activity = action ? activityOf(action).title.toLowerCase() : 'activity';

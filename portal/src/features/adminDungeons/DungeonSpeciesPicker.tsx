@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { dungeonSpeciesArtworkBlob, type DungeonSpeciesRef } from '@/api/adminDungeons';
+import {
+  dungeonSpeciesArtworkBlob,
+  type DungeonSpeciesPolicyEntry,
+  type DungeonSpeciesRef,
+} from '@/api/adminDungeons';
+import { speciesAccessView, speciesSelectable } from './dungeonSpeciesModel';
 import { ArtworkThumbnail } from '@/components/media/ArtworkThumbnail';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,50 +18,73 @@ export const speciesReasonText: Record<DungeonSpeciesUnavailableReason, string> 
   direct_limit_missing: 'Direct rescue needs an explicit finite limit',
 };
 const hint = 'text-xs text-ink-muted';
-export function SpeciesAvailability({ species }: { species: DungeonSpeciesRef }) {
+export function SpeciesAvailability({
+  species,
+  dungeonKey,
+  entry,
+}: {
+  species: DungeonSpeciesRef;
+  /** With a key, availability includes this dungeon's own Species access entry. */
+  dungeonKey?: string;
+  entry?: DungeonSpeciesPolicyEntry | undefined;
+}) {
+  const view = dungeonKey
+    ? speciesAccessView(species, dungeonKey, entry)
+    : {
+        permitted: species.permitted,
+        reason: species.unavailableReason,
+        limit: species.perPlayerLimit,
+        directRescue: species.directRescue,
+        source: null,
+      };
+  const admissible = !view.permitted && view.reason === 'not_permitted' && species.dungeonPolicyAllowed;
   return (
     <div className="min-w-0 space-y-1">
       <p className={hint}>
         {species.rarity} · {species.race} · {species.affinity}
       </p>
-      <p className={species.permitted ? hint : 'text-xs text-danger'}>
+      <p className={view.permitted || admissible ? hint : 'text-xs text-danger'}>
         {species.enabled ? 'Enabled' : 'Disabled'} ·{' '}
         {species.regionExclusive ? 'Region-exclusive' : 'No region exclusivity'} ·{' '}
         {species.dungeonExclusive ? 'Dungeon-exclusive' : 'No dungeon exclusivity'}
       </p>
-      <p className={species.permitted ? hint : 'text-xs text-danger'}>
-        {species.permitted
-          ? 'Permitted in this dungeon'
-          : speciesReasonText[species.unavailableReason ?? 'not_permitted']}
+      <p className={view.permitted ? hint : admissible ? 'text-xs font-medium' : 'text-xs text-danger'}>
+        {view.permitted
+          ? view.source === 'dungeon' || view.source === 'both'
+            ? 'Permitted by this dungeon’s Species access'
+            : 'Permitted in this dungeon'
+          : admissible
+            ? 'Needs Species access in this dungeon before it can be offered'
+            : speciesReasonText[view.reason ?? 'not_permitted']}
       </p>
       <p className={hint}>
-        Acquisition limit:{' '}
-        {species.perPlayerLimit === null
-          ? 'Unlimited (no limit configured)'
-          : species.perPlayerLimit === 'unlimited'
-            ? 'Unlimited (explicit)'
-            : species.perPlayerLimit}{' '}
-        — per player, in this dungeon, across runs.
+        Maximum acquisitions per player from this dungeon:{' '}
+        {view.limit === null
+          ? 'unlimited (no limit configured)'
+          : view.limit === 'unlimited'
+            ? 'unlimited (explicit)'
+            : view.limit}{' '}
+        — across all runs.
       </p>
       <p className={hint}>
-        Direct rescue:{' '}
-        {species.directRescue.available
-          ? 'Authorized with a finite limit'
-          : speciesReasonText[species.directRescue.reason ?? 'direct_not_permitted']}
+        Direct Rescue:{' '}
+        {view.directRescue.available
+          ? 'allowed, with a finite limit'
+          : speciesReasonText[view.directRescue.reason ?? 'direct_not_permitted'].toLowerCase()}
         .
       </p>
-      <p className={`${hint} break-words`}>
-        Configured dungeon access:{' '}
-        {species.dungeonAccess.length
-          ? species.dungeonAccess
-              .map(
-                (a) =>
-                  `${a.dungeon} (limit ${a.perPlayerLimit ?? 'unlimited by default'}${a.directRescue ? ', direct rescue authorized' : ''})`,
-              )
-              .join('; ')
-          : 'None listed'}
-        . Central policy is read-only.
-      </p>
+      {!!species.dungeonAccess.length && (
+        <p className={`${hint} break-words`}>
+          Species content access (read-only):{' '}
+          {species.dungeonAccess
+            .map(
+              (a) =>
+                `${a.dungeon} (limit ${a.perPlayerLimit ?? 'unlimited by default'}${a.directRescue ? ', direct rescue authorized' : ''})`,
+            )
+            .join('; ')}
+          {view.source === 'both' ? '. Where both set terms, the stricter applies.' : '.'}
+        </p>
+      )}
     </div>
   );
 }
@@ -73,13 +101,20 @@ export function DungeonSpeciesPicker({
   disabled,
   onSelect,
   purpose = 'pool',
+  dungeonKey,
+  policies,
 }: {
   species: DungeonSpeciesRef[];
   listed: Set<string>;
   disabled: boolean;
   onSelect: (slug: string) => void;
   purpose?: 'pool' | 'encounter';
+  dungeonKey: string;
+  /** The draft's Species access entries. */
+  policies?: DungeonSpeciesPolicyEntry[] | undefined;
 }) {
+  const entryOf = (slug: string) => policies?.find((p) => p.species === slug);
+  const permitted = (s: DungeonSpeciesRef) => speciesAccessView(s, dungeonKey, entryOf(s.slug)).permitted;
   const [search, setSearch] = useState('');
   const [rarity, setRarity] = useState('');
   const [race, setRace] = useState('');
@@ -92,7 +127,7 @@ export function DungeonSpeciesPicker({
       (!rarity || s.rarity === rarity) &&
       (!race || s.race === race) &&
       (!affinity || s.affinity === affinity) &&
-      (status === 'all' || (status === 'permitted' ? s.permitted : !s.permitted)),
+      (status === 'all' || (status === 'permitted' ? permitted(s) : !permitted(s))),
   );
   return (
     <section aria-label="Species picker" className="space-y-2">
@@ -154,7 +189,10 @@ export function DungeonSpeciesPicker({
         </label>
       </div>
       <ul className="max-h-96 space-y-2 overflow-y-auto" aria-label="Matching species">
-        {rows.map((s) => (
+        {rows.map((s) => {
+          const selectable = speciesSelectable(s, dungeonKey, entryOf(s.slug));
+          const ready = permitted(s);
+          return (
           <li
             key={s.slug}
             className="space-y-2 rounded border border-border p-2"
@@ -164,26 +202,27 @@ export function DungeonSpeciesPicker({
               <SpeciesThumb species={s} />
               <div className="min-w-0">
                 <p className="break-words text-sm font-medium">{s.name}</p>
-                <SpeciesAvailability species={s} />
+                <SpeciesAvailability species={s} dungeonKey={dungeonKey} entry={entryOf(s.slug)} />
               </div>
             </div>
             <Button
               variant="outline"
               size="sm"
-              disabled={disabled || !s.permitted || listed.has(s.slug)}
+              disabled={disabled || !selectable || listed.has(s.slug)}
               onClick={() => {
-                if (s.permitted && !listed.has(s.slug)) onSelect(s.slug);
+                if (selectable && !listed.has(s.slug)) onSelect(s.slug);
               }}
               aria-label={`${purpose === 'pool' ? 'Add species' : 'Select species'} ${s.name}`}
             >
               {listed.has(s.slug)
                 ? 'Already in this pool'
-                : s.permitted
-                  ? purpose === 'pool' ? 'Add to pool' : 'Select WaifuMon'
-                  : 'Unavailable in this dungeon'}
+                : !selectable
+                  ? 'Unavailable in this dungeon'
+                  : `${purpose === 'pool' ? 'Add to pool' : 'Select WaifuMon'}${ready ? '' : ' and set access'}`}
             </Button>
           </li>
-        ))}
+          );
+        })}
       </ul>
       {!rows.length && (
         <p role="status" className={hint}>

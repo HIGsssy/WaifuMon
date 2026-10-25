@@ -14,6 +14,7 @@ export const DUNGEON_ENCOUNTER_LIMITS = {
   entries: 50,
   encounters: 40,
   directRescues: 3,
+  speciesPolicies: 200,
   attempts: 3,
   flags: 4,
 } as const;
@@ -40,6 +41,20 @@ export const DungeonSpeciesAccessSchema = z
   })
   .strict();
 export type DungeonSpeciesAccess = z.infer<typeof DungeonSpeciesAccessSchema>;
+/**
+ * The dungeon's own terms for one species, authored in the Dungeon Editor and
+ * published with the revision. It authorizes a `dungeon_exclusive` species here
+ * without species content naming the dungeon; the limit is always explicit.
+ * A direct rescue's finite limit is a validation rule, so a draft can hold it.
+ */
+export const DungeonSpeciesPolicyEntrySchema = z
+  .object({
+    species: referenceKey,
+    perPlayerLimit: DungeonAcquisitionLimitSchema,
+    directRescue: z.boolean().optional(),
+  })
+  .strict();
+export type DungeonSpeciesPolicyEntry = z.infer<typeof DungeonSpeciesPolicyEntrySchema>;
 export const DungeonSpeciesPoolEntrySchema = z.union([
   z
     .object({

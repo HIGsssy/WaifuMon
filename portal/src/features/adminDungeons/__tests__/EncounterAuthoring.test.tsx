@@ -24,6 +24,7 @@ const normal: api.DungeonSpeciesRef = {
   dungeonExclusive: true,
   permitted: true,
   unavailableReason: null,
+  dungeonPolicyAllowed: true,
   dungeonAccess: [{ dungeon: 'tunnels', perPlayerLimit: 2, directRescue: true }],
   perPlayerLimit: 2,
   directRescue: { available: true, reason: null },
@@ -47,6 +48,7 @@ beforeEach(() => {
         name: 'Restricted Angel',
         permitted: false,
         unavailableReason: 'not_permitted',
+        dungeonPolicyAllowed: false,
         regionExclusive: true,
       },
     ],
@@ -200,7 +202,7 @@ describe('encounter authoring', () => {
     expect(screen.getByText(/Direct grant: no charm/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Choose WaifuMon' }));
     await user.click(await screen.findByRole('button', { name: 'Select species Test Elf' }));
-    expect(screen.getByText(/Direct rescue is not authorized/)).toBeInTheDocument();
+    expect(screen.getByText(/Direct Rescue: direct rescue is not authorized/)).toBeInTheDocument();
     expect(draft().source.species).toBe('elf');
     await user.selectOptions(screen.getByLabelText('Rescue mode'), 'capture');
     expect(screen.getByLabelText('Capture attempt limit')).toBeInTheDocument();
@@ -284,6 +286,17 @@ describe('encounter authoring', () => {
     const state = publicationState({ ...fixture(), draftDiffers: false, speciesDiffer: true });
     expect(state.kind).toBe('species');
     expect(publishExplanation(state)).toContain('live policy');
+  });
+  it('routes Species access problems to the Species access sheet', () => {
+    const d = seeded();
+    d.rooms[0]!.actions[0]!.source = { kind: 'species', species: 'restricted' };
+    d.speciesPolicies = [{ species: 'android', perPlayerLimit: 1 }];
+    expect(
+      friendlyIssue({ code: 'species_not_permitted', path: 'rooms[0].actions[0].source', message: 'Species "restricted" is unavailable: not_permitted.', severity: 'error' }, d),
+    ).toMatchObject({ actionId: d.rooms[0]!.actions[0]!.id, eventTarget: { kind: 'speciesAccess', id: 'restricted' } });
+    expect(
+      friendlyIssue({ code: 'species_policy_unused', path: 'speciesPolicies[0]', message: 'Unused.', severity: 'warning' }, d),
+    ).toMatchObject({ level: 'review', eventTarget: { kind: 'speciesAccess', id: 'android' } });
   });
   it('sends sandbox charm selection and capture inputs and reports simulated grants', async () => {
     const d = seeded();

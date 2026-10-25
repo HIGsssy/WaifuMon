@@ -45,6 +45,7 @@ import { DungeonSandboxDialog } from './DungeonSandboxDialog';
 import { EventEditorSheet } from './EventEditorSheet';
 import { EventPoolSheet } from './EventPoolSheet';
 import { SpeciesPoolSheet } from './SpeciesPoolSheet';
+import { SpeciesAccessSheet } from './SpeciesAccessSheet';
 import { EventEditorContext, type EventEditorHost } from './eventEditorContext';
 import { RoomInspector } from './RoomInspector';
 import {
@@ -786,6 +787,16 @@ export function DungeonGraphView({
             issues={friendly.filter(
               (f) => f.eventTarget?.kind === 'speciesPool' && f.eventTarget.id === eventSheet.id,
             )}
+            onChange={(next) => !disabled && onChange(next, layout)}
+            onClose={() => setEventSheet(null)}
+          />
+        )}
+        {eventSheet?.kind === 'speciesAccess' && (
+          <SpeciesAccessSheet
+            definition={definition}
+            disabled={disabled}
+            focus={eventSheet}
+            issues={friendly.filter((f) => f.eventTarget?.kind === 'speciesAccess')}
             onChange={(next) => !disabled && onChange(next, layout)}
             onClose={() => setEventSheet(null)}
           />

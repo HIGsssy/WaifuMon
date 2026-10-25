@@ -177,10 +177,11 @@ import {
   dungeonEncounterSpeciesSlugs,
   dungeonSpeciesPolicy,
   loadSpeciesBySlug,
+  publishedDungeonSpeciesPolicies,
   type DungeonSpeciesAccessLookup,
 } from './dungeonSpeciesPolicy';
 import { captureRules, encounterInstanceKey } from './engine/encounters';
-import { dungeonSpeciesUnavailableReason } from './validation/dungeonEncounterValidation';
+import { dungeonSpeciesUnavailableReason, withDungeonSpeciesPolicy } from './validation/dungeonEncounterValidation';
 import type { BuddyBonusService } from '../buddyBonus/buddyBonusService';
 import { describeEventResults, eventInstanceKey, type DungeonEventResultView } from './engine/events';
 import { equipmentGrantKey, rewardClaimKey } from './engine/rewards';
@@ -737,11 +738,12 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
    * no query.
    *
    * `species` covers every slug the pinned revision can present: current
-   * `enabled`, tags and `dungeonAccess`, and how many copies this dungeon has
-   * already given this player. `items` is filled only while the run stands on
-   * an offered capture: each capture item the player holds, quoted by the
-   * capture service against the **pinned** Buddy. That quote is the number the
-   * player is shown, the number the engine rolls against, and — because the
+   * `enabled`, tags and `dungeonAccess`, the dungeon's own access entries as
+   * its currently published revision states them, and how many copies this
+   * dungeon has already given this player. `items` is filled only while the
+   * run stands on an offered capture: each capture item the player holds,
+   * quoted by the capture service against the **pinned** Buddy. That quote is
+   * the number the player is shown, the number the engine rolls against, and — because the
    * attempt recomputes it from the same inputs in the same transaction — the
    * number the capture service resolves against.
    */
@@ -756,10 +758,11 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     const slugs = dungeonEncounterSpeciesSlugs(definition);
     const bySlug = await loadSpeciesBySlug(tx, slugs);
     const counts = await dungeonAcquisitionCounts(tx, row.playerId, row.dungeonKey);
+    const owned = await publishedDungeonSpeciesPolicies(tx, row.dungeonKey);
     const speciesFacts: Record<string, DungeonEncounterFacts['species'][string]> = {};
     for (const slug of slugs) {
       const found = bySlug.get(slug);
-      const policy = dungeonSpeciesPolicy(found, deps.speciesAccess);
+      const policy = withDungeonSpeciesPolicy(dungeonSpeciesPolicy(found, deps.speciesAccess), owned, slug);
       const count = found ? (counts.get(found.id) ?? 0) : 0;
       const reason = dungeonSpeciesUnavailableReason(policy, row.dungeonKey, false, count);
       const direct = dungeonSpeciesUnavailableReason(policy, row.dungeonKey, true, count);
@@ -1062,8 +1065,10 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     const { row } = run;
     const [found] = await tx.select().from(species).where(eq(species.slug, slug)).for('share');
     const counts = found ? await dungeonAcquisitionCounts(tx, row.playerId, row.dungeonKey) : new Map<number, number>();
+    const owned = found ? await publishedDungeonSpeciesPolicies(tx, row.dungeonKey) : [];
     const reason = dungeonSpeciesUnavailableReason(
-      dungeonSpeciesPolicy(found, deps.speciesAccess), row.dungeonKey, direct, found ? (counts.get(found.id) ?? 0) : 0,
+      withDungeonSpeciesPolicy(dungeonSpeciesPolicy(found, deps.speciesAccess), owned, slug),
+      row.dungeonKey, direct, found ? (counts.get(found.id) ?? 0) : 0,
     );
     if (!found || reason) {
       deps.logger?.info(

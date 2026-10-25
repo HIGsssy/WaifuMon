@@ -15,8 +15,11 @@ export interface DungeonSpeciesRef {
   enabled: boolean;
   regionExclusive: boolean;
   dungeonExclusive: boolean;
+  /** Judged by species content alone; the dungeon's own Species access is applied by the editor. */
   permitted: boolean;
   unavailableReason: DungeonSpeciesUnavailableReason | null;
+  /** Whether this dungeon's Species access can admit her (enabled, not region-exclusive). */
+  dungeonPolicyAllowed: boolean;
   dungeonAccess: Array<{
     dungeon: string;
     perPlayerLimit?: number | 'unlimited';

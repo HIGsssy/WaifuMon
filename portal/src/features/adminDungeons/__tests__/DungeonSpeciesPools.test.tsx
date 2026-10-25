@@ -17,6 +17,7 @@ const normal: api.DungeonSpeciesRef = {
   dungeonExclusive: false,
   permitted: true,
   unavailableReason: null,
+  dungeonPolicyAllowed: true,
   dungeonAccess: [{ dungeon: 'tunnels', perPlayerLimit: 2, directRescue: true }],
   perPlayerLimit: 2,
   directRescue: { available: true, reason: null },
@@ -32,6 +33,7 @@ const catalogue: api.DungeonSpeciesRef[] = [
     regionExclusive: true,
     permitted: false,
     unavailableReason: 'not_permitted',
+    dungeonPolicyAllowed: false,
     perPlayerLimit: null,
     dungeonAccess: [],
     directRescue: { available: false, reason: 'direct_not_permitted' },
@@ -44,7 +46,22 @@ const catalogue: api.DungeonSpeciesRef[] = [
     enabled: false,
     permitted: false,
     unavailableReason: 'disabled',
+    dungeonPolicyAllowed: false,
     dungeonExclusive: true,
+  },
+  {
+    // A catalogue dungeon-exclusive with no dungeon named in her content.
+    ...normal,
+    slug: 'valkyrie',
+    name: 'Forgotten Valkyrie',
+    race: 'angel',
+    dungeonExclusive: true,
+    permitted: false,
+    unavailableReason: 'not_permitted',
+    dungeonPolicyAllowed: true,
+    dungeonAccess: [],
+    perPlayerLimit: null,
+    directRescue: { available: false, reason: 'not_permitted' },
   },
 ];
 let world: ReturnType<typeof install>;
@@ -135,7 +152,7 @@ describe('WaifuMon pool authoring', () => {
     expect(sheet().getByTestId('species-option-restricted')).toHaveTextContent('Region-exclusive');
     expect(sheet().getByTestId('species-option-disabled')).toHaveTextContent('Dungeon-exclusive');
     expect(sheet().getByTestId('species-option-android')).toHaveTextContent(
-      'per player, in this dungeon, across runs',
+      'Maximum acquisitions per player from this dungeon: 2 — across all runs.',
     );
     await user.type(sheet().getByLabelText('Search species'), 'Angel');
     expect(
@@ -152,6 +169,56 @@ describe('WaifuMon pool authoring', () => {
     await user.click(sheet().getByRole('button', { name: 'Add species Test Android' }));
     await user.click(sheet().getByRole('button', { name: '+ Add species' }));
     expect(sheet().getByRole('button', { name: 'Add species Test Android' })).toBeDisabled();
+  });
+  it('adds a dungeon-exclusive species with no content access and configures her Species access', async () => {
+    const user = await ready();
+    await create(user);
+    await user.click(sheet().getByRole('button', { name: '+ Add species' }));
+    const add = await sheet().findByRole('button', { name: 'Add species Forgotten Valkyrie' });
+    expect(add).toBeEnabled();
+    expect(add).toHaveTextContent('Add to pool and set access');
+    expect(sheet().getByTestId('species-option-valkyrie')).toHaveTextContent(
+      'Needs Species access in this dungeon before it can be offered',
+    );
+    await user.click(add);
+    expect(sheet().getByTestId('species-pool-entry')).toHaveTextContent('Needs Species access in this dungeon');
+    await user.click(sheet().getByRole('button', { name: 'Entry 1: Species access' }));
+    const access = within(await screen.findByTestId('species-access-editor'));
+    await user.click(access.getByRole('button', { name: 'Add Species access for Forgotten Valkyrie' }));
+    expect(access.getByTestId('species-access-row')).toHaveTextContent('Permitted by this dungeon’s Species access');
+    expect(access.getByLabelText('Forgotten Valkyrie: maximum acquisitions per player')).toHaveValue(1);
+    fireEvent.change(access.getByLabelText('Forgotten Valkyrie: maximum acquisitions per player'), { target: { value: '3' } });
+    // Unlimited capture turns Direct Rescue off and keeps it off.
+    await user.click(access.getByLabelText('Forgotten Valkyrie: allow Direct Rescue'));
+    await user.click(access.getByLabelText('Forgotten Valkyrie: unlimited captures'));
+    expect(access.getByLabelText('Forgotten Valkyrie: allow Direct Rescue')).toBeDisabled();
+    expect(access.getByLabelText('Forgotten Valkyrie: allow Direct Rescue')).not.toBeChecked();
+    await user.click(access.getByLabelText('Forgotten Valkyrie: limited acquisitions'));
+    fireEvent.change(access.getByLabelText('Forgotten Valkyrie: maximum acquisitions per player'), { target: { value: '2' } });
+    await user.click(access.getByLabelText('Forgotten Valkyrie: allow Direct Rescue'));
+    expect(access.getByTestId('species-access-row')).toHaveTextContent('Direct Rescue: allowed, with a finite limit');
+    await user.click(screen.getByRole('button', { name: 'Close Species access' }));
+    expect(panel().getByTestId('species-access-summary')).toHaveTextContent('1 species with this dungeon’s own terms');
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(api.saveDungeonDraft).toHaveBeenCalledTimes(1));
+    const saved = vi.mocked(api.saveDungeonDraft).mock.calls[0]![1].definition!;
+    expect(saved.speciesPolicies).toEqual([{ species: 'valkyrie', perPlayerLimit: 2, directRescue: true }]);
+    expect(saved.speciesPools![0]!.entries).toEqual([expect.objectContaining({ species: 'valkyrie', weight: 1, oncePerRun: true })]);
+  });
+  it('removing Species access drops the entry and leaves pools untouched', async () => {
+    seed();
+    world.stored.draft.speciesPolicies = [{ species: 'android', perPlayerLimit: 1 }];
+    const user = await ready();
+    await user.click(panel().getByRole('button', { name: 'Edit Species access' }));
+    const access = within(await screen.findByTestId('species-access-editor'));
+    await user.click(access.getByRole('button', { name: 'Remove Species access for Test Android' }));
+    expect(access.getByRole('button', { name: 'Add Species access for Test Android' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close Species access' }));
+    await user.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(api.saveDungeonDraft).toHaveBeenCalledTimes(1));
+    const saved = vi.mocked(api.saveDungeonDraft).mock.calls[0]![1].definition!;
+    expect(saved).not.toHaveProperty('speciesPolicies');
+    expect(saved.speciesPools).toEqual(world.stored.draft.speciesPools);
   });
   it('duplicates independently, lists references and refuses deletion while used', async () => {
     seed();
@@ -276,7 +343,7 @@ describe('WaifuMon pool authoring', () => {
     expect(sheet().queryByRole('button', { name: '+ Add species' })).not.toBeInTheDocument();
     expect(panel().queryByRole('button', { name: '+ New WaifuMon pool' })).not.toBeInTheDocument();
   });
-  it('publication policy failures link back to the pool entry for repair', async () => {
+  it('publication access failures link to Species access for repair', async () => {
     seed();
     world.stored.draft.rooms[0]!.actions.push({
       id: 'wild',
@@ -305,7 +372,7 @@ describe('WaifuMon pool authoring', () => {
     await user.click(await screen.findByRole('button', { name: 'Publish now' }));
     expect(await screen.findByText('Species policy changed')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /Show me: WaifuMon pool .*unavailable/ }));
-    expect(await screen.findByTestId('species-pool-editor')).toBeInTheDocument();
+    expect(await screen.findByTestId('species-access-editor')).toBeInTheDocument();
     expect(api.saveDungeonDraft).not.toHaveBeenCalled();
   });
   it('does not show older preview responses while a new scenario is pending', async () => {

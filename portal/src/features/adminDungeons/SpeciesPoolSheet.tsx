@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   getDungeonSpecies,
@@ -13,10 +13,13 @@ import { DungeonConditionEditor } from './DungeonConditionEditor';
 import { withMember } from './dungeonEventModel';
 import {
   newSpeciesEntry,
+  speciesPolicyOf,
   speciesPoolUsage,
+  speciesSelectable,
   updateSpeciesPool,
   SPECIES_POOL_LIMITS,
 } from './dungeonSpeciesModel';
+import { EventEditorContext } from './eventEditorContext';
 import {
   DungeonSpeciesPicker,
   SpeciesAvailability,
@@ -90,6 +93,7 @@ export function SpeciesPoolSheet({
   onChange: (d: DungeonDefinition) => void;
   onClose: () => void;
 }) {
+  const host = useContext(EventEditorContext);
   const pool = definition.speciesPools?.find((p) => p.id === poolId);
   const [picking, setPicking] = useState<string | null>(null);
   const [scenario, setScenario] = useState(EMPTY_SPECIES_SCENARIO);
@@ -152,6 +156,14 @@ export function SpeciesPoolSheet({
             Changes belong to your dungeon draft. Selection odds come from the runtime’s server
             analysis.
           </SheetDescription>
+          <p className={hint}>
+            Weight and once-per-run decide how often each species is presented. Whether she can be
+            acquired, and how many times per player, is set once per species in{' '}
+            <Button variant="link" size="sm" className="h-auto p-0" disabled={!host} onClick={() => host?.open({ kind: 'speciesAccess', id: '' })}>
+              Species access
+            </Button>
+            .
+          </p>
           <p className={`${hint} break-words`} title={`Pool ID: ${pool.id}`}>
             {speciesPoolUsage(definition, poolId)
               .map((u) => u.name)
@@ -222,7 +234,11 @@ export function SpeciesPoolSheet({
                                 <SpeciesThumb species={sp} />
                                 <div className="min-w-0">
                                   <p className="break-words text-sm font-medium">{sp.name}</p>
-                                  <SpeciesAvailability species={sp} />
+                                  <SpeciesAvailability
+                                    species={sp}
+                                    dungeonKey={definition.key}
+                                    entry={speciesPolicyOf(definition, sp.slug)}
+                                  />
                                 </div>
                               </div>
                             ) : (
@@ -240,14 +256,27 @@ export function SpeciesPoolSheet({
                                 publishing.
                               </p>
                             )}
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              aria-label={`Entry ${n}: replace species`}
-                              onClick={() => setPicking(e.id)}
-                            >
-                              Replace species
-                            </Button>
+                            <div className="flex flex-wrap gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                aria-label={`Entry ${n}: replace species`}
+                                onClick={() => setPicking(e.id)}
+                              >
+                                Replace species
+                              </Button>
+                              {e.species && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  disabled={!host}
+                                  aria-label={`Entry ${n}: Species access`}
+                                  onClick={() => host?.open({ kind: 'speciesAccess', id: e.species })}
+                                >
+                                  Species access…
+                                </Button>
+                              )}
+                            </div>
                           </>
                         ) : (
                           <p className="text-sm font-medium">Nothing</p>
@@ -361,6 +390,8 @@ export function SpeciesPoolSheet({
                 {catalogue.data && (
                   <DungeonSpeciesPicker
                     species={species}
+                    dungeonKey={definition.key}
+                    policies={definition.speciesPolicies}
                     disabled={disabled}
                     listed={
                       new Set(
@@ -370,7 +401,8 @@ export function SpeciesPoolSheet({
                       )
                     }
                     onSelect={(slug) => {
-                      if (!bySlug.get(slug)?.permitted) return;
+                      const chosen = bySlug.get(slug);
+                      if (!chosen || !speciesSelectable(chosen, definition.key, speciesPolicyOf(definition, slug))) return;
                       if (picking === 'new') {
                         if (pool.entries.length < SPECIES_POOL_LIMITS.entries)
                           update([...pool.entries, newSpeciesEntry(pool, slug)]);

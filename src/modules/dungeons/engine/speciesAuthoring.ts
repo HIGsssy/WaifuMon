@@ -2,10 +2,12 @@
 import type {
   DungeonDefinition,
   DungeonSpeciesAccess,
+  DungeonSpeciesPolicyEntry,
   DungeonSpeciesPool,
 } from "../content/dungeonDefinition";
 import {
   dungeonSpeciesUnavailableReason,
+  withDungeonSpeciesPolicy,
   type DungeonSpeciesPolicy,
 } from "../validation/dungeonEncounterValidation";
 import type { DungeonEncounterUnavailableReason } from "./types";
@@ -29,8 +31,11 @@ export interface DungeonAuthoringSpecies {
   regionExclusive: boolean;
   dungeonExclusive: boolean;
   dungeonAccess: readonly DungeonSpeciesAccess[];
+  /** Judged by species content alone; the dungeon's own Species access is applied per definition. */
   permitted: boolean;
   unavailableReason: DungeonEncounterUnavailableReason | null;
+  /** Whether this dungeon's own Species access can admit her (enabled, not region-exclusive). */
+  dungeonPolicyAllowed: boolean;
   /** null means no explicit capture limit (unlimited). */
   perPlayerLimit: number | "unlimited" | null;
   directRescue: {
@@ -40,17 +45,21 @@ export interface DungeonAuthoringSpecies {
 }
 function policyOf(
   species: DungeonAuthoringSpecies | undefined,
+  owned: readonly DungeonSpeciesPolicyEntry[] | undefined,
 ): DungeonSpeciesPolicy | undefined {
-  return (
+  return withDungeonSpeciesPolicy(
     species && {
       enabled: species.enabled,
       restricted: species.regionExclusive || species.dungeonExclusive,
+      ...(species.regionExclusive ? { regionExclusive: true } : {}),
       access: species.dungeonAccess,
-    }
+    },
+    owned,
+    species?.slug ?? "",
   );
 }
 export function describeSpeciesAuthoring(
-  definition: Pick<DungeonDefinition, "key" | "speciesPools">,
+  definition: Pick<DungeonDefinition, "key" | "speciesPools" | "speciesPolicies">,
   catalogue: readonly DungeonAuthoringSpecies[],
   scenario: SpeciesAuthoringScenario = {
     flags: [],
@@ -84,7 +93,7 @@ export function describeSpeciesAuthoring(
         entry.species === null
           ? null
           : dungeonSpeciesUnavailableReason(
-              policyOf(species),
+              policyOf(species, definition.speciesPolicies),
               definition.key,
               false,
               acquisitions[entry.species] ?? 0,

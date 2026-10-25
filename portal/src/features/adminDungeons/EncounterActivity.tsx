@@ -15,6 +15,7 @@ import { EMPTY_SPECIES_SCENARIO, useSpeciesInsight } from './useSpeciesInsight';
 import { Odds } from './SpeciesPoolSheet';
 import { EventEditorContext } from './eventEditorContext';
 import { ACTION_OUTCOMES } from './dungeonActionModel';
+import { speciesAccessView, speciesPolicyOf } from './dungeonSpeciesModel';
 import { EncounterPreview } from './EncounterPreview';
 import { getDungeonCaptureItems } from '@/api/adminDungeons';
 
@@ -95,8 +96,8 @@ export function EncounterActivity({
         )}
         {direct && (
           <p role="note" className={hint}>
-            Direct grant: no charm or capture roll. Every species must authorize direct rescue for
-            this dungeon and have a finite per-player limit across runs. Invalid drafts can be
+            Direct grant: no charm or capture roll. Every species it can grant needs Direct Rescue
+            allowed in this dungeon’s Species access, with a finite per-player limit across runs. Invalid drafts can be
             saved; publication is blocked by backend policy.
           </p>
         )}
@@ -127,7 +128,11 @@ export function EncounterActivity({
                 <SpeciesThumb species={chosen} />
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">{chosen.name}</p>
-                  <SpeciesAvailability species={chosen} />
+                  <SpeciesAvailability
+                    species={chosen}
+                    dungeonKey={definition.key}
+                    entry={speciesPolicyOf(definition, chosen.slug)}
+                  />
                 </div>
               </div>
             ) : (
@@ -135,9 +140,21 @@ export function EncounterActivity({
                 {slug ? `Missing species: ${slug}. Choose a replacement.` : 'Choose a WaifuMon.'}
               </p>
             )}
-            <Button variant="outline" size="sm" onClick={() => setPicking(!picking)}>
-              {picking ? 'Close species picker' : 'Choose WaifuMon'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPicking(!picking)}>
+                {picking ? 'Close species picker' : 'Choose WaifuMon'}
+              </Button>
+              {slug && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={!host}
+                  onClick={() => host?.open({ kind: 'speciesAccess', id: slug })}
+                >
+                  Species access…
+                </Button>
+              )}
+            </div>
             {catalogue.isError && (
               <p role="alert">
                 Could not load species.{' '}
@@ -147,6 +164,8 @@ export function EncounterActivity({
             {picking && (
               <DungeonSpeciesPicker
                 species={species}
+                dungeonKey={definition.key}
+                policies={definition.speciesPolicies}
                 listed={new Set()}
                 disabled={false}
                 purpose="encounter"
@@ -198,9 +217,13 @@ export function EncounterActivity({
                     .map((slug) => (
                       <p className={hint} key={slug}>
                         {species.find((s) => s.slug === slug)?.name ?? slug}:{' '}
-                        {species.find((s) => s.slug === slug)?.directRescue.available
-                          ? 'Direct rescue authorized with finite limit'
-                          : 'Direct rescue unavailable — authorization and finite limit required'}
+                        {(() => {
+                          const ref = species.find((s) => s.slug === slug);
+                          return ref &&
+                            speciesAccessView(ref, definition.key, speciesPolicyOf(definition, slug)).directRescue.available
+                            ? 'Direct Rescue allowed with a finite limit'
+                            : 'Direct Rescue unavailable — allow it with a finite limit in Species access';
+                        })()}
                       </p>
                     ))}
               </>

@@ -5,6 +5,7 @@ import {
   encounterSpecies,
   type DungeonDefinition,
   type DungeonSpeciesAccess,
+  type DungeonSpeciesPolicyEntry,
   type DungeonCondition,
 } from '../content/dungeonDefinition';
 import { destinationFor } from '../engine/routing';
@@ -15,9 +16,55 @@ import type { EventValidationTools } from './dungeonEventValidation';
 export interface DungeonSpeciesPolicy {
   enabled: boolean;
   restricted: boolean;
+  /** Region exclusivity is a promise only species content can waive; a dungeon's own entry cannot. */
+  regionExclusive?: boolean;
   access?: readonly DungeonSpeciesAccess[];
+  /** The judging dungeon's own entry for this species: its draft at validation, its published revision live. */
+  owned?: DungeonSpeciesPolicyEntry;
 }
-/** `acquiredCount` is the player's cross-run count from the acquisition ledger, read in the step's transaction. */
+/** The terms one dungeon offers a species on, from species content, the dungeon's own entry, or both. */
+export interface DungeonSpeciesTerms {
+  perPlayerLimit: number | 'unlimited';
+  directRescue: boolean;
+  source: 'content' | 'dungeon' | 'both';
+}
+/** `policy` with the dungeon's own entry for `slug`, when it has one. */
+export function withDungeonSpeciesPolicy(
+  policy: DungeonSpeciesPolicy | undefined,
+  entries: readonly DungeonSpeciesPolicyEntry[] | undefined,
+  slug: string,
+): DungeonSpeciesPolicy | undefined {
+  const owned = entries?.find((e) => e.species === slug);
+  return policy && owned ? { ...policy, owned } : policy;
+}
+/**
+ * Where species content and the dungeon both set terms, the stricter of each
+ * applies: the lower finite limit, and a direct rescue only if both allow it.
+ * Neither source can loosen what the other restricts.
+ */
+export function dungeonSpeciesTerms(
+  policy: DungeonSpeciesPolicy | undefined,
+  dungeon: string,
+): DungeonSpeciesTerms | null {
+  const content = policy?.access?.find((a) => a.dungeon === dungeon);
+  const owned = policy?.owned;
+  if (!content && !owned) return null;
+  const contentLimit = content?.perPlayerLimit ?? 'unlimited';
+  if (!owned) return { perPlayerLimit: contentLimit, directRescue: content!.directRescue === true, source: 'content' };
+  if (!content) return { perPlayerLimit: owned.perPlayerLimit, directRescue: owned.directRescue === true, source: 'dungeon' };
+  const limits = [contentLimit, owned.perPlayerLimit].filter((l): l is number => typeof l === 'number');
+  return {
+    perPlayerLimit: limits.length ? Math.min(...limits) : 'unlimited',
+    directRescue: content.directRescue === true && owned.directRescue === true,
+    source: 'both',
+  };
+}
+/**
+ * `acquiredCount` is the player's cross-run count from the acquisition ledger, read in the step's transaction.
+ *
+ * A restricted species is permitted by a `dungeonAccess` entry naming this
+ * dungeon, or — unless she is region-exclusive — by the dungeon's own entry.
+ */
 export function dungeonSpeciesUnavailableReason(
   policy: DungeonSpeciesPolicy | undefined,
   dungeon: string,
@@ -26,14 +73,15 @@ export function dungeonSpeciesUnavailableReason(
 ): DungeonEncounterUnavailableReason | null {
   if (!policy) return 'missing';
   if (!policy.enabled) return 'disabled';
-  const access = policy.access?.find((a) => a.dungeon === dungeon);
-  if (policy.restricted && !access) return 'not_permitted';
-  if (direct && !access?.directRescue) return 'direct_not_permitted';
-  if (direct && typeof access?.perPlayerLimit !== 'number')
+  const listed = policy.access?.some((a) => a.dungeon === dungeon) ?? false;
+  if (policy.restricted && !listed && !(policy.owned && !policy.regionExclusive)) return 'not_permitted';
+  const terms = dungeonSpeciesTerms(policy, dungeon);
+  if (direct && !terms?.directRescue) return 'direct_not_permitted';
+  if (direct && typeof terms?.perPlayerLimit !== 'number')
     return 'direct_limit_missing';
   if (
-    typeof access?.perPlayerLimit === 'number' &&
-    acquiredCount >= access.perPlayerLimit
+    typeof terms?.perPlayerLimit === 'number' &&
+    acquiredCount >= terms.perPlayerLimit
   )
     return 'player_limit';
   return null;
@@ -253,7 +301,7 @@ export function validateDungeonEncounters(
       if (!live) return;
       for (const slug of encounterSpecies(definition, action)) {
         const reason = dungeonSpeciesUnavailableReason(
-          live.species(slug),
+          withDungeonSpeciesPolicy(live.species(slug), definition.speciesPolicies, slug),
           definition.key,
           direct,
         );
@@ -264,12 +312,19 @@ export function validateDungeonEncounters(
           direct_not_permitted: 'rescue_direct_not_permitted',
           direct_limit_missing: 'rescue_direct_limit_missing',
         } as const;
+        const repair = {
+          missing: '',
+          disabled: '',
+          not_permitted: ' Add her to this dungeon\'s Species access with a per-player limit.',
+          direct_not_permitted: ' Allow Direct Rescue for her in this dungeon\'s Species access.',
+          direct_limit_missing: ' Give her a finite per-player limit in this dungeon\'s Species access.',
+        } as const;
         if (reason && reason !== 'player_limit')
           add(
             codes[reason],
             'error',
             `${path}.source`,
-            `Species "${slug}" is unavailable: ${reason}.`,
+            `Species "${slug}" is unavailable: ${reason}.${repair[reason]}`,
           );
         if (
           !direct &&
@@ -310,6 +365,7 @@ export function validateDungeonEncounters(
       });
     }),
   );
+  validateSpeciesPolicies(definition, tools, live);
   pools.forEach((p, i) => {
     if (!used.has(p.id))
       add(
@@ -333,4 +389,43 @@ export function validateDungeonEncounters(
       'rooms',
       'At most three direct rescues are allowed.',
     );
+}
+
+/** The dungeon's own Species access entries: one per species, explicit terms, and only where they can apply. */
+function validateSpeciesPolicies(
+  definition: DungeonDefinition,
+  { add }: EventValidationTools,
+  live?: DungeonEncounterValidationSource,
+): void {
+  const offered = new Set(dungeonEncounterSlugs(definition));
+  const seen = new Set<string>();
+  (definition.speciesPolicies ?? []).forEach((entry, i) => {
+    const path = `speciesPolicies[${i}]`;
+    if (seen.has(entry.species))
+      add('species_policy_duplicate', 'error', `${path}.species`, `Species "${entry.species}" has more than one access entry in this dungeon.`);
+    seen.add(entry.species);
+    if (entry.directRescue && typeof entry.perPlayerLimit !== 'number')
+      add('rescue_direct_limit_missing', 'error', `${path}.perPlayerLimit`, `Direct Rescue for "${entry.species}" needs a finite per-player limit.`);
+    if (!offered.has(entry.species))
+      add('species_policy_unused', 'warning', path, `No encounter in this dungeon can present "${entry.species}"; her access entry has no effect.`);
+    if (!live) return;
+    const policy = live.species(entry.species);
+    if (!policy) {
+      add('species_missing', 'error', `${path}.species`, `Species "${entry.species}" does not exist.`);
+      return;
+    }
+    if (policy.regionExclusive && !policy.access?.some((a) => a.dungeon === definition.key))
+      add('species_policy_region_exclusive', 'error', `${path}.species`, `Species "${entry.species}" is region-exclusive; only species content can admit her to a dungeon.`);
+    const terms = dungeonSpeciesTerms({ ...policy, owned: entry }, definition.key);
+    if (terms?.source === 'both')
+      add(
+        'species_policy_content_overlap',
+        'warning',
+        path,
+        `Species content also sets terms for "${entry.species}" in this dungeon; the stricter of each applies: limit ${terms.perPlayerLimit}, Direct Rescue ${terms.directRescue ? 'allowed' : 'not allowed'}.`,
+      );
+  });
+}
+function dungeonEncounterSlugs(definition: DungeonDefinition): string[] {
+  return definition.rooms.flatMap((r) => r.actions.flatMap((a) => (isEncounterAction(a) ? encounterSpecies(definition, a) : [])));
 }

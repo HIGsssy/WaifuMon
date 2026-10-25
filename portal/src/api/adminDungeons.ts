@@ -118,6 +118,8 @@ export type DungeonSpeciesPoolEntry = { id: string; weight: number; when?: Dunge
   { species: string; oncePerRun?: boolean } | { nothing: true; text?: string }
 );
 export interface DungeonSpeciesPool { id: string; name: string; entries: DungeonSpeciesPoolEntry[] }
+/** This dungeon's own terms for one species. `perPlayerLimit` is per player, from this dungeon, across runs. */
+export interface DungeonSpeciesPolicyEntry { species: string; perPlayerLimit: number | 'unlimited'; directRescue?: boolean }
 export type DungeonEventSource =
   { kind: 'event'; eventId: string } | { kind: 'pool'; poolId: string };
 
@@ -191,6 +193,8 @@ export interface DungeonDefinition {
   eventPools?: DungeonEventPool[];
   /** Dungeon-local pools, using the backend species/Nothing union. */
   speciesPools?: DungeonSpeciesPool[];
+  /** Species access: one entry per species this dungeon admits or limits. Absent when none. */
+  speciesPolicies?: DungeonSpeciesPolicyEntry[];
   rooms: DungeonRoom[];
   connections: DungeonConnection[];
 }

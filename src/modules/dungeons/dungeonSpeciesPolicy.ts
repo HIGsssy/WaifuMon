@@ -2,14 +2,18 @@
  * The live species policy a dungeon encounter is judged by, read from the
  * database and loaded content.
  *
- * Two halves, deliberately from two sources:
+ * Three parts, deliberately from three sources:
  *
  *   - `species.enabled` and `species.tags` come from the **database row** the
  *     seeder keeps in step with content, so a species disabled by a reload is
  *     seen at once;
  *   - `dungeonAccess` comes from **loaded content** through a getter, because
- *     it has no column: exclusivity is content, identical in every environment
- *     running the same build, and a package can neither carry nor change it.
+ *     it has no column: legacy per-species authorization, identical in every
+ *     environment running the same build, and a package can neither carry nor
+ *     change it;
+ *   - the dungeon's own `speciesPolicies` come from its **published revision**
+ *     (`publishedDungeonSpeciesPolicies`) at run time, and from the definition
+ *     being judged at validate, publish and rollback. A draft grants nothing.
  *
  * The rule itself is `dungeonSpeciesUnavailableReason`, which is pure. This
  * module only fetches what it needs, and is the one place publication,
@@ -17,14 +21,17 @@
  */
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { DbOrTx } from '../../db/client';
-import { dungeonSpeciesAcquisitions, items, species, type SpeciesRow } from '../../db/schema';
+import { dungeonDefinitions, dungeonRevisions, dungeonSpeciesAcquisitions, items, species, type SpeciesRow } from '../../db/schema';
 import { isCaptureItemEligible } from '../capture/captureService';
-import { isDungeonRestricted } from '../locations/regions';
+import { isDungeonRestricted, REGION_EXCLUSIVE_TAG } from '../locations/regions';
+import { z } from 'zod';
 import {
+  DungeonSpeciesPolicyEntrySchema,
   encounterSpecies,
   isEncounterAction,
   type DungeonDefinition,
   type DungeonSpeciesAccess,
+  type DungeonSpeciesPolicyEntry,
 } from './content/dungeonDefinition';
 import type {
   DungeonEncounterValidationSource,
@@ -44,6 +51,7 @@ export function dungeonSpeciesPolicy(
   return {
     enabled: row.enabled,
     restricted: isDungeonRestricted(row.tags),
+    ...(row.tags.includes(REGION_EXCLUSIVE_TAG) ? { regionExclusive: true } : {}),
     ...(listed ? { access: listed } : {}),
   };
 }
@@ -57,6 +65,33 @@ export function dungeonEncounterSpeciesSlugs(definition: DungeonDefinition): str
     }
   }
   return [...slugs].sort();
+}
+
+const PublishedSpeciesPoliciesSchema = z.array(DungeonSpeciesPolicyEntrySchema);
+
+/**
+ * The dungeon's own species access entries as its **currently published**
+ * revision states them — the live authority for every run of the dungeon,
+ * whichever revision the run itself is pinned to. A later publish that
+ * tightens or withdraws an entry therefore reaches runs in progress at their
+ * next offer or grant, exactly as a species-content change does; loosening
+ * reaches them too, but only for species their own revision can present.
+ *
+ * Disabling a dungeon keeps it published, so its runs keep these terms. No
+ * published revision, or an unreadable list, is no entries: closed, not open.
+ */
+export async function publishedDungeonSpeciesPolicies(
+  tx: DbOrTx,
+  dungeonKey: string,
+): Promise<readonly DungeonSpeciesPolicyEntry[]> {
+  const [row] = await tx
+    .select({ policies: sql<unknown>`${dungeonRevisions.content} -> 'speciesPolicies'` })
+    .from(dungeonDefinitions)
+    .innerJoin(dungeonRevisions, eq(dungeonRevisions.id, dungeonDefinitions.publishedRevisionId))
+    .where(eq(dungeonDefinitions.dungeonKey, dungeonKey));
+  if (row?.policies == null) return [];
+  const parsed = PublishedSpeciesPoliciesSchema.safeParse(row.policies);
+  return parsed.success ? parsed.data : [];
 }
 
 export async function loadSpeciesBySlug(tx: DbOrTx, slugs: readonly string[]): Promise<Map<string, SpeciesRow>> {

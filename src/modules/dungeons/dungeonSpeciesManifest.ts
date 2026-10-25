@@ -10,8 +10,12 @@ import {
 import {
   DungeonSpeciesAccessSchema,
   type DungeonDefinition,
+  type DungeonSpeciesPolicyEntry,
 } from "./content/dungeonDefinition";
-import { dungeonSpeciesUnavailableReason } from "./validation/dungeonEncounterValidation";
+import {
+  dungeonSpeciesUnavailableReason,
+  withDungeonSpeciesPolicy,
+} from "./validation/dungeonEncounterValidation";
 
 const entrySchema = z
   .object({
@@ -77,11 +81,13 @@ export function buildSpeciesManifest(
     entries,
   };
 }
+/** `owned` is the dungeon's own access entries a run would be judged by now: its currently published revision's. */
 export function compareSpeciesManifest(
   definition: DungeonDefinition,
   manifest: SpeciesManifest | null,
   rows: SpeciesRow[],
   access: DungeonSpeciesAccessLookup | undefined,
+  owned: readonly DungeonSpeciesPolicyEntry[] = definition.speciesPolicies ?? [],
 ) {
   const current = buildSpeciesManifest(definition, rows, access);
   return dungeonEncounterSpeciesSlugs(definition).map((slug) => {
@@ -102,7 +108,7 @@ export function compareSpeciesManifest(
     }
     if (manifest && !before && row)
       changes.push("Species has no publication evidence");
-    const policy = dungeonSpeciesPolicy(row, access);
+    const policy = withDungeonSpeciesPolicy(dungeonSpeciesPolicy(row, access), owned, slug);
     const direct = definition.rooms.some((r) =>
       r.actions.some(
         (a) =>

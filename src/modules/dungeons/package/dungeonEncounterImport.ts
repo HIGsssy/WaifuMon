@@ -1,8 +1,14 @@
-/** Target-side review. Export evidence never authorizes a grant or installs policy. */
-import type { DungeonDefinition, DungeonSpeciesAccess } from '../content/dungeonDefinition';
+/**
+ * Target-side review. Export evidence never authorizes a grant or installs
+ * species-content policy. The dungeon's own Species access is part of its
+ * definition, so it is reviewed and published with it like any other content.
+ */
+import type { DungeonDefinition } from '../content/dungeonDefinition';
 import { encounterSpecies } from '../content/dungeonDefinition';
 import {
+  dungeonSpeciesTerms,
   dungeonSpeciesUnavailableReason,
+  withDungeonSpeciesPolicy,
   type DungeonEncounterValidationSource,
 } from '../validation/dungeonEncounterValidation';
 import type { DungeonIssue } from '../validation/dungeonValidation';
@@ -86,7 +92,7 @@ export function reviewEncounterDependencies(
   const requiredSpecies = pkg.dependencies.requiredSpecies.map((incoming) => {
     const row = catalogue.species.find((s) => s.slug === incoming.slug);
     const direct = incoming.modes.includes('direct');
-    const policy = catalogue.source.species(incoming.slug);
+    const policy = withDungeonSpeciesPolicy(catalogue.source.species(incoming.slug), definition.speciesPolicies, incoming.slug);
     const reason = dungeonSpeciesUnavailableReason(policy, definition.key, direct);
     const status =
       reason === 'missing'
@@ -113,7 +119,7 @@ export function reviewEncounterDependencies(
         code: codes[status],
         severity: 'error',
         path,
-        message: `Species “${row?.name ?? incoming.slug}” is ${status.replaceAll('_', ' ')} for dungeon “${definition.key}” here. Repair before publication; a package cannot authorize species access.`,
+        message: `Species “${row?.name ?? incoming.slug}” is ${status.replaceAll('_', ' ')} for dungeon “${definition.key}” here. Repair before publication: species content is never imported, so give her terms in this dungeon’s Species access.`,
       });
     const changes: string[] = [];
     if (row && row.rarity !== incoming.rarity) {
@@ -140,7 +146,7 @@ export function reviewEncounterDependencies(
         message: `Species “${row.name}” has different central availability/access policy here. Imported policy is never applied; current destination policy controls publication and acquisition.`,
       });
     }
-    const access: DungeonSpeciesAccess | undefined = row?.dungeonAccess.find((a) => a.dungeon === definition.key);
+    const terms = dungeonSpeciesTerms(policy, definition.key);
     return {
       slug: incoming.slug,
       name: row?.name ?? incoming.slug,
@@ -149,8 +155,8 @@ export function reviewEncounterDependencies(
       sourceRarity: incoming.rarity,
       targetRarity: row?.rarity ?? null,
       changes,
-      perPlayerLimit: access?.perPlayerLimit ?? null,
-      directRescue: access?.directRescue ?? false,
+      perPlayerLimit: terms?.perPlayerLimit ?? null,
+      directRescue: terms?.directRescue ?? false,
     };
   });
   const actions = reachableEncounterActions(definition);

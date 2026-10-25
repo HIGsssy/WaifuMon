@@ -25,6 +25,7 @@ const catalog: DungeonSpeciesRef[] = [
     dungeonExclusive: true,
     permitted: true,
     unavailableReason: null,
+    dungeonPolicyAllowed: true,
     dungeonAccess: [{ dungeon: 'encounter_halls', perPlayerLimit: 1, directRescue: true }],
     perPlayerLimit: 1,
     directRescue: { available: true, reason: null },
@@ -40,6 +41,7 @@ const catalog: DungeonSpeciesRef[] = [
     dungeonExclusive: false,
     permitted: true,
     unavailableReason: null,
+    dungeonPolicyAllowed: true,
     dungeonAccess: [],
     perPlayerLimit: null,
     directRescue: { available: false, reason: 'direct_not_permitted' },
@@ -55,6 +57,7 @@ const catalog: DungeonSpeciesRef[] = [
     dungeonExclusive: false,
     permitted: false,
     unavailableReason: 'not_permitted',
+    dungeonPolicyAllowed: false,
     dungeonAccess: [],
     perPlayerLimit: null,
     directRescue: { available: false, reason: 'direct_not_permitted' },
@@ -346,7 +349,7 @@ test('direct rescue authorization is explained and Show me repairs invalid publi
   await expect(editor(page).getByLabel('Capture attempt limit')).toHaveCount(0);
   await editor(page).getByRole('button', { name: 'Choose WaifuMon' }).click();
   await page.getByRole('button', { name: 'Select species Test Elf' }).click();
-  await expect(editor(page)).toContainText('Direct rescue is not authorized');
+  await expect(editor(page)).toContainText('Direct Rescue: direct rescue is not authorized');
   await page.getByRole('button', { name: 'Save draft' }).click();
   const todo = page.getByRole('button', { name: /To do/ });
   if ((await todo.getAttribute('aria-expanded')) === 'false') await todo.click();

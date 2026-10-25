@@ -20,6 +20,7 @@ const species = (
   dungeonExclusive: false,
   permitted: true,
   unavailableReason: null,
+  dungeonPolicyAllowed: true,
   dungeonAccess: [],
   perPlayerLimit: null,
   directRescue: { available: false, reason: "direct_not_permitted" },

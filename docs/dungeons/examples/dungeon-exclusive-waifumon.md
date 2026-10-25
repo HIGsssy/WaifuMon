@@ -1,9 +1,17 @@
 # Adding a dungeon-exclusive WaifuMon
 
 [`dungeon-exclusive-waifumon.json`](dungeon-exclusive-waifumon.json) is a complete, valid
-species file for a fictional SSR, **Forgotten Valkyrie**, who can only be met in the
-fictional dungeon `forgotten_temple`. Copy it, change the values, and follow
-[the workflow](#9-author-workflow) at the end of this page.
+species file for a fictional SSR, **Forgotten Valkyrie**, who is never met in the wild.
+Her JSON names **no dungeon**: any dungeon can offer her once an admin adds her to that
+dungeon's pools or encounters and gives her terms in its **Species access**. Copy the
+file, change the values, and follow [the workflow](#9-author-workflow) at the end of this
+page.
+
+> **You no longer preassign dungeon keys in JSON.** Leave `dungeonAccess` out. Which
+> dungeons offer her, how often, and on what terms is decided in the Dungeon Editor
+> and published with each dungeon. Adding her to a new dungeon needs no JSON edit and
+> no redeploy. Older species that still carry `dungeonAccess` keep working
+> ([§3, Legacy `dungeonAccess`](#legacy-dungeonaccess-in-species-json)).
 
 The file was checked against the real schema, loader and dungeon policy code on `Delve`
 (see [§8](#8-validation)). It is a sample only: it is **not** in `content/`, and no shipped
@@ -23,7 +31,7 @@ The schema is `SpeciesContentSchema` in
 
 > **The species object is not strict.** A misspelled top-level key (`dungeonacess`,
 > `buddybonus`) is **silently dropped**, not rejected. Copy key names exactly. The
-> nested objects (`card`, `appearances[]`, `buddyBonus`, `dungeonAccess[]`) are strict,
+> nested objects (`card`, `appearances[]`, `buddyBonus`, legacy `dungeonAccess[]`) are strict,
 > so a typo inside them fails the load.
 
 | Field | Example | Required? | Notes |
@@ -46,7 +54,7 @@ The schema is `SpeciesContentSchema` in
 | `appearances` | `standard` + `level_10`…`level_50` | Optional | Exactly one entry must have `unlock.type: "owned"`. Only `owned` and `level` unlocks are implemented. See [§6](#6-artwork-preparation) |
 | `buddyBonus` | `capture_chance` +12% vs `race: valkyrie` | Optional | The `effectId` must be one of the closed set in [`buddyBonusEffects.ts`](../../../src/modules/buddyBonus/buddyBonusEffects.ts). Whether a `target` is required, and which types are allowed, depends on the effect. `flavorText` follows the `"<Name>: +N% …"` convention |
 | `spriteFacing` | *(omitted)* | Optional | `left` or `right`, only if her dungeon sprite clearly faces one way |
-| `dungeonAccess` | see below | Optional, **needed here** | Which dungeons may offer her, and on what terms ([§3](#3-acquisition-configurations)) |
+| `dungeonAccess` | *(omitted)* | Optional, **legacy: leave it out** | Older per-species dungeon authorization. Still honoured, but new species are configured in each dungeon's Species access instead ([§3](#3-acquisition-configurations)) |
 
 Capture rules for a particular encounter — attempt limit, permitted charms, guaranteed
 items — are set on the dungeon activity in the editor, **not** on the species. Her
@@ -59,8 +67,11 @@ the player started with.
 
 ## 2. The `dungeon_exclusive` tag
 
-`tags: ["dungeon_exclusive"]` means she is **never met in the wild** and may be offered
-**only** by the dungeons listed in her `dungeonAccess`.
+`tags: ["dungeon_exclusive"]` means she is **never met in the wild**. It does **not** tie
+her to one dungeon. She can be offered only by a dungeon whose **published** revision
+both presents her (in a WaifuMon pool its encounters use, or as a specific WaifuMon)
+and gives her terms in its **Species access**. Species no published dungeon offers stay
+unobtainable.
 
 - **Hunting:** every tier of the hunt draw excludes her: region pools, the default-region
   fallback, the global fallback and the emergency draw (`huntService.ts`,
@@ -83,75 +94,58 @@ an expansion's `region.json`, and never add her through Admin → Region Pools.
 
 ## 3. Acquisition configurations
 
-`dungeonAccess` is an array of entries:
+Her terms belong to each dungeon, not to her JSON. In the Dungeon Editor, open
+**Dungeon settings → WaifuMon Pools → Edit Species access** (or **Species access…** on
+a pool entry or a specific-species encounter). There is **one entry per species per
+dungeon**, however many pools and encounters in that dungeon present her. Each entry
+has:
+
+| Control in the editor | Meaning |
+| --- | --- |
+| **Maximum acquisitions per player from this dungeon**: *Limited to N* or *Unlimited captures* | Successful captures and rescues of her by one player from this dungeon, across all runs. Required: adding an entry starts at *Limited to 1* |
+| **Allow Direct Rescue** | Lets a Direct Rescue grant her with no charm and no roll. Only available with a finite limit |
+
+The same species can have different terms in different dungeons. Each dungeon keeps its
+own count.
+
+The entry is stored in the dungeon definition as `speciesPolicies`, which is what you
+see in an exported package:
 
 ```json
-{ "dungeon": "<dungeon key>", "perPlayerLimit": <positive whole number> | "unlimited", "directRescue": true | false }
+"speciesPolicies": [
+  { "species": "forgotten_valkyrie", "perPlayerLimit": 1, "directRescue": true }
+]
 ```
-
-- `dungeon` must be the dungeon's **stable key** exactly (lower snake_case, ≤64 chars,
-  e.g. `forgotten_temple`), not its display name. Nothing checks that the dungeon
-  exists. A typo silently authorizes a dungeon that doesn't exist, and the real one
-  shows her as *Not permitted in this dungeon*.
-- Each dungeon may appear **once** per species; a duplicate fails the load.
-- To authorize several dungeons, add one entry per dungeon. Each has its own limit and
-  its own count.
 
 ### A. Limited dungeon capture
 
-Obtainable through a **Wild Encounter** or a **capture-mode Rescue** (uses a charm), at
-most once per player from this dungeon:
-
-```json
-"dungeonAccess": [
-  { "dungeon": "forgotten_temple", "perPlayerLimit": 1 }
-]
-```
-
-After a player's first successful acquisition from `forgotten_temple`, every later
-offer of her there resolves **Unavailable** for that player (`player_limit`). Her draw
-weight is not redistributed to other species.
+*Limited to 1*, Direct Rescue off. She can be obtained through a **Wild Encounter** or a
+**capture-mode Rescue** (uses a charm), at most once per player from this dungeon. After
+a player's first successful acquisition here, every later offer of her in this dungeon
+resolves **Unavailable** for that player (`player_limit`). Her draw weight is not
+redistributed to other species.
 
 ### B. Unlimited dungeon capture
 
-Obtainable again and again across runs:
-
-```json
-"dungeonAccess": [
-  { "dungeon": "forgotten_temple", "perPlayerLimit": "unlimited" }
-]
-```
-
-Omitting `perPlayerLimit` also means unlimited capture: `{ "dungeon": "forgotten_temple" }`.
-The explicit `"unlimited"` is clearer, and the editor labels the two differently.
-Neither allows direct rescue.
+*Unlimited captures*. She can be captured again and again across runs. Direct Rescue
+cannot be allowed with this setting.
 
 ### C. Direct rescue
 
-Granted outright by a **Direct rescue** activity (no charm, no capture roll):
-
-```json
-"dungeonAccess": [
-  { "dungeon": "forgotten_temple", "perPlayerLimit": 1, "directRescue": true }
-]
-```
-
-This is the configuration in the example file. It also allows A: the same entry
-permits Wild Encounters and capture-mode Rescues, which share the same limit.
+*Limited to N* with **Allow Direct Rescue** ticked. A **Direct rescue** activity grants her
+outright. The same entry also permits Wild Encounters and capture-mode Rescues, which
+share the same limit.
 
 Direct rescue needs all three conditions:
 
-1. **An entry for this exact dungeon.** A dungeon-exclusive species can only be offered
-   by a listed dungeon. Even an untagged species needs an entry for direct rescue,
-   because direct-rescue permission is per dungeon.
-2. **`directRescue: true`.** A direct rescue hands out a copy with no charm spent and
-   no roll. The content owner must opt in for each dungeon, separately from capture
-   permission. Without it the editor reports *Direct rescue is not authorized*, and
-   publication is refused (`rescue_direct_not_permitted`).
-3. **A finite numeric `perPlayerLimit`.** A free grant with no limit would let a player
-   farm copies run after run. `directRescue: true` with no limit, or with
-   `"unlimited"`, **fails content loading**. If such a policy reached the database it
-   would also be refused at publish and at runtime (`direct_limit_missing`).
+1. **A Species access entry for her in this dungeon** (or a legacy `dungeonAccess` entry
+   naming it).
+2. **Allow Direct Rescue.** A direct rescue hands out a copy with no charm spent and no
+   roll, so it is opted into separately from capture. Without it, publication is refused
+   (`rescue_direct_not_permitted`).
+3. **A finite limit.** A free grant with no limit would let a player farm copies run after
+   run. Allowing Direct Rescue with no finite limit is refused at validation, publish and
+   runtime (`rescue_direct_limit_missing` / `direct_limit_missing`).
 
 A dungeon may contain at most three direct-rescue activities. An ungated direct rescue
 produces a validation warning; use **Only happens if** to gate it behind a flag or a
@@ -163,10 +157,11 @@ These are two different controls:
 
 | Control | Where | Scope |
 | --- | --- | --- |
-| `perPlayerLimit` | Species content (`dungeonAccess`) | **Across runs.** Successful acquisitions by this player of this species from this dungeon, over all time |
-| **At most once per run…** (`oncePerRun`, on by default) | A species entry in a dungeon **WaifuMon pool**, in the editor | **Within one run.** After she has been *presented* anywhere in the run, that entry drops out of later draws in the same run. It does not need a capture and is not a per-player limit |
+| **Maximum acquisitions per player from this dungeon** (`perPlayerLimit`) | The dungeon's **Species access** | **Across runs.** Successful acquisitions by this player of this species from this dungeon, over all time, through any pool or encounter |
+| **At most once per run…** (`oncePerRun`, on by default) | A species entry in a dungeon **WaifuMon pool** | **Within one run.** After she has been *presented* anywhere in the run, that entry drops out of later draws in the same run. It does not need a capture and is not a per-player limit |
+| **Weight** | A species entry in a dungeon **WaifuMon pool** | **Selection odds** within that pool, relative to the other entries. Never a limit |
 
-With `perPlayerLimit: 1` and `oncePerRun` on, a player meets her at most once per run
+With a limit of 1 and **At most once per run** on, a player meets her at most once per run
 and can own at most one copy from this dungeon. If a run offers her and the player
 fails or leaves, a later run can offer her again until she is acquired.
 
@@ -183,8 +178,42 @@ fails or leaves, a later run can offer her again until she is acquired.
   released, and the ledger row stays (the foreign key does not cascade). A player
   who released their Forgotten Valkyrie cannot get another from `forgotten_temple`
   while the limit is 1.
-- **Live policy:** changing `perPlayerLimit` in content takes effect for new offers
-  after the next deploy or content reload. Past acquisitions are kept.
+- **One count per dungeon.** Several pools, a specific-species encounter and a later
+  revision of the same dungeon all draw on the same count.
+
+### When changes take effect
+
+- **Draft edits change nothing live.** Validation judges the draft's own Species access;
+  players are judged by the dungeon's **currently published** revision.
+- **Publishing** new terms applies them to new offers and grants at once, **including runs
+  already in progress**. A run keeps its pinned rooms and pools, but its next offer or
+  capture is judged by the published terms. Tightening a limit, or withdrawing her, is
+  never bypassed by a run that started earlier; the encounter resolves **Unavailable**
+  with no charm spent.
+- **Rollback** restores the terms of the revision rolled back to.
+- **History is never reset.** Lowering a limit counts acquisitions already recorded: a
+  player who has two copies from a dungeon whose limit becomes 1 gets no more.
+- **Disabling** a dungeon keeps its published terms for runs already in progress.
+- **Packages** carry `speciesPolicies` inside the dungeon definition. An imported
+  dungeon's terms apply only once an admin publishes it. Species JSON (including legacy
+  `dungeonAccess`) is never imported.
+
+### Legacy `dungeonAccess` in species JSON
+
+Older species may carry `dungeonAccess` entries naming dungeon keys. They still work:
+
+- A `dungeonAccess` entry naming a dungeon admits her to that dungeon even without a
+  Species access entry, on the entry's terms (omitted `perPlayerLimit` = unlimited).
+- If **both** exist for the same dungeon, the **stricter** of each term applies: the lower
+  finite limit, and Direct Rescue only if both allow it. Neither can loosen the other.
+  Validation warns (`species_policy_content_overlap`) and states the combined terms.
+- **`region_exclusive` species** can still be admitted to a dungeon **only** by
+  `dungeonAccess` in their JSON. A Species access entry alone is refused
+  (`species_policy_region_exclusive`); it can only tighten the terms JSON grants.
+- Untagged species need no entry at all. An entry can still give one a limit or allow
+  Direct Rescue in that dungeon.
+
+New species should omit `dungeonAccess`.
 
 ## 4. Where the definition goes
 
@@ -227,19 +256,17 @@ Don't touch `content/regions/*.json` or any `region.json` for her (see [§2](#2-
 
 1. At startup, and on a content reload, the loader validates her. The seeder then
    writes her row into the `species` table: `enabled`, `tags`, rarity and the rest.
-2. `dungeonAccess` has no database column. Both dungeon services read it from the
-   loaded content.
-3. In the Dungeon Editor, **+ Add species** (in a WaifuMon pool, or **Choose WaifuMon**
-   for a specific species) lists every species with labels for the dungeon being
-   edited:
-   - *Permitted here* only in `forgotten_temple`. In any other dungeon she is listed as
-     *Not permitted in this dungeon* and cannot be selected.
-   - Her limit, labelled *per player, in this dungeon, across runs*.
-   - Whether direct rescue is authorized for this dungeon.
-4. Validate and publish re-check her live policy and enabled state.
+2. In any dungeon, **+ Add species** (in a WaifuMon pool) or **Choose WaifuMon** (for a
+   specific species) lists her with the label *Needs Species access in this dungeon
+   before it can be offered*. Her button reads **Add to pool and set access** (or
+   **Select WaifuMon and set access**).
+3. After adding her, use **Species access…** on her pool entry or encounter (or **Edit
+   Species access** under WaifuMon Pools). Choose **Add Species access**, then set her
+   limit and Direct Rescue. Her labels change to *Permitted by this dungeon's Species
+   access*.
+4. Validate and publish re-check her enabled state and these terms.
 
-The dungeon's key must be exactly `forgotten_temple`. Packages and imports never carry
-species authorization; it only comes from species content.
+Region-exclusive and disabled species are listed but cannot be selected.
 
 ## 6. Artwork preparation
 
@@ -321,48 +348,45 @@ the artwork together with the JSON.
 - [ ] `tags` contains `dungeon_exclusive` and **not** `region_exclusive`.
 - [ ] She is in no `encounterPool` in `content/regions/` or any `content/expansions/*/region.json`.
 - [ ] She is not added in Admin → Region Pools. The editor refuses it anyway.
-- [ ] `dungeonAccess` names the exact dungeon key or keys.
+- [ ] Her JSON has no `dungeonAccess`; each dungeon that offers her has a Species access entry for her.
 
 ## 8. Validation
 
-The example was validated on `Delve` at `488c6e0`:
+**Dungeon-owned Species access** is covered by:
+
+```
+TEST_DATABASE_URL=postgres://… npx vitest run \
+  tests/unit/dungeons/dungeonSpeciesTerms.test.ts \
+  tests/integration/dungeonOwnedSpeciesAccess.test.ts
+```
+
+These cover: the example species with empty `dungeonAccess`, publishing with and
+without her Species access entry, capture from a newly configured pool, specific-species
+Wild Encounters and capture-mode Rescues, Direct Rescue with and without permission and
+with an unlimited limit, independent limits in two dungeons, one shared count across
+pools, encounters, revisions and release, drafts not affecting live terms, rollback,
+export/import, legacy `dungeonAccess` combined on the stricter terms, runs in progress
+after a publish tightens or withdraws her, and her exclusion from hunting. The Portal
+workflow is covered in
+`portal/src/features/adminDungeons/__tests__/DungeonSpeciesPools.test.tsx`.
+
+The species file itself was validated earlier on `Delve` at `488c6e0` (with a
+`dungeonAccess` entry, since removed from the example):
 
 1. **Schema:** `SpeciesFileSchema` parses it. Every top-level key is a real schema key;
    this is checked explicitly because unknown keys would be dropped silently.
 2. **Loading with all shipped content:** with the file copied into a **temporary copy**
    of `content/` as `species/dungeon_exclusives.json`, `readContentFiles` and
-   `validateContentSet` pass. `dungeonAccess` comes through intact, and no shipped
-   region pool lists her.
+   `validateContentSet` pass, and no shipped region pool lists her.
 3. **Artwork pre-flight:** `loadContent` keeps her enabled when
    `waifumon/forgotten_valkyrie/standard.png` exists, and disables her when it doesn't.
 4. **Region pools:** adding her to a region `encounterPool` fails loading, whether the
    region is enabled or disabled. The Region Pools validator returns
    `species_dungeon_exclusive` as an error.
-5. **Policy:** `forgotten_temple` is permitted for capture and direct rescue, any other
-   dungeon is `not_permitted`, and after one acquisition both return `player_limit`.
-   The documented variants behave as described: `"unlimited"` allows capture but not
-   direct rescue, and direct rescue without a finite limit gives
-   `direct_limit_missing`.
-6. **Dungeon validation:** in a dungeon keyed `forgotten_temple`, a Wild Encounter, a
-   capture-mode Rescue and a direct Rescue of her raise no species or rescue policy
-   issues. The same dungeon under another key raises `species_not_permitted`.
-
-Those checks ran as a temporary test (9/9 passed), which was then deleted. Nothing
-under `content/` was modified. These existing suites cover the runtime exclusions and
-also passed (217 tests including the temporary one):
-
-```
-TEST_DATABASE_URL=postgres://… npx vitest run \
-  tests/unit/regionContent.test.ts \
-  tests/unit/regionPools/regionPoolValidation.test.ts \
-  tests/unit/regionPools/regionPoolDistribution.test.ts \
-  tests/unit/dungeons/dungeonEncounters.test.ts \
-  tests/integration/dungeonEncountersLive.test.ts
-```
 
 `dungeonEncountersLive.test.ts` › *exclusive species stay out of the wild* proves that
 no hunt tier reaches a dungeon-exclusive species and that a scripted spawn cannot
-name her. The artwork commands in [§6](#6-artwork-preparation) were also run against
+name her. The artwork commands in [§6](#6-artwork-preparation) were run against
 scratch copies.
 
 **When you add a real species**, run:
@@ -379,45 +403,46 @@ error.
 
 ## 9. Author workflow
 
-1. **Copy and customize.** Copy the example. Change `slug`, `name`, `rarity`, `race`,
-   `archetype`, `affinity`, `description`, `card` and `buddyBonus`. Set `imagePath` to
-   `waifumon/<slug>/standard.png`. Pick the `dungeonAccess` configuration from
-   [§3](#3-acquisition-configurations), using the real dungeon key.
-2. **Place it.** Add it to `content/species/dungeon_exclusives.json`, creating the file
-   as a JSON array if needed. Don't add her to any region pool.
+1. **Create the catalogue entry.** Copy the example into
+   `content/species/dungeon_exclusives.json` (a JSON array; create it if needed). Change
+   `slug`, `name`, `rarity`, `race`, `archetype`, `affinity`, `description`, `card` and
+   `buddyBonus`. Set `imagePath` to `waifumon/<slug>/standard.png`.
+2. **Tag it, assign no dungeon.** Keep `"enabled": true` and `"tags": ["dungeon_exclusive"]`.
+   Leave `dungeonAccess` out. Don't add her to any region pool.
 3. **Prepare artwork.** Put `standard.png` (and any `level_NN.png`) in
    `assets/waifumon/<slug>/`. Run `npm run artwork:build -- --species <slug>`, and
    `npm run appearances:sync` if you add milestone art later. Optionally add
-   `<slug>_sprite.webp`.
-4. **Validate.** Run `npx vitest run tests/unit/content.test.ts
-   tests/unit/regionContent.test.ts` and
-   `npm run artwork:build -- --species <slug> --check`.
-5. **Deploy** the species JSON and the artwork together (built WebPs, `.thumbnails/`
-   and `.artwork-manifest.json`). Species content has no Portal editor, so it ships
-   with the build.
-6. **Open the Dungeon Editor** in the Admin Portal and open the dungeon whose key is in
-   her `dungeonAccess`.
-7. **Create or edit a WaifuMon pool:** Dungeon settings → **WaifuMon Pools** →
+   `<slug>_sprite.webp`. Validate with `npx vitest run tests/unit/content.test.ts
+   tests/unit/regionContent.test.ts` and `npm run artwork:build -- --species <slug> --check`.
+4. **Deploy** the species JSON and the artwork together (built WebPs, `.thumbnails/`
+   and `.artwork-manifest.json`). This is the only deploy she needs: every dungeon
+   that later offers her is configured in the Portal.
+5. **Create or open a dungeon** in the Admin Portal's Dungeon Editor.
+6. **Create a WaifuMon pool:** Dungeon settings → **WaifuMon Pools** →
    **+ New WaifuMon pool**.
-8. **Add the species** with **+ Add species**. Filter by availability: she should show
-   as permitted, with her limit and direct-rescue status. Set a weight, and keep
-   **At most once per run** on unless you want her to repeat within a run.
-9. **Attach the pool**, or pick her directly with **Specific WaifuMon**:
-   - a **Wild Encounter** (capture) or a **Rescue** in **Capture rescue** mode, with
-     capture rules whose charms can be used at her rarity; or
-   - a **Rescue** in **Direct rescue** mode, which needs the configuration in
-     [§3 C](#c-direct-rescue). Gate it with **Only happens if**.
+7. **Add her** with **+ Add species** → **Add to pool and set access**. Set her **Weight**,
+   and keep **At most once per run** on unless she may repeat within a run.
+8. **Configure her Species access:** **Species access…** on her entry →
+   **Add Species access** → set **Maximum acquisitions per player from this dungeon**
+   (*Limited to N* or *Unlimited captures*) and, if a Direct Rescue will grant her,
+   **Allow Direct Rescue** (needs a finite limit).
+9. **Use the pool**, or pick her directly with **Specific WaifuMon**, in:
+   - a **Wild Encounter**, or a **Rescue** in **Capture rescue** mode, with capture
+     rules whose charms can be used at her rarity; or
+   - a **Rescue** in **Direct rescue** mode ([§3 C](#c-direct-rescue)). Gate it with
+     **Only happens if**.
 10. **Validate and publish** the dungeon. Fix any `species_*`, `rescue_direct_*` or
-    `capture_no_usable_item` issues.
+    `capture_no_usable_item` issues; **Show me** opens Species access for access problems.
+
+To offer her in another dungeon, repeat steps 5–10 there. Each dungeon has its own
+terms and its own count.
 
 ### Keeping her unavailable until release
 
-Players can only obtain her through a **published, enabled** dungeon whose key is in
-her `dungeonAccess`. Hunting, spawns and selectors never offer her. Until the dungeon is
-released, she cannot be acquired if you:
-
-- leave the `forgotten_temple` dungeon **unpublished or disabled**, or
-- don't add her to any encounter in the live dungeon yet.
+Players can only obtain her through a **published, enabled** dungeon whose published
+Species access includes her and whose encounters present her. Hunting, spawns and
+selectors never offer her. Until release, she cannot be acquired if every dungeon that
+includes her is **unpublished or disabled**, or no published dungeon includes her yet.
 
 `enabled: true` alone does **not** hide her completely. The player Portal
 encyclopedia lists every enabled loaded species, including dungeon-exclusive ones,
@@ -434,9 +459,10 @@ doesn't own her. If she must not be visible at all before release:
 ## 10. Limitations
 
 - **No Portal species management.** Species content is JSON shipped with the build;
-  changing `dungeonAccess` or `enabled` needs a deploy or content reload.
-- **`dungeonAccess.dungeon` is not checked against real dungeons.** A typo silently
-  authorizes the wrong key.
+  changing `enabled`, tags or artwork needs a deploy or content reload. Which dungeons
+  offer her, and on what terms, does not.
+- **Legacy `dungeonAccess.dungeon` is not checked against real dungeons.** A typo
+  silently authorizes the wrong key. Prefer Species access.
 - **The species object isn't strict**, so misspelled top-level keys vanish without
   an error.
 - **No global cap.** Limits are per dungeon; the same species with limit 1 in two

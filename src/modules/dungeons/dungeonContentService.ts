@@ -7,7 +7,7 @@ import { dungeonSpeciesPolicy, dungeonEncounterSpeciesSlugs } from './dungeonSpe
 import { dungeonSpeciesUnavailableReason } from './validation/dungeonEncounterValidation';
 import { explicitCaptureDependencyIssues, type EncounterImportCatalogue } from './package/dungeonEncounterImport';
 import { PackageSpeciesEvidenceSchema } from './package/dungeonEncounterDependencies';
-import { loadDungeonEncounterValidationSource, type DungeonSpeciesAccessLookup } from './dungeonSpeciesPolicy';
+import { loadDungeonEncounterValidationSource, publishedDungeonSpeciesPolicies, type DungeonSpeciesAccessLookup } from './dungeonSpeciesPolicy';
 import { sceneSpriteCatalogue, freezeSceneSprites, readSceneSpriteSnapshot, pinnedSceneSpriteCatalogue } from './sceneSprites/sceneSpriteSnapshot';
 import { hasSceneSprites } from './sceneSprites/sceneSpriteDefinition';
 /**
@@ -993,11 +993,12 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       const active = await activeRunCounts(db, key);
       const events = await db.select({ details: dungeonContentEvents.details }).from(dungeonContentEvents).where(and(eq(dungeonContentEvents.dungeonKey, key), eq(dungeonContentEvents.action, 'published'))).orderBy(desc(dungeonContentEvents.id));
       const live = await db.select().from(species);
+      const owned = await publishedDungeonSpeciesPolicies(db, key);
       return revisions.filter((r) => r.id === row.publishedRevisionId || (active.get(r.id) ?? 0) > 0).flatMap((r) => {
         const definition = parseStoredDefinition(key, r.content);
         const parsed = speciesManifestSchema.safeParse(events.find((e) => e.details.revisionId === r.id)?.details.speciesManifest);
         const manifest = parsed.success ? parsed.data : null;
-        const dependencies = compareSpeciesManifest(definition, manifest, live, deps.getSpeciesAccess);
+        const dependencies = compareSpeciesManifest(definition, manifest, live, deps.getSpeciesAccess, owned);
         return dependencies.length ? [{ revision: r.number, revisionId: r.id, current: r.id === row.publishedRevisionId, activeRuns: active.get(r.id) ?? 0, evidence: manifest ? 'recorded' as const : 'unknown' as const, differs: manifest ? dependencies.some((d) => d.changes.length > 0) : null, dependencies }] : [];
       });
     },
@@ -1013,6 +1014,8 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
           slug: row.slug, name: row.name, rarity: row.rarity, archetype: row.archetype, affinity: row.affinity,
           enabled: row.enabled, regionExclusive: row.tags.includes('region_exclusive'), dungeonExclusive: row.tags.includes('dungeon_exclusive'),
           dungeonAccess: policy.access ?? [], permitted: reason === null, unavailableReason: reason,
+          // Whether this dungeon's own Species access can admit her; `permitted` is species content alone.
+          dungeonPolicyAllowed: row.enabled && !policy.regionExclusive,
           perPlayerLimit: access?.perPlayerLimit ?? null,
           directRescue: { available: directReason === null, reason: directReason },
         };

@@ -36,7 +36,7 @@
  * dedicated issue code rather than a schema error.
  */
 import { z } from 'zod';
-import { DungeonCaptureRulesSchema, DungeonSpeciesPoolSchema, dungeonEncounterFields } from './dungeonEncounters';
+import { DUNGEON_ENCOUNTER_LIMITS, DungeonCaptureRulesSchema, DungeonSpeciesPolicyEntrySchema, DungeonSpeciesPoolSchema, dungeonEncounterFields } from './dungeonEncounters';
 import { SceneSpriteInstanceSchema, SCENE_SPRITE_MAX_PLACEMENTS, sceneSpriteKeys } from '../sceneSprites/sceneSpriteDefinition';
 import { equipmentSelectorKey, type EquipmentRewardSelector } from '../../equipment/rewardSelector';
 import {
@@ -297,6 +297,8 @@ export const DungeonDefinitionSchema = z
     events: z.array(DungeonEventSchema).max(DUNGEON_EVENT_LIMITS.events).optional(),
     eventPools: z.array(DungeonEventPoolSchema).max(DUNGEON_EVENT_LIMITS.pools).optional(),
     speciesPools: z.array(DungeonSpeciesPoolSchema).max(30).optional(),
+    /** This dungeon's own species access terms. Absent, never defaulted, like the pools. */
+    speciesPolicies: z.array(DungeonSpeciesPolicyEntrySchema).max(DUNGEON_ENCOUNTER_LIMITS.speciesPolicies).optional(),
     rooms: z.array(DungeonRoomSchema).min(1).max(DUNGEON_MAX_ROOMS),
     connections: z.array(DungeonConnectionSchema).max(DUNGEON_MAX_CONNECTIONS).default([]),
   })

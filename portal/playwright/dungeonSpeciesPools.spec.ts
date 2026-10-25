@@ -21,6 +21,7 @@ const catalog: DungeonSpeciesRef[] = [
     dungeonExclusive: true,
     permitted: true,
     unavailableReason: null,
+    dungeonPolicyAllowed: true,
     dungeonAccess: [{ dungeon: 'species_halls', perPlayerLimit: 2, directRescue: true }],
     perPlayerLimit: 2,
     directRescue: { available: true, reason: null },
@@ -36,6 +37,7 @@ const catalog: DungeonSpeciesRef[] = [
     dungeonExclusive: false,
     permitted: false,
     unavailableReason: 'not_permitted',
+    dungeonPolicyAllowed: false,
     dungeonAccess: [],
     perPlayerLimit: null,
     directRescue: { available: false, reason: 'direct_not_permitted' },
@@ -119,6 +121,8 @@ test('pool creation, picker restrictions, weights, conditions, Nothing and stabl
     sheet(page).getByRole('button', { name: 'Add species Restricted Angel' }),
   ).toBeDisabled();
   await expect(sheet(page).getByTestId('species-option-angel')).toContainText('Region-exclusive');
+  // Thumbnails load once near the viewport; on mobile the row starts below the fold.
+  await sheet(page).getByTestId('species-android-thumbnail').first().scrollIntoViewIfNeeded();
   await expect(sheet(page).getByTestId('species-android-thumbnail').getByRole('img')).toBeVisible();
   await sheet(page).getByLabel('Search species').fill('Android');
   await expect(

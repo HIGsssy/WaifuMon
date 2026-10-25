@@ -31,6 +31,25 @@ export function DungeonSpeciesPoolsPanel({
       <p className="text-xs text-ink-muted">
         Species pools belong to this dungeon. Encounter activities use their stable identities.
       </p>
+      <div className="flex items-start gap-2 rounded border border-border p-2" data-testid="species-access-summary">
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium">Species access</p>
+          <p className="text-xs text-ink-muted">
+            {(definition.speciesPolicies ?? []).length
+              ? `${definition.speciesPolicies!.length} species with this dungeon’s own terms.`
+              : 'No species terms yet.'}{' '}
+            Dungeon-exclusive WaifuMon need an entry here before they can be offered.
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={!host}
+          onClick={() => host?.open({ kind: 'speciesAccess', id: '' })}
+        >
+          {disabled ? 'View' : 'Edit'} Species access
+        </Button>
+      </div>
       {!pools.length && <p className="text-sm text-ink-muted">No WaifuMon pools yet.</p>}
       <ul aria-label="WaifuMon pools in this dungeon" className="space-y-2">
         {pools.map((p) => (

@@ -543,7 +543,7 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
                   return (
                     <li key={i} title={`${issue.code} · ${issue.path} · ${issue.message}`}>
                       {text.title} {text.help}
-                      {text.eventTarget?.kind === 'speciesPool' && (
+                      {(text.eventTarget?.kind === 'speciesPool' || text.eventTarget?.kind === 'speciesAccess') && (
                         <Button
                           variant="link"
                           size="sm"

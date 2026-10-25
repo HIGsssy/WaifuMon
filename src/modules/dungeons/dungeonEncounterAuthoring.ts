@@ -4,7 +4,10 @@ import type { LoadedContent } from "../content/schemas";
 import { describeCaptureChance } from "../capture/captureMath";
 import { isCaptureItemEligible } from "../capture/captureService";
 import { dungeonSpeciesPolicy } from "./dungeonSpeciesPolicy";
-import { dungeonSpeciesUnavailableReason } from "./validation/dungeonEncounterValidation";
+import {
+  dungeonSpeciesUnavailableReason,
+  withDungeonSpeciesPolicy,
+} from "./validation/dungeonEncounterValidation";
 import type {
   DungeonDefinition,
   DungeonSpeciesAccess,
@@ -106,12 +109,16 @@ export function createEncounterAuthoringFacts(input: {
     > = {};
     diagnostics.length = 0;
     for (const row of input.catalogue.species) {
-      const policy = dungeonSpeciesPolicy(
-        {
-          ...row,
-          enabled: row.enabled && !scenario.disabledSpecies?.includes(row.slug),
-        },
-        access,
+      const policy = withDungeonSpeciesPolicy(
+        dungeonSpeciesPolicy(
+          {
+            ...row,
+            enabled: row.enabled && !scenario.disabledSpecies?.includes(row.slug),
+          },
+          access,
+        ),
+        input.definition.speciesPolicies,
+        row.slug,
       );
       const count = acquisitions[row.slug] ?? 0;
       const reason = dungeonSpeciesUnavailableReason(

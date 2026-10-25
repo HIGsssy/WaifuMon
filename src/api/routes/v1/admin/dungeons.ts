@@ -357,7 +357,7 @@ const speciesScenarioSchema = z.object({
 const speciesCatalogueSchema = z.object({
   slug: z.string(), name: z.string(), rarity: z.string(), race: z.string(), affinity: z.string(),
   enabled: z.boolean(), regionExclusive: z.boolean(), dungeonExclusive: z.boolean(), permitted: z.boolean(),
-  unavailableReason: speciesReasonSchema,
+  unavailableReason: speciesReasonSchema, dungeonPolicyAllowed: z.boolean(),
   dungeonAccess: z.array(z.object({ dungeon: z.string(), perPlayerLimit: z.union([z.number().int().positive(), z.literal('unlimited')]).optional(), directRescue: z.boolean().optional() })),
   perPlayerLimit: z.union([z.number().int().positive(), z.literal('unlimited')]).nullable(),
   directRescue: z.object({ available: z.boolean(), reason: speciesReasonSchema }),
