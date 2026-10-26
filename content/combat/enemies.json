@@ -221,6 +221,237 @@
       "artworkPath": null,
       "enabled": true,
       "tags": ["internet_archetype", "tier_4", "elite", "multiplier"]
+    },
+    {
+      "key": "atrium_lurker",
+      "name": "Atrium Lurker",
+      "description": "Sits in the entrance hall pretending to be a plant. Has been doing this since the door was last opened.",
+      "attack": 32,
+      "defense": 20,
+      "hp": 184,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f1", "trash"]
+    },
+    {
+      "key": "coat_rack_creeper",
+      "name": "Coat Rack Creeper",
+      "description": "Four arms, all of them holding somebody else\u2019s coat, and none of them intending to give one back.",
+      "attack": 39,
+      "defense": 36,
+      "hp": 276,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f1", "elite"]
+    },
+    {
+      "key": "front_desk_revenant",
+      "name": "Front Desk Revenant",
+      "description": "Still asking visitors to sign in. Still has the pen. The pen is the problem.",
+      "attack": 47,
+      "defense": 47,
+      "hp": 386,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f1", "miniboss"]
+    },
+    {
+      "key": "banister_hag",
+      "name": "Banister Hag",
+      "description": "Climbs the handrail instead of the stairs, which is faster, which is why she has the high ground.",
+      "attack": 59,
+      "defense": 59,
+      "hp": 489,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f2", "miniboss"]
+    },
+    {
+      "key": "counterweight_golem",
+      "name": "Counterweight Golem",
+      "description": "It was built to make the climb easier. It has developed opinions about who is allowed up.",
+      "attack": 49,
+      "defense": 45,
+      "hp": 350,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f2", "elite"]
+    },
+    {
+      "key": "stairwell_wretch",
+      "name": "Stairwell Wretch",
+      "description": "Lives in the gap between two flights that were built a quarter-turn out of alignment.",
+      "attack": 40,
+      "defense": 25,
+      "hp": 233,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f2", "trash"]
+    },
+    {
+      "key": "frame_warden",
+      "name": "Frame Warden",
+      "description": "Carries nine frames and eight portraits. Do not ask what is in the ninth.",
+      "attack": 107,
+      "defense": 106,
+      "hp": 797,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f3", "miniboss"]
+    },
+    {
+      "key": "portrait_doppel",
+      "name": "Portrait Doppel",
+      "description": "A painting of you, hung here before you arrived, and getting the expression wrong on purpose.",
+      "attack": 73,
+      "defense": 45,
+      "hp": 380,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f3", "trash"]
+    },
+    {
+      "key": "varnish_ooze",
+      "name": "Varnish Ooze",
+      "description": "The finish they put on the frames to keep them bright. It has been keeping itself bright for forty years.",
+      "attack": 90,
+      "defense": 81,
+      "hp": 569,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f3", "elite"]
+    },
+    {
+      "key": "dust_jacket",
+      "name": "Dust Jacket",
+      "description": "The dust came off the books and organised itself. It resents being disturbed, and it has read everything.",
+      "attack": 87,
+      "defense": 54,
+      "hp": 454,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f4", "trash"]
+    },
+    {
+      "key": "marginalia_mimic",
+      "name": "Marginalia Mimic",
+      "description": "Pretends to be a helpful annotation in the margin. What it writes is never helpful and never in your handwriting.",
+      "attack": 107,
+      "defense": 97,
+      "hp": 681,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f4", "elite"]
+    },
+    {
+      "key": "oversize_volume",
+      "name": "Oversize Volume",
+      "description": "A book too large to shelve, too heavy to move, and extremely aware of both facts.",
+      "attack": 128,
+      "defense": 127,
+      "hp": 953,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f4", "miniboss"]
+    },
+    {
+      "key": "chalice_husk",
+      "name": "Chalice Husk",
+      "description": "The cup is empty. The cup would like not to be. That is the whole of its personality.",
+      "attack": 104,
+      "defense": 65,
+      "hp": 545,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f5", "trash"]
+    },
+    {
+      "key": "hall_warden",
+      "name": "The Hall Warden",
+      "description": "Checks names against a list. Has never once been persuaded to check them in a different order.",
+      "attack": 154,
+      "defense": 152,
+      "hp": 1143,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f5", "miniboss"]
+    },
+    {
+      "key": "hymn_thrall",
+      "name": "Hymn Thrall",
+      "description": "Sings the same eleven notes, slightly flat, at a volume that gets into your teeth.",
+      "attack": 129,
+      "defense": 116,
+      "hp": 817,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f5", "elite"]
+    },
+    {
+      "key": "glasshouse_bloom",
+      "name": "Glasshouse Bloom",
+      "description": "The finest thing he ever grew, and it has been waiting all this time for someone to come up and admire it.",
+      "attack": 260,
+      "defense": 251,
+      "hp": 1720,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f6", "miniboss"]
+    },
+    {
+      "key": "graftling",
+      "name": "Graftling",
+      "description": "Something was grafted to something else until it stopped complaining. It no longer recalls which part was originally its.",
+      "attack": 176,
+      "defense": 106,
+      "hp": 819,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f6", "trash"]
+    },
+    {
+      "key": "greenhouse_gorgon",
+      "name": "Greenhouse Gorgon",
+      "description": "Keeps the glass clean by looking at it. Anything else she looks at gets the same treatment.",
+      "attack": 218,
+      "defense": 190,
+      "hp": 1229,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f6", "elite"]
+    },
+    {
+      "key": "picus_pecking_order",
+      "name": "Picus, the Pecking Order",
+      "description": "Forty years of drilling upward, and he is still not finished, and you are standing where the next floor goes.",
+      "attack": 380,
+      "defense": 230,
+      "hp": 3000,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f10", "boss"]
+    },
+    {
+      "key": "tower_familiar",
+      "name": "Quill, the Familiar",
+      "description": "The bird that does the actual pecking, and has done it for so long that the tower is arguably hers.",
+      "attack": 300,
+      "defense": 195,
+      "hp": 2000,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f10", "boss"]
+    },
+    {
+      "key": "tower_glamour",
+      "name": "Glamour of the Spire",
+      "description": "What he thinks you are, projected at full height to save him the trouble of looking up.",
+      "attack": 240,
+      "defense": 170,
+      "hp": 1500,
+      "artworkPath": null,
+      "enabled": true,
+      "tags": ["tower", "f10", "boss"]
     }
   ]
 }

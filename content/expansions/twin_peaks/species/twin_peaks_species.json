@@ -357,7 +357,13 @@
       "flavorText": "Snowdrift Search: +12% chance to find items from Hunting.",
       "effectId": "hunt_item_find_chance",
       "value": 12
-    }
+    },
+    "dungeonAccess": [
+      {
+        "dungeon": "tower_of_picus_dickus",
+        "perPlayerLimit": 1
+      }
+    ]
   },
   {
     "slug": "avalanche_huntress",
@@ -537,7 +543,13 @@
       "flavorText": "On the Rocks: +40% eligible rewards from Boss Encounters.",
       "effectId": "boss_reward_gain",
       "value": 40
-    }
+    },
+    "dungeonAccess": [
+      {
+        "dungeon": "tower_of_picus_dickus",
+        "perPlayerLimit": 1
+      }
+    ]
   },
   {
     "slug": "infernal_sauna_mistress",
@@ -811,7 +823,13 @@
       "flavorText": "Survey Data: +18% chance to find items from Hunting.",
       "effectId": "hunt_item_find_chance",
       "value": 18
-    }
+    },
+    "dungeonAccess": [
+      {
+        "dungeon": "tower_of_picus_dickus",
+        "perPlayerLimit": 1
+      }
+    ]
   },
   {
     "slug": "resort_regent_idol",
@@ -1261,7 +1279,13 @@
       "flavorText": "Precious Minerals: +30% Essence gained.",
       "effectId": "essence_gain",
       "value": 30
-    }
+    },
+    "dungeonAccess": [
+      {
+        "dungeon": "tower_of_picus_dickus",
+        "perPlayerLimit": 1
+      }
+    ]
   },
   {
     "slug": "primordial_onsen_goddess",
