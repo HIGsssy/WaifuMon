@@ -120,6 +120,8 @@ import {
   handleDungeonExtractConfirm,
   handleDungeonHome,
   handleDungeonMove,
+  handleDungeonPuzzleOpen,
+  handleDungeonPuzzleSubmit,
   handleDungeonRun,
   handleDungeonStart,
   handleDungeonZone,
@@ -474,6 +476,8 @@ export function createDiscordClient(ctx: AppContext): Client {
       'dg:act': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonAct(ctx, i, prov, args),
       'dg:mv': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonMove(ctx, i, prov, args),
       'dg:ev': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonChoose(ctx, i, prov, args),
+      'dg:pz': (i: ButtonInteraction, prov: Provisioned, args: string[]) => handleDungeonPuzzleOpen(ctx, i, prov, args),
+      'dg:pza': (i: ModalSubmitInteraction, prov: Provisioned, args: string[]) => handleDungeonPuzzleSubmit(ctx, i, prov, args),
       // Encounters. The charm is the select menu's value, never part of an id;
       // Capture uses the selection stored on the run.
       'dg:ci': (i: StringSelectMenuInteraction, prov: Provisioned, args: string[]) => handleDungeonCharm(ctx, i, prov, args),

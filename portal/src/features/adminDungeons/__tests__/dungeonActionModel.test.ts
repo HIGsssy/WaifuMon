@@ -14,7 +14,7 @@ describe('action identities and references', () => {
   it('creates every supported action with a unique schema-safe ID', () => {
     const actions: DungeonAction[] = [];
     for (const type of ACTION_TYPES) actions.push(createAction(type, actions));
-    expect(new Set(actions.map((a) => a.id)).size).toBe(9);
+    expect(new Set(actions.map((a) => a.id)).size).toBe(10);
     actions.forEach((a) => {
       expect(a.id).toMatch(/^a_[a-f0-9]{32}$/);
       expect(a.optional).toBe(false);

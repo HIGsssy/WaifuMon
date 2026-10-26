@@ -37,6 +37,7 @@ import {
 } from './dungeonText';
 import { EventActivity } from './EventActivity';
 import { EncounterActivity } from './EncounterActivity';
+import { PuzzleActivity } from './PuzzleActivity';
 
 const select = 'w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm text-ink';
 const field = 'block space-y-1 text-sm';
@@ -54,10 +55,13 @@ const OUTCOME_LABEL: Record<string, string> = {
   declined: 'If the player skips it',
   next: 'After succeeding (general rule)',
   captured: 'After capture', rescued: 'After rescue', escaped: 'After escape', left: 'After leaving her', unavailable: 'When she is unavailable',
+  solved: 'After the correct answer',
+  exhausted: 'After the last attempt is used up',
 };
 const OUTCOME_DEFAULT: Record<string, string> = {
   defeat: 'the run ends in defeat',
   blocked: 'send the player back the way they came',
+  exhausted: 'continue with the next activity, unsolved',
 };
 
 function destinationKey(value?: ActionDestination) {
@@ -603,6 +607,16 @@ function Essentials({
         </div>
       );
     }
+    case 'text_puzzle':
+      return (
+        <PuzzleActivity
+          action={action}
+          room={room}
+          definition={definition}
+          onChange={onChange}
+          onDefinitionChange={onDefinitionChange}
+        />
+      );
     default:
       return <p className={hint}>This kind of activity cannot be edited here.</p>;
   }
@@ -649,16 +663,19 @@ function AdvancedOptions({
         )
       ) : (
         <>
-          <label className={field}>
-            Button text players see
-            <Input
-              aria-label="Button text"
-              maxLength={80}
-              placeholder={`Usual text for a ${activityOf(action).title.toLowerCase()}`}
-              value={action.label ?? ''}
-              onChange={(e) => patch({ label: e.target.value })}
-            />
-          </label>
+          {/* A puzzle's label is its title, edited with the rest of the puzzle. */}
+          {action.type !== 'text_puzzle' && (
+            <label className={field}>
+              Button text players see
+              <Input
+                aria-label="Button text"
+                maxLength={80}
+                placeholder={`Usual text for a ${activityOf(action).title.toLowerCase()}`}
+                value={action.label ?? ''}
+                onChange={(e) => patch({ label: e.target.value })}
+              />
+            </label>
+          )}
           <label className="flex items-center gap-2 text-sm">
             <input
               type="checkbox"
@@ -818,7 +835,7 @@ export function ActivityCard({
   const summary = activitySummary(action, definition, reference);
   // Customised activities show their advanced settings without being asked.
   const [advanced, setAdvanced] = useState(
-    Boolean(action.optional || action.when || action.next || action.label) ||
+    Boolean(action.optional || action.when || action.next || (action.label && action.type !== 'text_puzzle')) ||
       Object.keys(action.outcomes ?? {}).length > 0,
   );
   const Icon = meta.icon;

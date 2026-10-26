@@ -156,6 +156,42 @@ export const RewardSpecSchema = z
   .strict();
 export type RewardSpec = z.infer<typeof RewardSpecSchema>;
 
+export const DUNGEON_PUZZLE_LIMITS = {
+  answers: 20,
+  answerLength: 100,
+  maxAttempts: 100,
+} as const;
+
+/**
+ * A question the player answers by typing. `answers` are the author's alone:
+ * the engine compares against them and no player view, recent entry or log
+ * ever carries them or what was typed. Answers are strings, so a code keeps
+ * its leading zeros. The schema is lenient so an unfinished puzzle can be
+ * saved as a draft; the validator refuses to publish one without a prompt or
+ * an answer.
+ */
+const textPuzzleFields = {
+  ...actionBase,
+  prompt: shortText(1000).default(''),
+  answers: z.array(z.string().max(DUNGEON_PUZZLE_LIMITS.answerLength)).max(DUNGEON_PUZZLE_LIMITS.answers).default([]),
+  caseSensitive: z.boolean().default(false),
+  /** Surrounding whitespace only; nothing inside an answer is ever stripped. */
+  trimWhitespace: z.boolean().default(true),
+  /** Null: unlimited. The attempt that reaches the limit, if wrong, reports `exhausted`. */
+  maxAttempts: z
+    .number()
+    .int('attempts must be a whole number')
+    .min(1, 'a puzzle needs at least 1 attempt; leave the limit empty for unlimited attempts')
+    .max(DUNGEON_PUZZLE_LIMITS.maxAttempts, `a puzzle allows at most ${DUNGEON_PUZZLE_LIMITS.maxAttempts} attempts; leave the limit empty for unlimited attempts`)
+    .nullable()
+    .default(null),
+  solvedText: shortText(600).default(''),
+  incorrectText: shortText(600).default(''),
+  exhaustedText: shortText(600).default(''),
+  /** A run flag set to true when the puzzle is solved, for a later condition to read. */
+  solvedFlag: id.optional(),
+};
+
 export const DungeonActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('combat'), ...combatFields }).strict(),
   z.object({ type: z.literal('boss'), ...combatFields }).strict(),
@@ -191,6 +227,7 @@ export const DungeonActionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('event'), ...actionBase, source: DungeonEventSourceSchema }).strict(),
   z.object({ type: z.literal('wild_encounter'), ...actionBase, ...dungeonEncounterFields, capture: DungeonCaptureRulesSchema }).strict(),
   z.object({ type: z.literal('rescue'), ...actionBase, ...dungeonEncounterFields, mode: z.enum(['direct', 'capture']), capture: DungeonCaptureRulesSchema.optional() }).strict(),
+  z.object({ type: z.literal('text_puzzle'), ...textPuzzleFields }).strict(),
 ]).superRefine((action, ctx) => {
   if (action.type === 'reward' && (action.reward !== undefined) === (action.rewards !== undefined)) {
     ctx.addIssue({ code: 'custom', path: ['reward'], message: 'treasure must have exactly one of reward or rewards' });
@@ -200,8 +237,9 @@ export type DungeonAction = z.infer<typeof DungeonActionSchema>;
 export type DungeonActionType = DungeonAction['type'];
 export type CombatAction = Extract<DungeonAction, { type: 'combat' | 'boss' }>;
 export type EventAction = Extract<DungeonAction, { type: 'event' }>;
+export type TextPuzzleAction = Extract<DungeonAction, { type: 'text_puzzle' }>;
 
-export const DUNGEON_ACTION_TYPES = ['combat', 'boss', 'rest', 'gate', 'set_flag', 'leave', 'reward', 'event', 'wild_encounter', 'rescue'] as const satisfies readonly DungeonActionType[];
+export const DUNGEON_ACTION_TYPES = ['combat', 'boss', 'rest', 'gate', 'set_flag', 'leave', 'reward', 'event', 'wild_encounter', 'rescue', 'text_puzzle'] as const satisfies readonly DungeonActionType[];
 
 /**
  * Action types later phases add. Named now so a definition that uses one is
@@ -230,6 +268,8 @@ export const ACTION_OUTCOMES: Readonly<Record<DungeonActionType, readonly string
   event: ['resolved', 'nothing'],
   wild_encounter: ['captured', 'escaped', 'left', 'nothing', 'unavailable'],
   rescue: ['rescued', 'escaped', 'left', 'nothing', 'unavailable'],
+  /** `exhausted`: the last allowed attempt was wrong. A wrong answer with attempts left reports nothing. */
+  text_puzzle: ['solved', 'exhausted'],
 };
 export const DECLINED_OUTCOME = 'declined';
 

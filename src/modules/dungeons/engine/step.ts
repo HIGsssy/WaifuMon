@@ -42,6 +42,15 @@
  * resolves the event once — its item cost, check, flags, HP and rewards all
  * belong to that one step — except a walk-away, which changes nothing and
  * leaves the event open for a later visit.
+ *
+ * ## Puzzles
+ *
+ * A `text_puzzle` waits for `answer`. A wrong answer with attempts left is a
+ * step of its own that changes only the attempt count: the cursor stays put
+ * and the player answers again with the new step number. A right answer, or
+ * the last allowed wrong one, settles the puzzle once — its flag and routing
+ * belong to that step — and a later visit only follows the settled outcome.
+ * What the player typed is compared and dropped; nothing keeps it.
  */
 import {
   BASIS_POINTS,
@@ -60,6 +69,7 @@ import {
   type DungeonAction,
   type DungeonEventOutcome,
   type EventAction,
+  type TextPuzzleAction,
   type DungeonConnection,
   type DungeonRoom,
 } from '../content/dungeonDefinition';
@@ -76,6 +86,7 @@ import {
   eventNothingText,
   selectDungeonEvent,
 } from './events';
+import { puzzleAnswerMatches } from './puzzles';
 import { addAtRiskCurrency, hpAfterRest, isDungeonRewardPlanV2, planHasSecuredRewards, rewardClaimKey, rewardResolverSnapshot, rollRewardPlan, settleCurrency, settlementRequestKey } from './rewards';
 import { DUNGEON_LOOT_RESOLVER_VERSION, resolveRewardBundle } from './lootResolver';
 import type { DungeonRewardBundle } from '../content/dungeonRewards';
@@ -131,7 +142,7 @@ function holds(w: Work, condition: Parameters<typeof evaluateCondition>[0]): boo
 /** Whether the sequence stops on this action and waits for the player. */
 export function actionAwaitsInput(action: DungeonAction): boolean {
   // An event waits for a choice unless its pool draws nothing, which `arriveAtEvent` settles.
-  return action.optional || isCombatAction(action) || action.type === 'rest' || action.type === 'reward' || action.type === 'event';
+  return action.optional || isCombatAction(action) || action.type === 'rest' || action.type === 'reward' || action.type === 'event' || action.type === 'text_puzzle';
 }
 
 function record(w: Work, room: DungeonRoom, action: DungeonAction, rec: Omit<DungeonActionRecord, 'type' | 'step'>): void {
@@ -347,6 +358,16 @@ function runSequence(w: Work, room: DungeonRoom, startIndex: number): void {
       index = arrival.index;
       continue;
     }
+    if (action.type === 'text_puzzle') {
+      const arrival = arriveAtPuzzle(w, room, index, action);
+      if (arrival === 'await') {
+        w.state.cursor = { ...w.state.cursor, actionId: action.id, waveIndex: 0 };
+        return;
+      }
+      if (arrival.kind === 'stop') return;
+      index = arrival.index;
+      continue;
+    }
     if (actionAwaitsInput(action)) {
       w.state.cursor = { ...w.state.cursor, actionId: action.id, waveIndex: 0 };
       return;
@@ -493,6 +514,55 @@ function chooseEventChoice(w: Work, room: DungeonRoom, index: number, action: Ev
     },
   });
   return follow(w, room, index, action, 'resolved', 'scripted', outcome.then);
+}
+
+// ── puzzles ─────────────────────────────────────────────────────────────────
+
+/**
+ * The sequence has reached a puzzle. An open one waits; one settled on an
+ * earlier visit applies nothing again — the record is rewritten (a retreat may
+ * have erased it) and the sequence goes where it went before.
+ */
+function arriveAtPuzzle(w: Work, room: DungeonRoom, index: number, action: TextPuzzleAction): Flow | 'await' {
+  const instance = roomState(w, room.id).puzzles?.[action.id];
+  if (!instance || instance.status === 'open') return 'await';
+  record(w, room, action, {
+    status: instance.status === 'solved' ? 'completed' : 'failed',
+    outcome: instance.status,
+    detail: { kind: 'puzzle', status: instance.status, attempts: instance.attempts },
+  });
+  return follow(w, room, index, action, instance.status);
+}
+
+/** One submitted answer. Wrong with attempts left: the puzzle stays open and the cursor stays on it. */
+function answerPuzzle(w: Work, room: DungeonRoom, index: number, action: TextPuzzleAction, answer: string): Flow | 'await' | DungeonRefusal {
+  const puzzles = (roomState(w, room.id).puzzles ??= {});
+  const instance = (puzzles[action.id] ??= { attempts: 0, status: 'open' });
+  // The cursor leaves a settled puzzle in the step that settles it; this is a guard, not a path.
+  if (instance.status !== 'open') return 'not_available';
+  instance.attempts += 1;
+  const place = { roomId: room.id, actionId: action.id };
+  const solved = puzzleAnswerMatches(action, answer);
+  const result = solved ? 'solved' : action.maxAttempts !== null && instance.attempts >= action.maxAttempts ? 'exhausted' : 'incorrect';
+  const text = result === 'solved' ? action.solvedText : result === 'exhausted' ? action.exhaustedText || action.incorrectText : action.incorrectText;
+  w.state.recent.push({ kind: 'puzzle', ...place, result, attempts: instance.attempts, maxAttempts: action.maxAttempts, text });
+  // Whether it was right and how many tries it took. Never what was typed.
+  w.log.push({
+    type: solved ? 'action_completed' : 'action_failed',
+    ...place,
+    payload: { actionType: 'text_puzzle', outcome: result, attempts: instance.attempts, maxAttempts: action.maxAttempts },
+  });
+  if (result === 'incorrect') return 'await';
+
+  instance.status = result;
+  instance.resolvedStep = w.state.step;
+  if (result === 'solved' && action.solvedFlag) w.state.flags[action.solvedFlag] = true;
+  record(w, room, action, {
+    status: result === 'solved' ? 'completed' : 'failed',
+    outcome: result,
+    detail: { kind: 'puzzle', status: result, attempts: instance.attempts },
+  });
+  return follow(w, room, index, action, result);
 }
 
 // ── actions that take input ─────────────────────────────────────────────────
@@ -766,11 +836,24 @@ export function stepDungeon(
       break;
     }
 
+    case 'answer': {
+      const at = currentAction(w.state, ctx.definition);
+      if (!at) return refused(state, 'no_action');
+      if (at.action.type !== 'text_puzzle') return refused(state, 'not_available');
+      const flow = answerPuzzle(w, room, at.index, at.action, input.answer);
+      if (flow === 'await') break;
+      if (typeof flow === 'string') return refused(state, flow);
+      if (flow.kind === 'continue') runSequence(w, room, flow.index);
+      break;
+    }
+
     case 'advance':
     case 'decline': {
       const at = currentAction(w.state, ctx.definition);
       if (!at) return refused(state, 'no_action');
       if (isEncounterAction(at.action)) return refused(state, input.type === 'advance' ? 'encounter_not_offered' : 'not_optional');
+      // A puzzle is answered, not carried out. An optional one may still be declined below.
+      if (at.action.type === 'text_puzzle' && input.type === 'advance') return refused(state, 'answer_required');
       // An event is answered with a choice; it has no single thing to carry out or to decline.
       if (at.action.type === 'event') return refused(state, input.type === 'advance' ? 'choice_required' : 'not_optional');
       let flow: Flow | 'await';

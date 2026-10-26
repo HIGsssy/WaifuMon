@@ -214,7 +214,8 @@ export type DungeonActionDetail =
       choiceId: string | null;
       branch: DungeonEventBranch | null;
       check: DungeonEventCheckResult | null;
-    };
+    }
+  | { kind: 'puzzle'; status: Exclude<DungeonPuzzleInstance['status'], 'open'>; attempts: number };
 
 export interface DungeonActionRecord {
   status: DungeonActionStatus;
@@ -226,12 +227,29 @@ export interface DungeonActionRecord {
   detail: DungeonActionDetail | null;
 }
 
+/**
+ * A `text_puzzle` action's progress in this run: how many answers were
+ * submitted and whether it is settled. Counts only — never what was typed.
+ */
+export interface DungeonPuzzleInstance {
+  attempts: number;
+  status: 'open' | 'solved' | 'exhausted';
+  /** The step that settled it. */
+  resolvedStep?: number;
+}
+
 export interface DungeonRoomState {
   visits: number;
   completed: boolean;
   /** The action a `retreat` left unfinished; the sequence resumes there on return. */
   resumeAt: string | null;
   actions: Record<string, DungeonActionRecord>;
+  /**
+   * Puzzle progress by action id. Apart from `actions` because a retreat
+   * erases those, and a retreat must not hand back spent attempts. Absent
+   * until the room's first puzzle answer, and on states from before puzzles.
+   */
+  puzzles?: Record<string, DungeonPuzzleInstance>;
 }
 
 /** The pure part of how a run ended. What was actually banked is the adapter's receipt. */
@@ -275,6 +293,8 @@ export type DungeonRecentEntry =
       walkedAway: boolean;
     }
   | { kind: 'event_nothing'; roomId: string; actionId: string; text: string }
+  /** `incorrect`: a wrong answer with attempts left. `text` is the author's narrative for the result. */
+  | { kind: 'puzzle'; roomId: string; actionId: string; result: 'solved' | 'incorrect' | 'exhausted'; attempts: number; maxAttempts: number | null; text: string }
   | { kind: 'room_completed'; roomId: string }
   | { kind: 'retreated'; fromRoomId: string; toRoomId: string }
   | { kind: 'moved'; connectionId: string; fromRoomId: string; toRoomId: string };
@@ -323,6 +343,8 @@ export type DungeonInput = (
   | { type: 'advance' }
   | { type: 'decline' }
   | { type: 'choose'; choiceId: string }
+  /** A typed answer to the pending puzzle. Compared and discarded: it is never stored or logged. */
+  | { type: 'answer'; answer: string }
   | { type: 'move'; connectionId: string }
   | { type: 'extract' }
   | { type: 'abandon' }
@@ -353,7 +375,9 @@ export type DungeonRefusal =
   | 'choice_required'
   | 'choice_unknown'
   /** The choice's requirements are not met as the run and the inventory stand. */
-  | 'choice_unavailable';
+  | 'choice_unavailable'
+  /** `advance` on a puzzle: it takes an answer. */
+  | 'answer_required';
 
 // ── effects ─────────────────────────────────────────────────────────────────
 

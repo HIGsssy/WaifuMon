@@ -13,6 +13,8 @@
  *        - a lost fight ends the run as `defeated`;
  *        - a gate that does not open is a `retreat`;
  *        - a `leave` walks its connection, or completes the room without one;
+ *        - an exhausted puzzle carries on unsolved: its flag stays unset,
+ *          so whatever the solve would have opened stays shut;
  *        - everything else is `next`: the following action in the list, and
  *          the room completes after the last.
  *
@@ -40,6 +42,7 @@ export const SUCCESS_OUTCOME: Readonly<Record<DungeonActionType, string | null>>
   event: 'resolved',
   wild_encounter: 'captured',
   rescue: 'rescued',
+  text_puzzle: 'solved',
 };
 
 /** Outcomes recorded as `failed` rather than `completed`. */
@@ -55,6 +58,7 @@ export const FAILURE_OUTCOMES: Readonly<Record<DungeonActionType, readonly strin
   event: [],
   wild_encounter: ['escaped', 'unavailable'],
   rescue: ['escaped', 'unavailable'],
+  text_puzzle: ['exhausted'],
 };
 
 const NEXT: ActionDestination = { type: 'next' };

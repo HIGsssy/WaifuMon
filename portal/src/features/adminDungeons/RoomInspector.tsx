@@ -38,7 +38,7 @@ import {
 const heading = 'text-xs font-semibold tracking-wide text-ink-muted uppercase';
 const field = 'block space-y-1 text-sm';
 const COMMON: ActionType[] = ['combat', 'boss', 'reward', 'rest', 'wild_encounter', 'rescue'];
-const UNCOMMON: ActionType[] = ['set_flag', 'gate', 'leave'];
+const UNCOMMON: ActionType[] = ['set_flag', 'gate', 'leave', 'text_puzzle'];
 
 export function RoomInspector({
   room,

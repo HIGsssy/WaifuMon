@@ -81,6 +81,7 @@ import type {
 } from '../../../../modules/dungeons/dungeonContentService';
 import {
   DUNGEON_ID_MAX_LENGTH,
+  DUNGEON_PUZZLE_LIMITS,
   DUNGEON_KEY_MAX_LENGTH,
   DUNGEON_KEY_PATTERN,
   DungeonArtworkRefSchema,
@@ -417,6 +418,8 @@ const sandboxInputSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('abandon') }),
   /** Answer the offered event with one of its choices. */
   z.object({ type: z.literal('choose'), choiceId: connectionIdSchema }),
+  /** Answer the pending puzzle. */
+  z.object({ type: z.literal('answer'), answer: z.string().max(DUNGEON_PUZZLE_LIMITS.answerLength * 2) }),
 ]);
 const MAX_SANDBOX_INVENTORY_ITEMS = 50;
 /** Item slug → how many the imagined player holds. Assumed, never read from or written to anyone's inventory. */

@@ -9,6 +9,7 @@ import { isCombatAction, roomOf, type DungeonActionType, type DungeonConnection 
 import { selectWaveEnemy } from './combat';
 import { describeOfferedEncounter, type DungeonEncounterView } from './encounters';
 import { describeOfferedEvent, type DungeonEventView } from './events';
+import { describeOfferedPuzzle, type DungeonPuzzleView } from './puzzles';
 import { dungeonRngSource } from './seeds';
 import { canExtract, connectionStates, currentAction } from './step';
 import type {
@@ -33,6 +34,8 @@ export interface DungeonActionView {
   /** For an event: what is offered and which choices can be made now. Absent on views from before events. */
   event?: DungeonEventView | null;
   encounter?: DungeonEncounterView | null;
+  /** For a puzzle: its prompt and attempt counts. Never its answers. */
+  puzzle?: DungeonPuzzleView | null;
 }
 
 export interface DungeonConnectionView {
@@ -112,6 +115,7 @@ export function describeDungeonRun(
       healBasisPoints: a.type === 'rest' ? a.healBasisPoints : null,
       ...((a.type === 'wild_encounter' || a.type === 'rescue') ? { encounter: describeOfferedEncounter(state, ctx) } : {}),
       ...(a.type === 'event' ? { event: describeOfferedEvent(state, ctx) } : {}),
+      ...(a.type === 'text_puzzle' ? { puzzle: describeOfferedPuzzle(state, ctx) } : {}),
     };
   }
 

@@ -59,6 +59,7 @@ import {
 } from '../content/dungeonDefinition';
 import { conditionDepth, conditionReferences } from '../engine/conditions';
 import { eventActionDestinations } from '../engine/events';
+import { normalisedPuzzleAnswers } from '../engine/puzzles';
 import { defaultDestination, destinationFor, destinationsOf, SUCCESS_OUTCOME } from '../engine/routing';
 
 export const DUNGEON_ISSUE_CODES = [
@@ -181,6 +182,10 @@ export const DUNGEON_ISSUE_CODES = [
   'event_pool_all_nothing',
   'event_pool_may_be_empty',
   'unsupported_event_effect',
+  'puzzle_prompt_empty',
+  'puzzle_no_answers',
+  'puzzle_answer_empty',
+  'puzzle_answer_duplicate',
 ] as const;
 export type DungeonIssueCode = (typeof DUNGEON_ISSUE_CODES)[number];
 
@@ -357,7 +362,12 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   // ── flags written ─────────────────────────────────────────────────────────
   const flagsSet = new Set<string>();
   const flagsRead = new Set<string>();
-  for (const room of definition.rooms) for (const action of room.actions) if (action.type === 'set_flag') flagsSet.add(action.flag);
+  for (const room of definition.rooms) {
+    for (const action of room.actions) {
+      if (action.type === 'set_flag') flagsSet.add(action.flag);
+      if (action.type === 'text_puzzle' && action.solvedFlag) flagsSet.add(action.solvedFlag);
+    }
+  }
   for (const flag of eventFlagsSet(definition)) flagsSet.add(flag);
   for (const flag of encounterFlagsSet(definition)) flagsSet.add(flag);
 
@@ -498,6 +508,38 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
           add('flag_scope_mismatch', 'error', `${path}.scope`, `action "${action.id}" sets flag "${action.flag}" as ${action.scope}-scoped, but it is declared ${declared.scope}-scoped`);
         } else if (action.scope === 'player') {
           add('flag_scope_unsupported', 'error', `${path}.scope`, `action "${action.id}" sets a player-scoped flag; persistent flags cannot be written yet`);
+        }
+      }
+
+      if (action.type === 'text_puzzle') {
+        if (!action.prompt) {
+          add('puzzle_prompt_empty', 'error', `${path}.prompt`, `puzzle "${action.id}" has no prompt: write the question or instruction the player answers`);
+        }
+        const normalised = normalisedPuzzleAnswers(action);
+        if (action.answers.length === 0) {
+          add('puzzle_no_answers', 'error', `${path}.answers`, `puzzle "${action.id}" has no accepted answer, so it can never be solved`);
+        }
+        const seen = new Map<string, number>();
+        normalised.forEach((answer, i) => {
+          if (answer === '') {
+            add('puzzle_answer_empty', 'error', `${path}.answers[${i}]`, `accepted answer ${i + 1} of puzzle "${action.id}" is blank; fill it in or remove it`);
+            return;
+          }
+          const first = seen.get(answer);
+          if (first !== undefined) {
+            add('puzzle_answer_duplicate', 'warning', `${path}.answers[${i}]`, `accepted answer ${i + 1} of puzzle "${action.id}" is the same as answer ${first + 1} once ${action.caseSensitive ? 'surrounding spaces are ignored' : 'capitals and surrounding spaces are ignored'}; remove one`);
+          } else seen.set(answer, i);
+        });
+        if (action.maxAttempts === null && action.outcomes.exhausted) {
+          add('outcome_unreachable', 'warning', `${path}.outcomes.exhausted`, `puzzle "${action.id}" routes "exhausted" but allows unlimited attempts, so it can never run out; set a limit or remove that route`);
+        }
+        if (action.solvedFlag) {
+          const declared = flagByKey.get(action.solvedFlag);
+          if (!declared) {
+            add('flag_undeclared', 'error', `${path}.solvedFlag`, `puzzle "${action.id}" remembers flag "${action.solvedFlag}" when solved, which the dungeon does not declare`);
+          } else if (declared.scope !== 'run') {
+            add('flag_scope_unsupported', 'error', `${path}.solvedFlag`, `puzzle "${action.id}" remembers player-scoped flag "${action.solvedFlag}"; a puzzle can only set a run flag`);
+          }
         }
       }
 

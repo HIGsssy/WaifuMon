@@ -20,8 +20,15 @@
  * has returned. A stale press, a repaint or a resumed run has no receipts, so
  * nothing one-time is ever sent twice; a rolled-back step throws and sends
  * nothing at all.
+ *
+ * Puzzles (`pz`, `pza`): Enter Answer opens a modal and changes nothing. The
+ * modal's id carries the run and the step the puzzle was drawn for, exactly
+ * like a button, and its submission is one `answer` step under the same guard
+ * — so a duplicate or late submission is `stale`, another player's is not
+ * found, and an ended run refuses it. The typed answer goes to the service and
+ * nowhere else: it is not logged here.
  */
-import type { ActionRowBuilder, ButtonBuilder, ButtonInteraction, StringSelectMenuInteraction } from 'discord.js';
+import type { ActionRowBuilder, ButtonBuilder, ButtonInteraction, ModalSubmitInteraction, StringSelectMenuInteraction } from 'discord.js';
 import { ownedArtworkImage, ownedCardImage } from '../assets/attachRenderedCard';
 import { postAppearanceUnlockToasts } from '../appearanceToast';
 import { dungeonRunSceneArtwork, dungeonZoneArtwork, speciesArtwork } from '../dungeonArtwork';
@@ -39,10 +46,12 @@ import {
   buildDungeonDetail,
   buildDungeonHome,
   buildExtractConfirm,
+  buildPuzzleModal,
   buildRunScreen,
   dgId,
   dungeonCaptureNavigation,
   lockedDungeonsView,
+  PUZZLE_ANSWER_FIELD,
   type DungeonScreenOptions,
 } from '../dungeonPresenter';
 import { respondEphemeral, type SessionPayload } from '../ephemeralSession';
@@ -76,7 +85,7 @@ const DUNGEON_KEY_PATTERN = /^[a-z0-9]+(?:_[a-z0-9]+)*$/;
 const ITEM_SLUG_PATTERN = /^[a-z0-9]+(?:[_-][a-z0-9]+)*$/;
 const ITEM_SLUG_MAX_LENGTH = 64;
 
-type DungeonInteraction = ButtonInteraction | StringSelectMenuInteraction;
+type DungeonInteraction = ButtonInteraction | StringSelectMenuInteraction | ModalSubmitInteraction;
 
 /**
  * The run's *snapshotted* Buddy, by the copy the run started with — not
@@ -365,6 +374,31 @@ export async function handleDungeonChoose(ctx: AppContext, i: ButtonInteraction,
       return runScreen(ctx, prov.playerId, await s.run(prov.playerId, parsed.runId), err.userMessage);
     }
   });
+}
+
+// ── puzzles ─────────────────────────────────────────────────────────────────
+
+/**
+ * `dg|pz|<runId>|<step>` — open the answer form. Reads and changes nothing:
+ * the submission is where the run, the player and the step are checked.
+ */
+export async function handleDungeonPuzzleOpen(_ctx: AppContext, i: ButtonInteraction, _prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 0);
+  if (!parsed) return respondEphemeral(i, MALFORMED);
+  await i.showModal(buildPuzzleModal(parsed.runId, parsed.step));
+}
+
+/**
+ * `dg|pza|<runId>|<step>` — the submitted answer, as one `answer` step. The
+ * run screen the form was opened from is repainted in place with the result.
+ */
+export async function handleDungeonPuzzleSubmit(ctx: AppContext, i: ModalSubmitInteraction, prov: Provisioned, args: string[]) {
+  const parsed = parseRunStep(args, 0);
+  if (!parsed) return respondEphemeral(i, MALFORMED);
+  const answer = i.fields.getTextInputValue(PUZZLE_ANSWER_FIELD);
+  // Acknowledge on the message the form came from, so the result replaces that screen.
+  if (i.isFromMessage()) await i.deferUpdate();
+  return run(ctx, i, prov, (s) => step(ctx, s, prov.playerId, parsed.runId, { type: 'answer', answer, expectedStep: parsed.step }));
 }
 
 // ── encounters ──────────────────────────────────────────────────────────────

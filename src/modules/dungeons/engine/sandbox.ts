@@ -15,7 +15,7 @@ import type { CombatEvent } from '../../combat/combatTypes';
 import type { DungeonDefinition } from '../content/dungeonDefinition';
 import { dungeonRngSource } from './seeds';
 import { isDungeonRewardPlanV2 } from './rewards';
-import { startDungeonRun, stepDungeon } from './step';
+import { currentAction, startDungeonRun, stepDungeon } from './step';
 import type {
   DungeonEffect,
   DungeonEffectReceipt,
@@ -78,6 +78,8 @@ export interface DungeonSandboxStep {
 }
 
 export interface DungeonSandbox {
+  /** What is being played. Author-facing: it includes a puzzle's accepted answers. */
+  readonly definition: DungeonDefinition;
   readonly state: DungeonRunState;
   readonly view: DungeonRunCoreView;
   /** Every effect any step has produced, in order. None was carried out. */
@@ -145,6 +147,7 @@ export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSan
   combat.push(...started.combat);
 
   return {
+    definition: options.definition,
     get state() {
       return state;
     },
@@ -179,6 +182,8 @@ export function createDungeonSandbox(options: DungeonSandboxOptions): DungeonSan
  * Play a run to its end by always taking the first thing on offer: advance an
  * action, else the first open connection. A convenience for tests and for
  * checking that a dungeon can be finished at all — not a balance simulation.
+ * A puzzle is answered with its first accepted answer, read from the
+ * definition the author is playing.
  *
  * `choose` overrides the default at any point; returning null accepts it.
  */
@@ -203,6 +208,11 @@ export async function autoPlayDungeonSandbox(
       } else if (view.phase === 'action' && view.action?.encounter) {
         const e = view.action.encounter;
         input = e.mode === 'direct' ? { type: 'rescue' } : e.selectedItem ? { type: 'capture' } : e.items[0] ? { type: 'select_item', item: e.items[0].item } : { type: 'leave_encounter' };
+      } else if (view.phase === 'action' && view.action?.puzzle) {
+        const at = currentAction(sandbox.state, sandbox.definition);
+        const answer = at?.action.type === 'text_puzzle' ? at.action.answers.find((a) => a.trim() !== '') : undefined;
+        if (answer === undefined) return { steps, view, stoppedBy: 'stuck' };
+        input = { type: 'answer', answer };
       } else if (view.phase === 'action') input = { type: 'advance' };
       else {
         // Prefer a way on over a way back, so a cyclic map is walked forward.

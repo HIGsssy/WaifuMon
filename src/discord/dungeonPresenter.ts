@@ -26,6 +26,8 @@
  *   dg|res|<runId>|<step>           carry out a direct rescue
  *   dg|cl|<runId>|<step>            leave the offered WaifuMon
  *   dg|cu|<runId>|<step>            move on from a WaifuMon who can no longer be had (never spends or grants)
+ *   dg|pz|<runId>|<step>            open the answer form for the pending puzzle (changes nothing)
+ *   dg|pza|<runId>|<step>           the answer form's submission (a modal; the answer travels as its field)
  *   dg|exq|<runId>                  extraction confirmation
  *   dg|ex|<runId>|<step>            extract
  *   dg|abq|<runId>                  abandon confirmation
@@ -36,9 +38,22 @@
  * button changes nothing. Old step-less abandon buttons reopen confirmation.
  * A charm is never named in a button: Capture uses the selection stored on
  * the run, so a button cannot spend an item the player did not choose.
+ * A puzzle's answers never appear in an id, a label or an embed: the screen
+ * gets only the prompt and the attempt counts.
  */
-import { ActionRowBuilder, type AttachmentBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, StringSelectMenuBuilder, embedLength } from 'discord.js';
-import { BASIS_POINTS, type DungeonActionType } from '../modules/dungeons/content/dungeonDefinition';
+import {
+  ActionRowBuilder,
+  type AttachmentBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  EmbedBuilder,
+  ModalBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  embedLength,
+} from 'discord.js';
+import { BASIS_POINTS, DUNGEON_PUZZLE_LIMITS, type DungeonActionType } from '../modules/dungeons/content/dungeonDefinition';
 import type { DungeonDailyAllowance } from '../modules/dungeons/dungeonAllowanceService';
 import { fighterModifiers, type DungeonFighter } from '../modules/dungeons/dungeonFighter';
 import type {
@@ -57,6 +72,7 @@ import type { DungeonEncounterUnavailableReason, DungeonRecentEntry, DungeonWave
 import type { DungeonEncounterView } from '../modules/dungeons/engine/encounters';
 import { settleCurrency } from '../modules/dungeons/engine/rewards';
 import type { DungeonEventChoiceView, DungeonEventView } from '../modules/dungeons/engine/events';
+import type { DungeonPuzzleView } from '../modules/dungeons/engine/puzzles';
 import type { DungeonActionView, DungeonConnectionView } from '../modules/dungeons/engine/view';
 import { formatCombatBonus, type CombatBonus } from '../modules/equipment/combatBonuses';
 import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../modules/equipment/vocabulary';
@@ -85,6 +101,15 @@ export const CAPTURE_ITEM_REQUIRED_NOTICE = 'Choose a capture charm first.';
 export const CAPTURE_ITEM_UNAVAILABLE_NOTICE = 'That charm can’t be used on her right now. Nothing was spent — choose another.';
 export const ENCOUNTER_NOT_OFFERED_NOTICE = 'She isn’t waiting for you any more — here’s where you are.';
 export const ENCOUNTER_STILL_HERE_NOTICE = 'She’s still here after all — here’s what you can do.';
+export const ANSWER_REQUIRED_NOTICE = 'This puzzle needs an answer — press Enter Answer.';
+export const PUZZLE_SOLVED_DEFAULT = 'That’s right.';
+export const PUZZLE_INCORRECT_DEFAULT = 'That isn’t right.';
+export const PUZZLE_EXHAUSTED_DEFAULT = 'You’ve run out of attempts.';
+/** Discord: a modal title and a text input label are at most 45 characters. */
+export const PUZZLE_MODAL_TITLE = 'Enter Answer';
+export const PUZZLE_INPUT_LABEL = 'Your answer';
+/** The answer form's one text input. */
+export const PUZZLE_ANSWER_FIELD = 'answer';
 /** The promise an encounter screen makes about charms. The wording is deliberate: do not soften it. */
 export const CHARM_SPENT_PER_ATTEMPT = 'Each attempt uses one charm, whether or not she is caught.';
 export const NO_USABLE_CHARM = 'You have no capture charm that works on her here.';
@@ -126,6 +151,9 @@ export const dgId = {
   encounterGone: (runId: number, step: number) => buildCustomId('dg', 'cu', String(runId), String(step)),
   keepDuplicate: (runId: number, step: number, waifuId: number) => buildCustomId('dg', 'dk', String(runId), String(step), String(waifuId)),
   convertDuplicate: (runId: number, step: number, waifuId: number) => buildCustomId('dg', 'dc', String(runId), String(step), String(waifuId)),
+  /** Opens the answer form. Names only the run and the step: never anything about the answer. */
+  puzzle: (runId: number, step: number) => buildCustomId('dg', 'pz', String(runId), String(step)),
+  puzzleSubmit: (runId: number, step: number) => buildCustomId('dg', 'pza', String(runId), String(step)),
 };
 
 const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
@@ -139,6 +167,7 @@ const ACTION_HEADING: Readonly<Record<DungeonActionType, string>> = {
   event: 'Event',
   wild_encounter: 'A wild WaifuMon',
   rescue: 'Rescue',
+  text_puzzle: 'Puzzle',
 };
 const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   combat: '⚔️',
@@ -151,6 +180,7 @@ const ACTION_EMOJI: Readonly<Record<DungeonActionType, string>> = {
   event: '❔',
   wild_encounter: '🌸',
   rescue: '🔓',
+  text_puzzle: '🧩',
 };
 /** The button that carries out a pending action, when its author wrote no label. */
 const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
@@ -166,6 +196,8 @@ const ACTION_BUTTON: Readonly<Record<DungeonActionType, string>> = {
   // Never drawn: an offered encounter has its own controls (`encounterRows`).
   wild_encounter: 'Continue',
   rescue: 'Continue',
+  // Never drawn: a puzzle's button is Enter Answer (`actionButtons`).
+  text_puzzle: 'Enter Answer',
 };
 
 /** Discord: at most 25 options in a select menu. */
@@ -668,6 +700,9 @@ function recentBlock(view: DungeonRunView, opts: DungeonScreenOptions): { lines:
       case 'event_nothing':
         if (entry.text) lines.push(`_${truncate(entry.text, 200)}_`);
         break;
+      case 'puzzle':
+        fields.push(puzzleResultField(entry));
+        break;
       case 'encounter': {
         const told = view.latestEncounters?.find((e) => e.roomId === entry.roomId && e.actionId === entry.actionId);
         // A pool that drew no one is the author's quiet line, as an empty event pool is.
@@ -912,6 +947,54 @@ function encounterResultField(
   };
 }
 
+// ── puzzles ─────────────────────────────────────────────────────────────────
+
+function attemptsLeftLine(remaining: number): string {
+  return `**${remaining}** ${remaining === 1 ? 'attempt' : 'attempts'} left.`;
+}
+
+/** What one submitted answer came to, in the author's words. Never the answer itself. */
+function puzzleResultField(entry: Extract<DungeonRecentEntry, { kind: 'puzzle' }>): Field {
+  switch (entry.result) {
+    case 'solved':
+      return { name: '✅ Solved', value: truncate(entry.text || PUZZLE_SOLVED_DEFAULT, 1024) };
+    case 'exhausted':
+      return { name: '🔒 Out of attempts', value: truncate(entry.text || PUZZLE_EXHAUSTED_DEFAULT, 1024) };
+    case 'incorrect': {
+      const lines = [entry.text || PUZZLE_INCORRECT_DEFAULT];
+      if (entry.maxAttempts !== null) lines.push(attemptsLeftLine(Math.max(0, entry.maxAttempts - entry.attempts)));
+      return { name: '❌ Incorrect', value: truncate(lines.join('\n'), 1024) };
+    }
+  }
+}
+
+function puzzleBrief(heading: string, puzzle: DungeonPuzzleView): string {
+  return [
+    heading,
+    truncate(puzzle.prompt, 1500),
+    puzzle.attemptsRemaining !== null ? attemptsLeftLine(puzzle.attemptsRemaining) : null,
+  ]
+    .filter((l): l is string => l != null && l !== '')
+    .join('\n');
+}
+
+/** The answer form. One short text field; what was typed is checked on the server and nowhere else. */
+export function buildPuzzleModal(runId: number, step: number): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(dgId.puzzleSubmit(runId, step))
+    .setTitle(PUZZLE_MODAL_TITLE)
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(PUZZLE_ANSWER_FIELD)
+          .setLabel(PUZZLE_INPUT_LABEL)
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(DUNGEON_PUZZLE_LIMITS.answerLength),
+      ),
+    );
+}
+
 function isFight(action: DungeonActionView): boolean {
   return action.type === 'combat' || action.type === 'boss';
 }
@@ -931,6 +1014,7 @@ function actionBrief(action: DungeonActionView): string {
       .filter((l): l is string => l != null)
       .join('\n');
   }
+  if (action.puzzle) return puzzleBrief(heading, action.puzzle);
   switch (action.type) {
     case 'rest':
       return `${heading}\nA quiet corner. Resting restores **${percent(action.healBasisPoints ?? 0)}** of max HP.`;
@@ -1002,6 +1086,11 @@ function eventButtons(view: DungeonRunView, event: DungeonEventView): ButtonBuil
 
 function actionButtons(view: DungeonRunView, action: DungeonActionView): ButtonBuilder[] {
   if (action.event) return eventButtons(view, action.event);
+  if (action.type === 'text_puzzle') {
+    const buttons = [button(dgId.puzzle(view.id, view.step), PUZZLE_MODAL_TITLE, ButtonStyle.Primary, ACTION_EMOJI.text_puzzle)];
+    if (action.optional) buttons.push(button(dgId.decline(view.id, view.step), 'Skip', ButtonStyle.Secondary));
+    return buttons;
+  }
   const fight = isFight(action);
   const fallback = fight && (action.wave?.index ?? 0) > 0 ? 'Next wave' : ACTION_BUTTON[action.type];
   const buttons = [
@@ -1229,6 +1318,8 @@ export function actionNotice(result: Pick<DungeonActionResult, 'status' | 'refus
       return ENCOUNTER_NOT_OFFERED_NOTICE;
     case 'encounter_available':
       return ENCOUNTER_STILL_HERE_NOTICE;
+    case 'answer_required':
+      return ANSWER_REQUIRED_NOTICE;
     default:
       return STALE_NOTICE;
   }

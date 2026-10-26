@@ -15,6 +15,7 @@ export const ACTION_TYPES = [
   'leave',
   'wild_encounter',
   'rescue',
+  'text_puzzle',
 ] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 /** `event` is not an `ActionType`: it is attached with what it presents, never created bare. */
@@ -29,6 +30,7 @@ export const ACTION_OUTCOMES: Record<ActionType | 'event', string[]> = {
   event: ['resolved', 'nothing'],
   wild_encounter: ['captured', 'escaped', 'left', 'nothing', 'unavailable'],
   rescue: ['rescued', 'escaped', 'left', 'nothing', 'unavailable'],
+  text_puzzle: ['solved', 'exhausted'],
 };
 export function actionId(actions: DungeonAction[], uuid = () => crypto.randomUUID()) {
   const ids = new Set(actions.map((a) => a.id));
@@ -79,6 +81,19 @@ export function createAction(
       return { ...base, flag, scope: 'run', value: true };
     case 'leave':
       return base;
+    case 'text_puzzle':
+      // One blank answer to fill in: publishing asks for it, a draft may keep it blank.
+      return {
+        ...base,
+        prompt: '',
+        answers: [''],
+        caseSensitive: false,
+        trimWhitespace: true,
+        maxAttempts: null,
+        solvedText: '',
+        incorrectText: '',
+        exhaustedText: '',
+      };
   }
 }
 export function duplicateAction(actions: DungeonAction[], id: string) {

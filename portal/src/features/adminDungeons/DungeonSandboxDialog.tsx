@@ -53,6 +53,58 @@ const ENDINGS: Record<string, string> = {
   abandoned: 'The run was abandoned.',
 };
 
+/** A puzzle as a player meets it: the prompt, a box to type in, and the attempts left. */
+function SandboxPuzzle({
+  prompt,
+  remaining,
+  optional,
+  busy,
+  onAnswer,
+  onSkip,
+}: {
+  prompt: string;
+  remaining: number | null;
+  optional: boolean;
+  busy: boolean;
+  onAnswer: (answer: string) => void;
+  onSkip: () => void;
+}) {
+  const [answer, setAnswer] = useState('');
+  return (
+    <form
+      className="space-y-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        onAnswer(answer);
+      }}
+    >
+      <p className="text-sm whitespace-pre-wrap">{prompt || 'No prompt yet.'}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          aria-label="Sandbox puzzle answer"
+          className="max-w-xs"
+          maxLength={100}
+          value={answer}
+          onChange={(e) => setAnswer(e.target.value)}
+        />
+        <Button size="sm" type="submit" disabled={busy || answer === ''}>
+          Enter answer
+        </Button>
+        {optional && (
+          <Button size="sm" variant="outline" type="button" disabled={busy} onClick={onSkip}>
+            Skip it
+          </Button>
+        )}
+        {remaining !== null && (
+          <span className="text-xs text-ink-muted">
+            {remaining} {remaining === 1 ? 'attempt' : 'attempts'} left
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
 interface Settings {
   seed: number;
   currentSp: number;
@@ -168,7 +220,7 @@ export function DungeonSandboxDialog({
     let played = result;
     for (let n = 0; n < SKIP_LIMIT && played; n++) {
       const view = played.view;
-      if (view.phase === 'ended' || view.action?.event || view.action?.encounter) break;
+      if (view.phase === 'ended' || view.action?.event || view.action?.encounter || view.action?.puzzle) break;
       let input: DungeonSandboxInput | null = null;
       if (view.phase === 'action') input = { type: 'advance' };
       else {
@@ -186,6 +238,7 @@ export function DungeonSandboxDialog({
   const view = result?.view;
   const event = view?.action?.event ?? null;
   const encounter = view?.action?.encounter ?? null;
+  const puzzle = view?.action?.puzzle ?? null;
   const used = new Map<string, number>();
   let paid = 0;
   for (const effect of result?.effects ?? []) {
@@ -693,7 +746,26 @@ export function DungeonSandboxDialog({
                     ; {d.acquisitions} acquisitions from this dungeon.
                   </p>
                 ))}
-              {view.phase === 'action' && view.action && !event && !encounter && (
+              {(view.recent ?? [])
+                .filter((e) => e.kind === 'puzzle')
+                .map((e, n) => (
+                  <p className="text-sm" key={`puzzle-${n}`}>
+                    {e.result === 'solved' ? '✅ Solved' : e.result === 'exhausted' ? '🔒 Out of attempts' : '❌ Incorrect'}
+                    {typeof e.text === 'string' && e.text ? ` — ${e.text}` : ''}
+                  </p>
+                ))}
+              {view.phase === 'action' && view.action && puzzle && (
+                <SandboxPuzzle
+                  key={view.step}
+                  prompt={puzzle.prompt}
+                  remaining={puzzle.attemptsRemaining}
+                  optional={view.action.optional}
+                  busy={busy}
+                  onAnswer={(answer) => press({ type: 'answer', answer })}
+                  onSkip={() => press({ type: 'decline' })}
+                />
+              )}
+              {view.phase === 'action' && view.action && !event && !encounter && !puzzle && (
                 <div className="flex flex-wrap items-center gap-2">
                   {view.action.wave && (
                     <span className="text-sm">

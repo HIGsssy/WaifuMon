@@ -10,6 +10,7 @@ import {
   Crown,
   Gift,
   LogOut,
+  Puzzle,
   ScrollText,
   ShieldAlert,
   Swords,
@@ -47,6 +48,7 @@ export const ACTIVITIES: Record<ActionType, { title: string; hint: string; icon:
   leave: { title: 'Leave through a path', hint: 'Send the player onward', icon: LogOut },
   wild_encounter: { title: 'Wild Encounter', hint: 'Offer a WaifuMon to capture', icon: Bookmark },
   rescue: { title: 'Rescue', hint: 'Capture rescue or authorized direct grant', icon: Bookmark },
+  text_puzzle: { title: 'Text Input Puzzle', hint: 'Players type a code, password or answer', icon: Puzzle },
 };
 /** Not in `ACTIVITIES`: an event is attached through the room's Event control, which also picks what it presents. */
 export const EVENT_ACTIVITY = {
@@ -187,6 +189,13 @@ export function activitySummary(
       const connection = definition.connections.find((c) => c.id === action.connectionId);
       return connection ? `Go to ${roomNameOf(definition, connection.to)}` : 'Finish this room';
     }
+    case 'text_puzzle': {
+      // Never the answers themselves: a collapsed card is read over shoulders too.
+      const n = (action.answers ?? []).filter((a) => a.trim() !== '').length;
+      const tries = action.maxAttempts == null ? 'unlimited attempts' : `${action.maxAttempts} ${action.maxAttempts === 1 ? 'attempt' : 'attempts'}`;
+      const prompt = action.prompt ? `“${action.prompt.length > 60 ? `${action.prompt.slice(0, 59)}…` : action.prompt}”` : 'No prompt yet';
+      return `${prompt} — ${n} accepted ${n === 1 ? 'answer' : 'answers'}, ${tries}`;
+    }
     case 'event': {
       const source = eventSourceOf(action, definition);
       if (source.kind === 'event') {
@@ -210,7 +219,8 @@ export function activityChips(action: DungeonAction): string[] {
   if (action.optional) chips.push('Can be skipped');
   if (action.when) chips.push('Conditional');
   if (action.next || Object.keys(action.outcomes ?? {}).length) chips.push('Custom flow');
-  if (action.label) chips.push('Custom button text');
+  if (action.label && action.type !== 'text_puzzle') chips.push('Custom button text');
+  if (action.type === 'text_puzzle' && action.solvedFlag) chips.push('Remembers when solved');
   if (action.advance === 'auto') chips.push('Automatic waves');
   if (action.waves?.some((w) => 'pool' in w.enemy)) chips.push('Random enemies');
   return chips;
@@ -769,6 +779,22 @@ export function friendlyIssue(
     case 'flag_unused':
       title = `“${flagNameOf(definition, quoted(issue.message))}” is remembered but never used.`;
       help = 'Use it in a rule, or ignore this if it is for later.';
+      break;
+    case 'puzzle_prompt_empty':
+      title = `${R}: the puzzle has no prompt.`;
+      help = 'Write the question or instruction players answer.';
+      break;
+    case 'puzzle_no_answers':
+      title = `${R}: the puzzle has no accepted answer, so it can never be solved.`;
+      help = 'Add at least one accepted answer.';
+      break;
+    case 'puzzle_answer_empty':
+      title = `${R}: one of the puzzle’s accepted answers is blank.`;
+      help = 'Fill it in or remove it.';
+      break;
+    case 'puzzle_answer_duplicate':
+      title = `${R}: two of the puzzle’s accepted answers are the same.`;
+      help = 'Answers are compared ignoring surrounding spaces (and capitals, unless the puzzle is case-sensitive). Remove the repeat.';
       break;
     default:
       title = `${room ? `${R}: ` : ''}${humanise(issue.message, definition)}${/[.!?]$/.test(issue.message) ? '' : '.'}`;

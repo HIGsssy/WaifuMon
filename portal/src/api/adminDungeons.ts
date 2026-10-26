@@ -152,6 +152,17 @@ export interface DungeonAction {
   placement?: SpritePlacement;
   mirror?: boolean;
   results?: Record<string, { text?: string; flags?: Array<{ flag: string; value: boolean }> }>;
+  /** A `text_puzzle`: what the player reads, and the author-only answers it accepts. */
+  prompt?: string;
+  answers?: string[];
+  caseSensitive?: boolean;
+  trimWhitespace?: boolean;
+  /** Null: unlimited attempts. */
+  maxAttempts?: number | null;
+  solvedText?: string;
+  incorrectText?: string;
+  exhaustedText?: string;
+  solvedFlag?: string;
   [field: string]: unknown;
 }
 export interface DungeonRoom {
@@ -538,7 +549,8 @@ export type DungeonSandboxInput =
   | { type: 'advance' | 'decline' | 'extract' | 'abandon' | 'capture' | 'rescue' | 'leave_encounter' | 'dismiss_encounter' }
   | { type: 'select_item'; item: string }
   | { type: 'move'; connectionId: string }
-  | { type: 'choose'; choiceId: string };
+  | { type: 'choose'; choiceId: string }
+  | { type: 'answer'; answer: string };
 export interface DungeonSandboxEventView {
   eventId: string;
   title: string;
@@ -562,6 +574,7 @@ export interface DungeonSandboxView {
     wave: { index: number; count: number; enemy: { name?: string } } | null;
     event?: DungeonSandboxEventView | null;
     encounter?: DungeonSandboxEncounter | null;
+    puzzle?: { prompt: string; attempts: number; maxAttempts: number | null; attemptsRemaining: number | null } | null;
   } | null;
   connections: Array<{
     id: string;
