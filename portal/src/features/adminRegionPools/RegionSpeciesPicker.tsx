@@ -12,17 +12,19 @@ import { useState } from 'react';
 
 import type { RegionPoolSpecies, RegionRef } from '@/api/adminRegionPools';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 import { RegionSpeciesThumb } from './regionPoolParts';
 
-type Availability = 'all' | 'available' | 'restricted' | 'elsewhere' | 'unpooled';
+type Availability = 'all' | 'available' | 'restricted' | 'dungeon' | 'elsewhere' | 'unpooled';
 
 const AVAILABILITY_LABELS: Record<Availability, string> = {
   all: 'All',
   available: 'Huntable and enabled',
   restricted: 'Disabled, EX or not in content',
+  dungeon: 'Dungeon-exclusive (not selectable)',
   elsewhere: 'Published in another region',
   unpooled: 'In no published pool',
 };
@@ -31,7 +33,8 @@ const restricted = (s: RegionPoolSpecies) => !s.enabled || !s.inContent || !s.hu
 
 function speciesStatusText(s: RegionPoolSpecies): string {
   const parts: string[] = [];
-  if (s.dungeonExclusive) parts.push('Dungeon-exclusive — never in a region pool');
+  if (s.dungeonExclusive)
+    parts.push('Dungeon-exclusive — never in a region pool; assign her in the Dungeon Editor');
   if (!s.inContent) parts.push('Not in loaded content');
   else if (!s.enabled) parts.push('Disabled');
   if (!s.huntable) parts.push('EX — the hunt never rolls her rarity');
@@ -69,6 +72,7 @@ export function RegionSpeciesPicker({
       (availability === 'all' ||
         (availability === 'available' && !restricted(s) && !s.dungeonExclusive) ||
         (availability === 'restricted' && (restricted(s) || s.dungeonExclusive)) ||
+        (availability === 'dungeon' && s.dungeonExclusive) ||
         (availability === 'elsewhere' && elsewhere(s).length > 0) ||
         (availability === 'unpooled' && s.publishedIn.length === 0)),
   );
@@ -144,6 +148,11 @@ export function RegionSpeciesPicker({
                 <p className="flex flex-wrap items-center gap-1 text-sm font-medium">
                   <RarityBadge rarity={s.rarity} />
                   <span className="break-words">{s.name}</span>
+                  {s.dungeonExclusive && (
+                    <Badge variant="outline" data-testid={`region-species-dungeon-${s.slug}`}>
+                      Dungeon-exclusive
+                    </Badge>
+                  )}
                 </p>
                 <p className="font-mono text-xs text-ink-subtle">{s.slug}</p>
                 <p className="text-xs text-ink-muted">

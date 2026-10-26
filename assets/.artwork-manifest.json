@@ -8545,6 +8545,360 @@
         }
       }
     },
+    "waifumon/boiler_imp/level_10": {
+      "source": "waifumon/boiler_imp/level_10.png",
+      "sourceSha256": "6999bb4d2b14ec4506b0dda953e3ea7fafa45337361439a177a88eb9bf9bd325",
+      "sourceBytes": 2683748,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/boiler_imp/level_10.webp",
+          "bytes": 15982,
+          "sha256": "bbc420926a37127dd9e44cf2466d8d93c0b302b21a40efc26e041f16ba7edadd",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/boiler_imp/level_10.webp",
+          "bytes": 45600,
+          "sha256": "eb24c4173fa6ba401d0866e1ce96c10adbea3dfd8df148db653da54f82bac21d",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/boiler_imp/level_10.webp",
+          "bytes": 127540,
+          "sha256": "717094b4d6ebc0504eacdf33436a590e096fadb016e8e8fc78f103b08ce2007b",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/boiler_imp/level_10.webp",
+          "bytes": 281056,
+          "sha256": "e2578eb3ae2045b16977cd2f915edb15f8d5ee32a22fa190a3ea9a4e9d04c1b9",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/boiler_imp/level_20": {
+      "source": "waifumon/boiler_imp/level_20.png",
+      "sourceSha256": "5ad9a83f433ac7563e163d3286a7e27b82903b435b0dd06c956a839819148f89",
+      "sourceBytes": 2717618,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/boiler_imp/level_20.webp",
+          "bytes": 17758,
+          "sha256": "3075d469cc2032d4c579813de66a6066bd9eddc03873d1830689f9be24817a03",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/boiler_imp/level_20.webp",
+          "bytes": 50650,
+          "sha256": "0f876687bdbb33902193fe65c884ba864ffd738a00f175b12e5fd1cfa4daa622",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/boiler_imp/level_20.webp",
+          "bytes": 131082,
+          "sha256": "db9029082f541be1810df8ae607dd657ce499ba816766692156ebf2cc76f91d4",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/boiler_imp/level_20.webp",
+          "bytes": 288946,
+          "sha256": "0fa16ebd16862859e319e56e7e167f2d08e8ca994fe52dac3bba8df40a58544b",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/boiler_imp/level_30": {
+      "source": "waifumon/boiler_imp/level_30.png",
+      "sourceSha256": "c4b1aa5bed01ed3545ccac913e0c9a9d6720ff29411d2915178b67a7d2fe7089",
+      "sourceBytes": 2650527,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/boiler_imp/level_30.webp",
+          "bytes": 15416,
+          "sha256": "f03b08c7b92f9281ec3684bb5cd9a1715c6b0defb04c90f6bd1abafb8a4313d5",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/boiler_imp/level_30.webp",
+          "bytes": 44134,
+          "sha256": "5e635daf24a86718c3b9246fb1a68b39e999b492e9cbd498945f58e35860772d",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/boiler_imp/level_30.webp",
+          "bytes": 119538,
+          "sha256": "0294b8a6907fc324ce6ae19b040548244a29172098d393180db203a534199d12",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/boiler_imp/level_30.webp",
+          "bytes": 277810,
+          "sha256": "6b91024df89fba15ed0d2760b0fb8c7e4aaab44317a2b90e7d99a67b83f786ce",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/boiler_imp/level_40": {
+      "source": "waifumon/boiler_imp/level_40.png",
+      "sourceSha256": "5774981ad2c7cf5a3b28fda00c476eabb3cac59c49b5d6c13021618ec5f7dfc5",
+      "sourceBytes": 2638858,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/boiler_imp/level_40.webp",
+          "bytes": 15836,
+          "sha256": "01b4381800fa2ca02d59716fa6a4323c4c173b85a1dcb760df83db6fb6a3f187",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/boiler_imp/level_40.webp",
+          "bytes": 45892,
+          "sha256": "2ddc3f08da7efd12f90d961a2323ddcdc0cf549bb374bcebaf5760d0f1c499a1",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/boiler_imp/level_40.webp",
+          "bytes": 122332,
+          "sha256": "8750fa24ba8beb7ecd3de8a99fa3832a13890995d7be7c18982a513d16351907",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/boiler_imp/level_40.webp",
+          "bytes": 280766,
+          "sha256": "deb073c4e73dcd45f3a3dc712383d599bc91231518561795cac6bd1ace4ea0b5",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/boiler_imp/level_50": {
+      "source": "waifumon/boiler_imp/level_50.png",
+      "sourceSha256": "d18d0eabf01201f0a8c3893b8b334e121ccc4bc2b9d6373410dc318d02fa2a0e",
+      "sourceBytes": 2608255,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/boiler_imp/level_50.webp",
+          "bytes": 15102,
+          "sha256": "96ca050f45787efbc4b5fea990a28f5694ec1f13bae0066437e08f7863fb85f8",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/boiler_imp/level_50.webp",
+          "bytes": 41974,
+          "sha256": "a9864726c3040643d327bd3008fed4ac9fdfb737b71e98b91f94554338556beb",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/boiler_imp/level_50.webp",
+          "bytes": 112236,
+          "sha256": "c7715c27629c10673c8bc531d08c314d6ea4a0318ed0e9172628bb73f346c3de",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/boiler_imp/level_50.webp",
+          "bytes": 253232,
+          "sha256": "4538214eaba1fab6ba56f626a22191258a0d1cc1b0343608d69ac445e6b7db2e",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/boiler_imp/standard": {
+      "source": "waifumon/boiler_imp/standard.png",
+      "sourceSha256": "d45a6014805dc6435ece35120ae296634bff058b33fa3fec718c95b9e1a01db2",
+      "sourceBytes": 2585209,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/boiler_imp/standard.webp",
+          "bytes": 16202,
+          "sha256": "e6e6d242818d9eff5d2906219ce3ea4c1bf092635b431272d706066240560ba1",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/boiler_imp/standard.webp",
+          "bytes": 45980,
+          "sha256": "f9be6e29bed975805c607f7142643695b674e63955f2f347a5cfafc363aacbd5",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/boiler_imp/standard.webp",
+          "bytes": 122204,
+          "sha256": "138351d6036a0eb3165b247879c1ea95b5f8f6f06b3a4c38b4a58f6b99da3db2",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/boiler_imp/standard.webp",
+          "bytes": 274366,
+          "sha256": "959c959e120817797fac3ba5afadfc520903650d83240b3a876d28917c3062a9",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/border_jackal/level_10": {
       "source": "waifumon/border_jackal/level_10.png",
       "sourceSha256": "b4409a3223fb3f83afd2a26e65692e23b36d19316bf3ffb4668a1d796398caff",

@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { SORT_OPTIONS, type SortKey } from '@/content/species';
+import { EXCLUSIVITY_LABEL, SORT_OPTIONS, type SortKey } from '@/content/species';
 import { titleCase } from '@/lib/format';
 import { RARITY_ORDER, rarityStyle } from '@/lib/rarity';
 import { ZONES, zoneLabel } from '@/lib/zone';
@@ -111,6 +111,24 @@ export function CollectionToolbar({
       ],
     },
     {
+      label: 'Exclusivity',
+      options: [
+        {
+          value: 'all',
+          label: 'Any',
+          active: params.exclusive === null,
+          onSelect: () => setFilter({ exclusive: null }),
+        },
+        {
+          value: 'dungeon',
+          label: EXCLUSIVITY_LABEL.dungeon,
+          active: params.exclusive === 'dungeon',
+          onSelect: () =>
+            setFilter({ exclusive: params.exclusive === 'dungeon' ? null : 'dungeon' }),
+        },
+      ],
+    },
+    {
       label: 'Show',
       options: OWNERSHIP_OPTIONS.map((option) => ({
         value: option.value,
@@ -167,6 +185,15 @@ export function CollectionToolbar({
             key: 'zone',
             label: `Zone: ${zoneLabel(params.zone) ?? 'Unknown'}`,
             onRemove: () => setFilter({ zone: null }),
+          },
+        ]
+      : []),
+    ...(params.exclusive
+      ? [
+          {
+            key: 'exclusive',
+            label: EXCLUSIVITY_LABEL[params.exclusive],
+            onRemove: () => setFilter({ exclusive: null }),
           },
         ]
       : []),

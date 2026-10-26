@@ -8,6 +8,7 @@
  */
 import type { CollectionEntryView, ContentSpecies, Race } from '@/api/types';
 import { byRarityDesc } from '@/lib/rarity';
+import { isDungeonExclusive } from '@/lib/speciesTags';
 import { zoneFor } from '@/lib/zone';
 
 /**
@@ -75,6 +76,11 @@ export function sortEntries<T extends CollectionEntryView>(entries: T[], sort: S
   }
 }
 
+/** The Exclusivity filter's values; the classification itself is `@/lib/speciesTags`'. */
+export type Exclusivity = 'dungeon';
+
+export const EXCLUSIVITY_LABEL: Record<Exclusivity, string> = { dungeon: 'Dungeon Exclusive' };
+
 export interface CollectionFilters {
   rarity: CollectionEntryView['species']['rarity'] | null;
   search: string;
@@ -83,6 +89,8 @@ export interface CollectionFilters {
   ownership: 'all' | 'favorites' | 'buddy';
   /** A canonical zone tag (see `@/lib/zone`), or null for every zone. */
   zone: string | null;
+  /** `'dungeon'` keeps only dungeon-exclusive species; null keeps every species. */
+  exclusive?: Exclusivity | null | undefined;
 }
 
 /**
@@ -105,6 +113,7 @@ export function filterEntries<T extends CollectionEntryView>(
     if (filters.race && entry.species.race !== filters.race) return false;
     if (filters.affinity && entry.species.affinity !== filters.affinity) return false;
     if (filters.zone && zoneFor(entry.species)?.tag !== filters.zone) return false;
+    if (filters.exclusive === 'dungeon' && !isDungeonExclusive(entry.species)) return false;
     if (filters.ownership === 'favorites' && !entry.waifu.isFavorite) return false;
     if (filters.ownership === 'buddy' && entry.waifu.id !== buddyWaifuId) return false;
     return true;

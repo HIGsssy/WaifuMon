@@ -21,12 +21,14 @@ export interface PlayerFacingTag {
 /**
  * Tags shown to players, in display order.
  *
- * `region_exclusive` is the one classification with a player-visible
- * consequence: the species is only met through its own region's encounter
- * pool, never the hunt's global fallback.
+ * `region_exclusive` and `dungeon_exclusive` are the classifications with a
+ * player-visible consequence: a region-exclusive species is only met through
+ * its own region's encounter pool, never the hunt's global fallback; a
+ * dungeon-exclusive one is never met in the hunt at all, only in dungeons.
  */
 export const PLAYER_FACING_TAGS: readonly PlayerFacingTag[] = [
   { tag: 'region_exclusive', label: 'Zone Exclusive' },
+  { tag: 'dungeon_exclusive', label: 'Dungeon Exclusive' },
 ];
 
 /**
@@ -54,6 +56,17 @@ export function playerFacingTags(species: {
 }): PlayerFacingTag[] {
   const tags = new Set(Array.isArray(species.tags) ? species.tags : []);
   return PLAYER_FACING_TAGS.filter((entry) => tags.has(entry.tag));
+}
+
+/**
+ * Whether a species is dungeon-exclusive, read from its **classification tag**
+ * — never from where a particular copy was acquired. Tolerates a missing or
+ * malformed `tags` array like {@link playerFacingTags}.
+ */
+export function isDungeonExclusive(species: {
+  tags?: readonly unknown[] | null | undefined;
+}): boolean {
+  return Array.isArray(species.tags) && species.tags.includes('dungeon_exclusive');
 }
 
 /** True when a tag has been classified as zone, player-facing or internal. */

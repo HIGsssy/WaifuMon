@@ -52,6 +52,7 @@ import { COLLECTION_PAGE_SIZE } from '@/api/collection';
 import { useBuddy, useEntireCollection } from '@/api/hooks/useCollection';
 import { useEntirePublicCollection } from '@/api/hooks/usePublicCollection';
 import { usePlatformCapabilities } from '@/api/hooks/useCapabilities';
+import { useSpeciesDiscovery } from '@/api/hooks/useSpeciesDiscovery';
 import { useCurrentSession, useSession } from '@/auth/useSession';
 import type { CollectionEntryView, Race } from '@/api/types';
 import type { CollectionMode } from '@/components/waifumon/WaifumonCard';
@@ -122,11 +123,19 @@ export function CollectionPage({
 
   const entries = useMemo<CollectionEntryView[]>(() => collection.data ?? [], [collection.data]);
 
+  // The viewer's dex, consulted in public mode only — the same fail-closed
+  // overlay each tile reads, so it adds no request. A species the viewer has
+  // not discovered has her tags withheld on the tile, so the Dungeon Exclusive
+  // filter must not reveal them either: it never matches a locked copy.
+  const viewerDex = useSpeciesDiscovery(session.playerId, { enabled: isPublic });
+
   const filtered = useMemo(
     () =>
       sortEntries(
         filterEntries(
-          entries,
+          isPublic && params.exclusive
+            ? entries.filter((entry) => viewerDex.isDiscovered(entry.species.slug) === true)
+            : entries,
           {
             rarity: params.rarity,
             search: params.search,
@@ -134,6 +143,7 @@ export function CollectionPage({
             affinity: params.affinity,
             ownership: params.ownership,
             zone: params.zone,
+            exclusive: params.exclusive,
           },
           // Which copy the "Buddy" filter means: the viewer's own in self mode,
           // the owner's in public mode. Never crossed.
@@ -151,9 +161,11 @@ export function CollectionPage({
       params.affinity,
       params.ownership,
       params.zone,
+      params.exclusive,
       params.sort,
       buddy.data,
       isPublic,
+      viewerDex,
     ],
   );
 

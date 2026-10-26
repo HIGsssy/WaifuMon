@@ -23,9 +23,10 @@ import {
   type FilterGroup,
 } from '@/components/waifumon/FilterToolbar';
 import { Skeleton } from '@/components/ui/skeleton';
-import { distinctSpeciesValues } from '@/content/species';
+import { distinctSpeciesValues, EXCLUSIVITY_LABEL, type Exclusivity } from '@/content/species';
 import { titleCase } from '@/lib/format';
 import { byRarityDesc, RARITY_ORDER, rarityStyle } from '@/lib/rarity';
+import { isDungeonExclusive } from '@/lib/speciesTags';
 import { useDebouncedValue } from '@/lib/useDebouncedValue';
 import { isZoneTag, ZONES, zoneFor, zoneLabel } from '@/lib/zone';
 import { SpeciesCard } from './SpeciesCard';
@@ -40,6 +41,7 @@ const DISCOVERY_OPTIONS: ReadonlyArray<{ value: Discovery; label: string }> = [
   { value: 'undiscovered', label: 'Not owned' },
 ];
 const DISCOVERY_VALUES = DISCOVERY_OPTIONS.map((option) => option.value);
+const EXCLUSIVITIES: readonly Exclusivity[] = ['dungeon'];
 
 function readParam<T extends string>(raw: string | null, allowed: readonly T[]): T | null {
   return raw !== null && (allowed as readonly string[]).includes(raw) ? (raw as T) : null;
@@ -63,6 +65,7 @@ export function EncyclopediaPage() {
   // Unrecognised values, including the legacy `twin_peaks`, read as All Zones.
   const zoneParam = searchParams.get('zone');
   const zone = isZoneTag(zoneParam) ? zoneParam : null;
+  const exclusive = readParam(searchParams.get('exclusive'), EXCLUSIVITIES);
 
   const [searchDraft, setSearchDraft] = useState(search);
   const debouncedSearch = useDebouncedValue(searchDraft, 250);
@@ -105,6 +108,8 @@ export function EncyclopediaPage() {
         if (affinity && entry.affinity !== affinity) return false;
         // Zone is known before discovery, so undiscovered species stay in.
         if (zone && zoneFor(entry)?.tag !== zone) return false;
+        // Classification, like zone: public on every card, so undiscovered stay in.
+        if (exclusive === 'dungeon' && !isDungeonExclusive(entry)) return false;
         if (discovery === 'discovered' && ownedCount === 0) return false;
         if (discovery === 'undiscovered' && ownedCount > 0) return false;
         if (needle && (ownedCount === 0 || !entry.name.toLowerCase().includes(needle))) {
@@ -113,7 +118,7 @@ export function EncyclopediaPage() {
         return true;
       })
       .sort((a, b) => byRarityDesc(a.rarity, b.rarity) || a.name.localeCompare(b.name));
-  }, [enabled, counts, rarity, race, affinity, zone, discovery, debouncedSearch]);
+  }, [enabled, counts, rarity, race, affinity, zone, exclusive, discovery, debouncedSearch]);
 
   // The header tally: the whole dex, or just the selected zone. Scoped by zone
   // alone — not the other filters — so it always answers "how much of this
@@ -149,6 +154,23 @@ export function EncyclopediaPage() {
           active: zone === option.tag,
           onSelect: () => patch('zone', zone === option.tag ? null : option.tag),
         })),
+      ],
+    },
+    {
+      label: 'Exclusivity',
+      options: [
+        {
+          value: 'all',
+          label: 'Any',
+          active: exclusive === null,
+          onSelect: () => patch('exclusive', null),
+        },
+        {
+          value: 'dungeon',
+          label: EXCLUSIVITY_LABEL.dungeon,
+          active: exclusive === 'dungeon',
+          onSelect: () => patch('exclusive', exclusive === 'dungeon' ? null : 'dungeon'),
+        },
       ],
     },
     {
@@ -227,6 +249,15 @@ export function EncyclopediaPage() {
             key: 'zone',
             label: `Origin: ${zoneLabel(zone) ?? 'Unknown'}`,
             onRemove: () => patch('zone', null),
+          },
+        ]
+      : []),
+    ...(exclusive
+      ? [
+          {
+            key: 'exclusive',
+            label: EXCLUSIVITY_LABEL[exclusive],
+            onRemove: () => patch('exclusive', null),
           },
         ]
       : []),

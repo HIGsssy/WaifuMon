@@ -450,5 +450,93 @@
    "effectId": "boss_reward_gain",
    "value": 50
   }
+ },
+ {
+  "slug": "boiler_imp",
+  "name": "Boiler Imp",
+  "rarity": "N",
+  "archetype": "imp",
+  "race": "demon",
+  "baseCaptureRate": null,
+  "description": "The imp who keeps the boiler lit for the tower's forge. She has never let the fire go out, she has never been thanked for it, and she has never once been in a hurry. Soot on her gloves, goggles pushed up on her forehead, and an opinion about anyone who comes down to the boiler room to complain about the water.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "caregiver",
+  "card": {
+   "subtitle": "Keeps The Fire",
+   "ability": {
+    "name": "Bank the Coals",
+    "text": "The fire has not gone out since the tower was raised. Nothing that comes down the flue gets past her, and nothing down there is ever cold."
+   },
+   "flavorQuote": "Hot water is not a thing that happens. It is a thing I make, on the hour, every hour.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/boiler_imp/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Keep It Lit",
+   "flavorText": "Keep It Lit: 10% chance a hunt costs you no energy. The fire is already up, the water is already hot, and she does not see why you should have to walk.",
+   "effectId": "energy_save_chance",
+   "value": 10
+  }
  }
 ]

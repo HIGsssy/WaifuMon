@@ -285,6 +285,27 @@ describe('editor', () => {
     await expectNoAxeViolations();
   });
 
+  it('badges dungeon-exclusive species, filters to them, and never lets one be added', async () => {
+    const user = await openEditor();
+    await user.click(screen.getByRole('button', { name: '+ Add species' }));
+    const picker = screen.getByTestId('region-species-picker');
+    expect(within(picker).getByTestId('region-species-dungeon-delve_wraith')).toHaveTextContent(
+      'Dungeon-exclusive',
+    );
+    expect(within(picker).queryByTestId('region-species-dungeon-new_r')).toBeNull();
+
+    await user.selectOptions(
+      within(picker).getByLabelText('Filter species by availability'),
+      'dungeon',
+    );
+    const rows = within(picker).getAllByTestId(/^region-species-option-/);
+    expect(rows.map((r) => r.dataset.testid)).toEqual(['region-species-option-delve_wraith']);
+    expect(rows[0]).toHaveTextContent('assign her in the Dungeon Editor');
+    const add = within(picker).getByRole('button', { name: 'Add Delve Wraith to this pool' });
+    expect(add).toBeDisabled();
+    expect(add).toHaveTextContent('Not selectable');
+  });
+
   it('adds, reweights and removes species, then saves exactly that with the loaded revision', async () => {
     const user = await openEditor();
     await user.click(screen.getByRole('button', { name: '+ Add species' }));

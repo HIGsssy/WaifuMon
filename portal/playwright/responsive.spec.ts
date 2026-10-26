@@ -30,10 +30,12 @@ const PAGES = [
   '/dashboard',
   '/collection',
   '/collection/101',
+  '/collection?exclusive=dungeon',
   '/buddy',
   '/inventory',
   '/shop',
   '/encyclopedia',
+  '/encyclopedia?exclusive=dungeon',
   '/guide',
   '/profile',
   '/settings',
@@ -158,6 +160,26 @@ test.describe('responsive layout', () => {
 
     expect(undersized).toEqual([]);
   });
+
+  for (const path of ['/encyclopedia', '/collection']) {
+    test(`the Dungeon Exclusive filter works from the compact panel on a phone: ${path}`, async ({
+      page,
+    }) => {
+      await stubApi(page);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await page.goto(path);
+      await page.waitForLoadState('networkidle');
+
+      await page.getByRole('button', { name: 'Open filters' }).click();
+      const group = page.getByRole('group', { name: 'Exclusivity' });
+      await group.getByRole('button', { name: 'Dungeon Exclusive' }).click();
+      await expect(page).toHaveURL(/exclusive=dungeon/);
+      await page.keyboard.press('Escape');
+
+      await expect(page.getByRole('button', { name: 'Dungeon Exclusive' })).toBeVisible();
+      expect(await horizontalOverflow(page)).toBe(0);
+    });
+  }
 
   test('the collection grid gains columns as the viewport widens', async ({ page }) => {
     await stubApi(page);

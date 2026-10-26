@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest';
 import {
   INTERNAL_TAGS,
   isClassifiedTag,
+  isDungeonExclusive,
   PLAYER_FACING_TAGS,
   playerFacingTags,
 } from '../speciesTags';
@@ -22,6 +23,20 @@ describe('playerFacingTags', () => {
     expect(playerFacingTags({ tags: ['expansion', 'region_exclusive', 'twin_peeks'] })).toEqual([
       { tag: 'region_exclusive', label: 'Zone Exclusive' },
     ]);
+  });
+
+  it('labels dungeon_exclusive for players', () => {
+    expect(playerFacingTags({ tags: ['dungeon_exclusive'] })).toEqual([
+      { tag: 'dungeon_exclusive', label: 'Dungeon Exclusive' },
+    ]);
+  });
+
+  it('classifies dungeon-exclusive species by tag alone, tolerating bad rows', () => {
+    expect(isDungeonExclusive({ tags: ['dungeon_exclusive'] })).toBe(true);
+    expect(isDungeonExclusive({ tags: ['starter', 'waifu_valley'] })).toBe(false);
+    expect(isDungeonExclusive({ tags: ['region_exclusive'] })).toBe(false);
+    expect(isDungeonExclusive({})).toBe(false);
+    expect(isDungeonExclusive({ tags: null })).toBe(false);
   });
 
   it.each(ZONES.map((zone) => [zone.tag]))('never returns the zone tag %s', (tag) => {

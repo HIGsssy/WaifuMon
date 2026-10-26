@@ -16,7 +16,7 @@ import { useSearchParams } from 'react-router';
 import type { Race, Rarity } from '@/api/types';
 import { RARITY_ORDER } from '@/lib/rarity';
 import { isZoneTag } from '@/lib/zone';
-import type { SortKey } from '@/content/species';
+import type { Exclusivity, SortKey } from '@/content/species';
 
 export type Ownership = 'all' | 'favorites' | 'buddy';
 
@@ -29,11 +29,14 @@ export interface CollectionParams {
   ownership: Ownership;
   /** Canonical zone tag; unrecognised values in the URL read as "all zones". */
   zone: string | null;
+  /** Species classification, not where a copy was caught; null is every species. */
+  exclusive: Exclusivity | null;
   sort: SortKey;
 }
 
 const SORT_KEYS: readonly SortKey[] = ['rarity', 'name', 'level', 'caught'];
 const OWNERSHIPS: readonly Ownership[] = ['all', 'favorites', 'buddy'];
+const EXCLUSIVITIES: readonly Exclusivity[] = ['dungeon'];
 const RACES: readonly Race[] = [
   'angel',
   'demon',
@@ -77,6 +80,7 @@ export function useCollectionParams(): CollectionParamsApi {
       affinity: searchParams.get('affinity'),
       ownership: readEnum(searchParams.get('ownership'), OWNERSHIPS, 'all'),
       zone: isZoneTag(zone) ? zone : null,
+      exclusive: readNullableEnum(searchParams.get('exclusive'), EXCLUSIVITIES),
       sort: readEnum(searchParams.get('sort'), SORT_KEYS, 'rarity'),
     };
   }, [searchParams]);
@@ -115,6 +119,7 @@ export function useCollectionParams(): CollectionParamsApi {
         if ('affinity' in patch) write(next, 'affinity', patch.affinity ?? null, '');
         if ('ownership' in patch) write(next, 'ownership', patch.ownership ?? null, 'all');
         if ('zone' in patch) write(next, 'zone', patch.zone ?? null, '');
+        if ('exclusive' in patch) write(next, 'exclusive', patch.exclusive ?? null, '');
         if ('sort' in patch) write(next, 'sort', patch.sort ?? null, 'rarity');
         // A filtered page 2 is meaningless against a different result set.
         next.delete('page');
@@ -134,7 +139,8 @@ export function useCollectionParams(): CollectionParamsApi {
     params.race !== null ||
     params.affinity !== null ||
     params.ownership !== 'all' ||
-    params.zone !== null;
+    params.zone !== null ||
+    params.exclusive !== null;
 
   return { params, setPage, setFilter, clearFilters, hasFilters };
 }
