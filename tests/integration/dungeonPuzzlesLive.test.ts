@@ -251,6 +251,84 @@ describe('the answer form on Discord', () => {
   });
 });
 
+describe('replays, races and finished runs', () => {
+  it('cannot replay a solved puzzle’s form against the next puzzle', async () => {
+    const definition = puzzleDungeonInput();
+    definition.rooms[0]!.actions!.splice(1, 0, { id: 'keypad2', type: 'text_puzzle', prompt: 'Second lock.', answers: ['beta'] } as never);
+    await w.publish(definition);
+    const { playerId, prov, runId, screen } = await atPuzzle(definition);
+    const first = await openForm(prov, screen);
+    await submit(prov, first.custom_id, SECRET);
+    const view = await w.runs.run(playerId, runId);
+    expect(view.core.action!.id).toBe('keypad2');
+    // The first form names the step the first puzzle was drawn for: it cannot answer the second.
+    expect((await submit(prov, first.custom_id, 'beta')).content).toBe(STALE_STEP_NOTICE);
+    const row = await rowOf(runId);
+    expect((row.roomStates as Record<string, { puzzles: Record<string, unknown> }>).hall!.puzzles.keypad2).toBeUndefined();
+    expect(row.step).toBe(view.step);
+  });
+
+  it('applies exactly one of two simultaneous submissions', async () => {
+    const definition = puzzleDungeonInput();
+    await w.publish(definition);
+    const { prov, runId, screen } = await atPuzzle(definition);
+    const form = await openForm(prov, screen);
+    const before = (await rowOf(runId)).step;
+    const results = await Promise.all([submit(prov, form.custom_id, SECRET), submit(prov, form.custom_id, SECRET)]);
+    // One applied; the loser is told it was stale and shown the run as the winner left it.
+    expect(results.filter((r) => r.content === STALE_STEP_NOTICE)).toHaveLength(1);
+    expect(results.filter((r) => !r.content && embedOf(r).fields?.some((f) => f.name === '✅ Solved'))).toHaveLength(1);
+    const row = await rowOf(runId);
+    expect(row.step).toBe(before + 1);
+    const solved = (await w.t.db.select().from(dungeonRunEvents).where(eq(dungeonRunEvents.runId, runId)))
+      .filter((e) => e.actionId === 'keypad' && e.type === 'action_completed');
+    expect(solved).toHaveLength(1);
+  });
+
+  it('refuses old forms once the run is completed or extracted', async () => {
+    const definition = puzzleDungeonInput();
+    definition.rooms[0]!.extraction = true;
+    await w.publish(definition);
+    for (const ending of ['completed', 'extracted'] as const) {
+      const { playerId, prov, runId, screen } = await atPuzzle(definition);
+      const form = await openForm(prov, screen);
+      await submit(prov, form.custom_id, SECRET);
+      let view = await w.runs.run(playerId, runId);
+      view = (await w.act(playerId, view, { type: 'advance' })).run;
+      view = (await w.act(playerId, view, ending === 'completed' ? { type: 'move', connectionId: 'c_out' } : { type: 'extract' })).run;
+      expect(view.status).toBe(ending);
+      const before = await rowOf(runId);
+      expect((await submit(prov, form.custom_id, SECRET)).content).toBe(STALE_STEP_NOTICE);
+      expect(await rowOf(runId)).toEqual(before);
+    }
+  });
+
+  it('answers a submission that is not attached to a message with its own private reply', async () => {
+    const definition = puzzleDungeonInput();
+    await w.publish(definition);
+    const { prov, screen } = await atPuzzle(definition);
+    const form = await openForm(prov, screen);
+    const m = modalSubmit('nope');
+    (m.i as unknown as { isFromMessage: () => boolean }).isFromMessage = () => false;
+    await handleDungeonPuzzleSubmit(ctx, m.i as never, prov, argsOf(form.custom_id).args);
+    expect(m.deferUpdate).not.toHaveBeenCalled();
+    expect((m.i as { reply: ReturnType<typeof vi.fn> }).reply).toHaveBeenCalledTimes(1);
+    expect(embedOf(m.last()).fields).toContainEqual({ name: '❌ Incorrect', value: 'Buzz.' });
+  });
+
+  it('leaves the door locked after an exhausted puzzle', async () => {
+    const definition = puzzleDungeonInput({ maxAttempts: 1 });
+    await w.publish(definition);
+    const { playerId, prov, runId, screen } = await atPuzzle(definition);
+    const out = await submit(prov, (await openForm(prov, screen)).custom_id, '9999');
+    expect(embedOf(out).fields).toContainEqual({ name: '🔒 Out of attempts', value: 'Buzz.' });
+    let view = await w.runs.run(playerId, runId);
+    view = (await w.act(playerId, view, { type: 'advance' })).run;
+    expect(view.core.connections).toEqual([expect.objectContaining({ id: 'c_out', open: false })]);
+    expect((await w.act(playerId, view, { type: 'move', connectionId: 'c_out' })).refusal).toBe('locked');
+  });
+});
+
 describe('puzzle content', () => {
   it('saves an unfinished puzzle as a draft but will not publish it', async () => {
     const definition = puzzleDungeonInput({ answers: [''], prompt: '' });
