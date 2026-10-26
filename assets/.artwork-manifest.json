@@ -14209,6 +14209,360 @@
         }
       }
     },
+    "waifumon/copper_kitsune/level_10": {
+      "source": "waifumon/copper_kitsune/level_10.png",
+      "sourceSha256": "db60fef25ff25df3fb604e4a70a31163d2337a1943c1563f2a44932d31759c1b",
+      "sourceBytes": 3535663,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/copper_kitsune/level_10.webp",
+          "bytes": 21636,
+          "sha256": "f4a97e77c2a06feb37f394e2510c5dc2d27aba2ffd2ebc2603ddc5c6d6684851",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/copper_kitsune/level_10.webp",
+          "bytes": 69108,
+          "sha256": "4d91981c2bb87e9f6c38a2d95999743973e474760cb00ca75cdcf5fa6cfc72e7",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/copper_kitsune/level_10.webp",
+          "bytes": 212986,
+          "sha256": "40e801607872ab343b6854ab4406b103dcbdfdbf0e654f122be81687cee775d0",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/copper_kitsune/level_10.webp",
+          "bytes": 468748,
+          "sha256": "66c7e134a560e20c88d0bca428bff9262e80fe176d0e552453b913ba43c50e15",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/copper_kitsune/level_20": {
+      "source": "waifumon/copper_kitsune/level_20.png",
+      "sourceSha256": "8f850870da20029721ef6c50e76debe5fb53ea0fd4cbc590f9c5454c43e07d78",
+      "sourceBytes": 3303473,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/copper_kitsune/level_20.webp",
+          "bytes": 19326,
+          "sha256": "0e50f2e58674e2aba7c95376e1bf1a03b43fdf617167f321eac27711d4d31d10",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/copper_kitsune/level_20.webp",
+          "bytes": 60944,
+          "sha256": "8f230be510501afd099b800701c8bb382322908a92bdec7db5d7a02201551042",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/copper_kitsune/level_20.webp",
+          "bytes": 179626,
+          "sha256": "1153ac374731321ef528c1444f2ea87eb5d5701d13921b4f584f01e09a6467c7",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/copper_kitsune/level_20.webp",
+          "bytes": 398668,
+          "sha256": "c6556e9c73d211884d5b3df7ddfa4556b086d73e3310042f9d2763aa632ce633",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/copper_kitsune/level_30": {
+      "source": "waifumon/copper_kitsune/level_30.png",
+      "sourceSha256": "1bdf6e8757a29af83ad861d829826d6a1a4bce3513bb49202ee83fbe8aa79d13",
+      "sourceBytes": 3369309,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/copper_kitsune/level_30.webp",
+          "bytes": 21336,
+          "sha256": "41e708774bcf3a161ba2f897f866a4394a31eb39a20673e551abcef082906823",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/copper_kitsune/level_30.webp",
+          "bytes": 66500,
+          "sha256": "0524515590d450f63661ace794ed7f62cc1d2633e95fe0c39652dd1a56a98cfa",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/copper_kitsune/level_30.webp",
+          "bytes": 203554,
+          "sha256": "87f097ffe99b49c36e6b45b1f2e3801dfdccd7086149685650c46dd63e5800b7",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/copper_kitsune/level_30.webp",
+          "bytes": 450796,
+          "sha256": "35733161ea43a06e2c18769650075b9845bcdf8fb1bc7c3c78ebceb4c4e57be7",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/copper_kitsune/level_40": {
+      "source": "waifumon/copper_kitsune/level_40.png",
+      "sourceSha256": "1f6a2319f915abc4787b5b9a1468dd58b0db1decfa708d672afd81d6e2927423",
+      "sourceBytes": 3026241,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/copper_kitsune/level_40.webp",
+          "bytes": 18844,
+          "sha256": "b588ffcaec611629fb27333c702356326f60788314fc2c289f9de5bcc53b901e",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/copper_kitsune/level_40.webp",
+          "bytes": 55652,
+          "sha256": "b9c62e052ccb54ee53f2cceecbe66728df4ce9b8cf7c10e449235e5072c2a39e",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/copper_kitsune/level_40.webp",
+          "bytes": 154704,
+          "sha256": "7cd37af9e36d7192a45058d45e9e7fef42b94388d77bb5660a8e3bfafe5265d0",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/copper_kitsune/level_40.webp",
+          "bytes": 349956,
+          "sha256": "9eb30782cbf759046dccd43e80237c7ad96c8896dd02c28a187219400d7afe08",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/copper_kitsune/level_50": {
+      "source": "waifumon/copper_kitsune/level_50.png",
+      "sourceSha256": "66e5fd8e540fc3e695ba023be81f5c47066b3cd5a4dfd0a66b3da3306025383d",
+      "sourceBytes": 3216813,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/copper_kitsune/level_50.webp",
+          "bytes": 19476,
+          "sha256": "957a0f91d92251fde497dbcc44176f45ef07654ff647c7fde9b67f728b37817e",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/copper_kitsune/level_50.webp",
+          "bytes": 58896,
+          "sha256": "2940ffc86320ce31a44f58d19c2df2a53cba5ef1750174111af5d2e4fdf2cdd3",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/copper_kitsune/level_50.webp",
+          "bytes": 176648,
+          "sha256": "7a62126e796e11e277be47c459cc1e8b848f93e7923d94f8749db616191c4b3f",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/copper_kitsune/level_50.webp",
+          "bytes": 391332,
+          "sha256": "90d02090ff537e1393c830e5efc3e7f6ae70a411e71213dbef0f60c5ce55cd16",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/copper_kitsune/standard": {
+      "source": "waifumon/copper_kitsune/standard.png",
+      "sourceSha256": "f52a2310574f38f8fcff2a64870cf6487642bf57e44a5e94568deaffc6a04228",
+      "sourceBytes": 3405672,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/copper_kitsune/standard.webp",
+          "bytes": 20190,
+          "sha256": "60b52fe4c1d4f52b4b264de9621245ec4aa1910bc892d9940751a7466079f4e8",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/copper_kitsune/standard.webp",
+          "bytes": 63604,
+          "sha256": "7da7c4f84f87b3398b33b5d37049810a0802602020774dd21adccb991f7d565d",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/copper_kitsune/standard.webp",
+          "bytes": 193146,
+          "sha256": "f90c0088d609e2cb49c79e78922f4ddcdd5a63162b313a48d634ddc4013efb57",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/copper_kitsune/standard.webp",
+          "bytes": 437280,
+          "sha256": "3286559c1b2f6edd70b5ee8ac9c40aed9fd77186f641cf386b24337eecd2d01f",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/couch_surfing_valkyrie/level_10": {
       "source": "waifumon/couch_surfing_valkyrie/level_10.png",
       "sourceSha256": "f3adb6e3367e55ccca4ac418cb85187effabb98b54597abb5a02fd09dd62cf3c",
@@ -15968,6 +16322,360 @@
           "path": "waifumon/crown_humanity/standard.webp",
           "bytes": 282094,
           "sha256": "6027d9d2b32ffbbd6ccf5e5c243f9ac290c40af9976f064ac61e7a6b9400e3ba",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/crusher_queen/level_10": {
+      "source": "waifumon/crusher_queen/level_10.png",
+      "sourceSha256": "4e20e724e73164e3dc0aa7fa097820f9f3a075e09b6fc46ea3e5f0deace80eb3",
+      "sourceBytes": 3127382,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/crusher_queen/level_10.webp",
+          "bytes": 16850,
+          "sha256": "31c852f263a11a8439895a83cc65aa27a0db72e4c1a058b1c84b73b1cb2a48fe",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/crusher_queen/level_10.webp",
+          "bytes": 48292,
+          "sha256": "6b8b482e4b1404ceb1fd625699a5ed60bedd2b183c0a6a8ba0963170ed268386",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/crusher_queen/level_10.webp",
+          "bytes": 134992,
+          "sha256": "fbfe5b1d6464a34aa964fc864bf4a6b2828f0ef899c1fad549b99a52975898bd",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/crusher_queen/level_10.webp",
+          "bytes": 322072,
+          "sha256": "62ccc0d87d3fd81fc221034791c95408144b665d0955556a5421e1d074ada664",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/crusher_queen/level_20": {
+      "source": "waifumon/crusher_queen/level_20.png",
+      "sourceSha256": "e64850fecca89afe198afb1f3e204ab5de95964633c510bef6bad523f36bc6e5",
+      "sourceBytes": 2741709,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/crusher_queen/level_20.webp",
+          "bytes": 13096,
+          "sha256": "329c0267cdc8e2cd73cc2c3cdc4d4b156fb612226c845ffea5b5da5956247121",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/crusher_queen/level_20.webp",
+          "bytes": 36066,
+          "sha256": "eb78dc1e59d6f6c3835d9d15fbe4a4221b63be74d244679f7f12fe0883c1923b",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/crusher_queen/level_20.webp",
+          "bytes": 103670,
+          "sha256": "033b3cbe471d00a44a630d31d064d28e7b82add4ff2cdab18758a83fd7c5c2c7",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/crusher_queen/level_20.webp",
+          "bytes": 241984,
+          "sha256": "82dd22897417142be6ad364b4d18a5ccd5fe336821f1546a81eb5fdbe6debac0",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/crusher_queen/level_30": {
+      "source": "waifumon/crusher_queen/level_30.png",
+      "sourceSha256": "3c824a4b093ec2dff12ab94f2ddc160055677d6bfd15ed635c5720af8ef9d8f5",
+      "sourceBytes": 2989907,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/crusher_queen/level_30.webp",
+          "bytes": 16314,
+          "sha256": "ea89f3bace49bd3fea7675f270b8081b5b277db367c62c09777f394e327a4c7f",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/crusher_queen/level_30.webp",
+          "bytes": 47782,
+          "sha256": "b2ef943009d779df529ad2257b4800138a0e3d15e5f6e1d696ae3a9f306befb9",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/crusher_queen/level_30.webp",
+          "bytes": 137882,
+          "sha256": "fe612a5cbbd845f29a5ad05aa3d1725d6963bef621299c7f06370e8e5a57b692",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/crusher_queen/level_30.webp",
+          "bytes": 333940,
+          "sha256": "cfdceaf0ef5eb5dd197f398b2d476640ec4198bc53c668d8dba5878df922433e",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/crusher_queen/level_40": {
+      "source": "waifumon/crusher_queen/level_40.png",
+      "sourceSha256": "eb3cf2c1b19563c2f37d5463d9fd92e2fb7af7fb71798c50670e034a1bdb8a21",
+      "sourceBytes": 2739064,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/crusher_queen/level_40.webp",
+          "bytes": 13880,
+          "sha256": "0b0bc7ef15fae1f82a4b8b1fc1d2e63ccd2cb0c4cae85c1944e0acb9acec9729",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/crusher_queen/level_40.webp",
+          "bytes": 38578,
+          "sha256": "87a22cb809aa401dd757014f2970ddbc5bf66eca1479a90b284fe484210cd573",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/crusher_queen/level_40.webp",
+          "bytes": 108966,
+          "sha256": "99bbc1d236a56e9211cce80db4d65c75b37409538737900e411548ae54fbe98e",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/crusher_queen/level_40.webp",
+          "bytes": 249098,
+          "sha256": "a75c4fe92a79acdc82c1a4cf22ae71cdc39061356e73a2fbd9c0d54054daea3d",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/crusher_queen/level_50": {
+      "source": "waifumon/crusher_queen/level_50.png",
+      "sourceSha256": "78bbba845238e2d8167cc9eeb04c81c01ed4bb334569b6dcc2d5be4fbcc0db04",
+      "sourceBytes": 2922132,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/crusher_queen/level_50.webp",
+          "bytes": 15264,
+          "sha256": "0ca78b8e4bc1613d0992e364f0af0052c5147dc1dac63847df1be8ca9a7c2875",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/crusher_queen/level_50.webp",
+          "bytes": 44342,
+          "sha256": "dca9cfc92b88e3eadbf37fc500107ba628b48be874c8754b63166310f285927d",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/crusher_queen/level_50.webp",
+          "bytes": 125712,
+          "sha256": "80310cd2aaf7dc130e1e7970ed1da06edc1bb792a4435e67c1d4effecccefc69",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/crusher_queen/level_50.webp",
+          "bytes": 304124,
+          "sha256": "c05002684b0820f60729a6230c9cb9575672b277d320d0e0b28967244b63603f",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/crusher_queen/standard": {
+      "source": "waifumon/crusher_queen/standard.png",
+      "sourceSha256": "9c5867bd8438903cf9b06b61c40f157ae6d3a0d461749f4a0f67eceb78950a9b",
+      "sourceBytes": 3147509,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/crusher_queen/standard.webp",
+          "bytes": 15524,
+          "sha256": "e9f962484e79fd5fc1928a1073bc5e754fc3469583c78388975cb0c73b784ce9",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/crusher_queen/standard.webp",
+          "bytes": 44552,
+          "sha256": "f5683f0aa3b96b5bda7389399a8701ea7c1dc853e174bb40c005f664df227891",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/crusher_queen/standard.webp",
+          "bytes": 131142,
+          "sha256": "d82e6956a3200c92fb507b6539730995185048e9afe0b0d3320e793f75482d44",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/crusher_queen/standard.webp",
+          "bytes": 315386,
+          "sha256": "b4e3f745959f3de436911c4d01c3b904e466f801e9d81e018e204ade5b292eb3",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",
@@ -25537,6 +26245,360 @@
         }
       }
     },
+    "waifumon/forgotten_valkyrie/level_10": {
+      "source": "waifumon/forgotten_valkyrie/level_10.png",
+      "sourceSha256": "f0b5564d5f7bd60b68728226b3b1ab33544b04937fb8e2c07662f55650445400",
+      "sourceBytes": 2833616,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/forgotten_valkyrie/level_10.webp",
+          "bytes": 15378,
+          "sha256": "9beb4009c466d5efcc1666c05456e195606761c828215f81cf2e2f8cc5520c65",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/forgotten_valkyrie/level_10.webp",
+          "bytes": 43234,
+          "sha256": "2b37b20c730848c948aae8a651eb8e4527b5cf21d81972ae1320904da83c4432",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/forgotten_valkyrie/level_10.webp",
+          "bytes": 122800,
+          "sha256": "3d8e4e6a03ab8d31ddaaf4ff536b37b53163ec297a903a8610ea5b9a8ca0b49f",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/forgotten_valkyrie/level_10.webp",
+          "bytes": 294082,
+          "sha256": "e22fe74b7c005057cf9839a36ce3ce0d8ae4b2e886d869eb1dcaa13d86e521ac",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/forgotten_valkyrie/level_20": {
+      "source": "waifumon/forgotten_valkyrie/level_20.png",
+      "sourceSha256": "edb03fa51159ef9f930c3da390343e40d35c54952128edbb6b3b3ab4dd6c0b65",
+      "sourceBytes": 2748284,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/forgotten_valkyrie/level_20.webp",
+          "bytes": 13490,
+          "sha256": "994da9a6413536f831b129d49297a2c98c255406ff24fb20bebd807be969faf5",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/forgotten_valkyrie/level_20.webp",
+          "bytes": 36194,
+          "sha256": "0b1875c8accc764641e92bcbba7b733d936f71f9a1f6b664356b6c97d2dc05cc",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/forgotten_valkyrie/level_20.webp",
+          "bytes": 102528,
+          "sha256": "77285b8e3247d860b5324501d46ffcfdd8abb265ce9e9d720d9f905768ff2ade",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/forgotten_valkyrie/level_20.webp",
+          "bytes": 238166,
+          "sha256": "035a76fa566f7923ab3cc1f096b8f4b86d52c3844c0587db7beec0a7e90145db",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/forgotten_valkyrie/level_30": {
+      "source": "waifumon/forgotten_valkyrie/level_30.png",
+      "sourceSha256": "f85b78522ab68a1ae300411463e10ba42823b6d554b02628d02398cdacdff86e",
+      "sourceBytes": 2634870,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/forgotten_valkyrie/level_30.webp",
+          "bytes": 11952,
+          "sha256": "e4db9bf4266fd59e46a37f827d633026991dea566aa289ce3f46052d68a27e71",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/forgotten_valkyrie/level_30.webp",
+          "bytes": 32898,
+          "sha256": "bb5f2223be858dc475074a5415ceabd2df2d8e4ea6c9eb281d568ad761d7fc94",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/forgotten_valkyrie/level_30.webp",
+          "bytes": 94798,
+          "sha256": "58add4a531ec6fac0ea624ee8aeaa62dde0bb9194531fd9daa9b1e412f2c8c0f",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/forgotten_valkyrie/level_30.webp",
+          "bytes": 221942,
+          "sha256": "c93c346041a5ac564220ac755f0e46fcef3dc972bdd07a1e7b8c8772f2f5a38f",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/forgotten_valkyrie/level_40": {
+      "source": "waifumon/forgotten_valkyrie/level_40.png",
+      "sourceSha256": "03eeb896630713f455d6ab5b601c8e4d3b932a5bc1e4483584d336a4a8572d05",
+      "sourceBytes": 2687704,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/forgotten_valkyrie/level_40.webp",
+          "bytes": 12856,
+          "sha256": "436017ab3ca4a5e37efb4de5b34e98e572b268b4b0457ce5b3e76dc2326883b9",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/forgotten_valkyrie/level_40.webp",
+          "bytes": 34566,
+          "sha256": "0348d4411d497b3db49e48bd522f98c240d4e909bc3345953981288a3f25adb8",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/forgotten_valkyrie/level_40.webp",
+          "bytes": 96968,
+          "sha256": "3ab9f04ef3f7e733cb772a51994092e57a9f06a437bcb69288e4d89c698e19fe",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/forgotten_valkyrie/level_40.webp",
+          "bytes": 220060,
+          "sha256": "203401ab11edd5c26b95b8d5b1ccb5c95ee516efe4df70ae9a53408e20223538",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/forgotten_valkyrie/level_50": {
+      "source": "waifumon/forgotten_valkyrie/level_50.png",
+      "sourceSha256": "5d25ce0471ba73491ab7c29200a286a56923fc71516cc855e251ac247b2acfcc",
+      "sourceBytes": 2754783,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/forgotten_valkyrie/level_50.webp",
+          "bytes": 13006,
+          "sha256": "10963f155fcfba6a83952a1c2b2d8555de2f72d53072d0553443b2ed471e8ebc",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/forgotten_valkyrie/level_50.webp",
+          "bytes": 34122,
+          "sha256": "ab2751e3505aa48cb067eb2265b0eb8fa94cb99dcc2b833efc2c4abc096b7474",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/forgotten_valkyrie/level_50.webp",
+          "bytes": 96466,
+          "sha256": "ea5ba34bbf3007f7c1c76caa78fd04192f33c8a0345c626069f53258f82005b0",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/forgotten_valkyrie/level_50.webp",
+          "bytes": 223262,
+          "sha256": "93bb29a9a55fd1f3cf3a794de3c68de0e6d45d92f915dc9710ba081fd36728a0",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/forgotten_valkyrie/standard": {
+      "source": "waifumon/forgotten_valkyrie/standard.png",
+      "sourceSha256": "cc5f446a99262e59c8cf328cd4f0339d0f2445034b9c04c64464390df2e714fe",
+      "sourceBytes": 2791789,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/forgotten_valkyrie/standard.webp",
+          "bytes": 12232,
+          "sha256": "f25e6612867262842f81031e82c77464bbd631d8e09268f6e3b50557a11f2934",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/forgotten_valkyrie/standard.webp",
+          "bytes": 33408,
+          "sha256": "adbeec775b9c7d890e87cbf3324b34c7406a5bc7befe040ed16d2ede0fbf456d",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/forgotten_valkyrie/standard.webp",
+          "bytes": 99610,
+          "sha256": "c7f4e907c45de80ddf824186ea9c1522ba54dd67b43783933e842e0071ca7e4d",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/forgotten_valkyrie/standard.webp",
+          "bytes": 237174,
+          "sha256": "ec6b42818e69ba90268f9eb478227b7b2dd26ec44f59d3183da4f675b87563c1",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/glacier_bear/level_10": {
       "source": "waifumon/glacier_bear/level_10.png",
       "sourceSha256": "0ff3a56d44e1007a4225958d45a93edf2246e696d979454312b729d2cf3c2fe8",
@@ -25891,6 +26953,360 @@
         }
       }
     },
+    "waifumon/glint_moth/level_10": {
+      "source": "waifumon/glint_moth/level_10.png",
+      "sourceSha256": "ded82198443988cdae365edbcb5ec35ec643720c82232f5637a35d8781650049",
+      "sourceBytes": 2786355,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/glint_moth/level_10.webp",
+          "bytes": 15650,
+          "sha256": "aa409d5c7ad62599548eace04389ab50071d0abc4f970005055610493e2ed811",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/glint_moth/level_10.webp",
+          "bytes": 46212,
+          "sha256": "2b10ebf77eef0bd4a1152e2f8b43566a7c2c4b6dd65be37b0224c5e75056124f",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/glint_moth/level_10.webp",
+          "bytes": 133550,
+          "sha256": "4a5f31d271009e1cf4a44d8a1c0102b7f8fca726c518d61491aa2be9d806fcc2",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/glint_moth/level_10.webp",
+          "bytes": 301030,
+          "sha256": "988906598e9d0d8d2a9356296bc2484bb8d04f1194b9a070987b7f27dd8c6ac7",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/glint_moth/level_20": {
+      "source": "waifumon/glint_moth/level_20.png",
+      "sourceSha256": "fc674fee21168e792abd4cfae021416b4df262b0d432b3a741ead375d3907b00",
+      "sourceBytes": 2794057,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/glint_moth/level_20.webp",
+          "bytes": 14794,
+          "sha256": "56b87b437701d9a438e06c2246422ccc7a1901a4015e86e4ad301af567200936",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/glint_moth/level_20.webp",
+          "bytes": 42898,
+          "sha256": "e132e6f1efc023fd1e23484ed71e31dff05ece9ca95ede36e7a0dcff1ff8597c",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/glint_moth/level_20.webp",
+          "bytes": 127418,
+          "sha256": "d9d400a0d31e7ed2552a0ba207045cb3514dbddc978fc1d331e06950c6f53137",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/glint_moth/level_20.webp",
+          "bytes": 295364,
+          "sha256": "b8dca0ea69ac15d2af4c5d48e2b5e5628a751e49af25d0effda465ba0da3f3ab",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/glint_moth/level_30": {
+      "source": "waifumon/glint_moth/level_30.png",
+      "sourceSha256": "39e4797c01af823a45340f387d9ff57317d47c7571501aff26d0a63ca74822e7",
+      "sourceBytes": 2569977,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/glint_moth/level_30.webp",
+          "bytes": 15120,
+          "sha256": "f1af9b14295885378a5a2259e48ad4a6d21128897766160665f1bcbfb0ab49b0",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/glint_moth/level_30.webp",
+          "bytes": 43492,
+          "sha256": "b96dd108f56f183ec1ec93560f27ea60283f7d01cc73eaa9d4fdc9973e5ff756",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/glint_moth/level_30.webp",
+          "bytes": 125474,
+          "sha256": "1de6362a437dfeb64c178786693b4dbeae26d6cbbf1be830dfaf68840b2f4eb1",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/glint_moth/level_30.webp",
+          "bytes": 287790,
+          "sha256": "ecf1f2dfaa9d8998f7aadf4051d5bfbc8cd26fafdd412b3638fe23c3467cebcf",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/glint_moth/level_40": {
+      "source": "waifumon/glint_moth/level_40.png",
+      "sourceSha256": "cd56307835d646cbb951bd0908d2d2c8084a0a0e14622a006d918df86bb2b568",
+      "sourceBytes": 2582203,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/glint_moth/level_40.webp",
+          "bytes": 14706,
+          "sha256": "48b5e457dea84b967871ebfb96a27f93fe854826737ddac7532f6cd158311504",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/glint_moth/level_40.webp",
+          "bytes": 42482,
+          "sha256": "6ac5972551f85afe0e52ef9ee2b47927f999864ba6538f4b3ccfe0964e49835a",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/glint_moth/level_40.webp",
+          "bytes": 121374,
+          "sha256": "ebcc9c616fa9c7fb00de368255391b63af637af82e2a8a83cca5af7ab60b1086",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/glint_moth/level_40.webp",
+          "bytes": 279752,
+          "sha256": "6b7b49639d6492adbee1953e3da644853c37b88d01eb7498f5f0e936965ffe38",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/glint_moth/level_50": {
+      "source": "waifumon/glint_moth/level_50.png",
+      "sourceSha256": "9d25cf9973697e6be033f37b4fc9772e279c5726118136ec750746ae5569264f",
+      "sourceBytes": 2589464,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/glint_moth/level_50.webp",
+          "bytes": 12236,
+          "sha256": "a7785b3bb15bb6b1bbd3880f870be662f03b9beb43b8c284f8b67e15ed04ffe7",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/glint_moth/level_50.webp",
+          "bytes": 34788,
+          "sha256": "dfdfb002f0c1e6022579057e0f050e74334d229efd0388685171effa2b4cc40a",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/glint_moth/level_50.webp",
+          "bytes": 103270,
+          "sha256": "dac0769075f2e65ae631498505bf20dd2f864834253927c82ccbceefb5b0dffe",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/glint_moth/level_50.webp",
+          "bytes": 261924,
+          "sha256": "3ba2ca76af5493384d397703fb5d031455789f2c5fec367a071bf8fc3869482b",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/glint_moth/standard": {
+      "source": "waifumon/glint_moth/standard.png",
+      "sourceSha256": "974a2a4bef9ef091e1028606ad49e8a490f09f9ecd55ed7dd92ab3003389b242",
+      "sourceBytes": 2814666,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/glint_moth/standard.webp",
+          "bytes": 14984,
+          "sha256": "89829f90abd3692dd2372344e29592db935b3950e00a76ee0c8ce522e784d9ec",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/glint_moth/standard.webp",
+          "bytes": 45620,
+          "sha256": "dbdedb2fd5ab7001bec034ffbd8fa8d6cde6ce08482292964fc31dfed293d0cd",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/glint_moth/standard.webp",
+          "bytes": 140930,
+          "sha256": "3fa50af56f29b0b5729fca6c4273314a510c8fc8e8614f2fdc6abb8c3579d0bb",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/glint_moth/standard.webp",
+          "bytes": 331490,
+          "sha256": "26825ca74036fe11eb35668bb6a626f5f0a642244b0275031e2814f60ef46273",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/goblin_gemcutter/level_10": {
       "source": "waifumon/goblin_gemcutter/level_10.png",
       "sourceSha256": "c21f954d36291f224d33d3bc54adaa8b46279bdad9d10f64731888d37dc6b7fc",
@@ -26234,6 +27650,360 @@
           "path": "waifumon/goblin_gemcutter/standard.webp",
           "bytes": 322326,
           "sha256": "8cfaac299d0d15946614ba6446bdc4fcd03d0545d29fdc5c728bf610e60ab3c7",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/goddess_of_the_dark/level_10": {
+      "source": "waifumon/goddess_of_the_dark/level_10.png",
+      "sourceSha256": "da4c5c798889d7739e86e8680d574f5c7c042c6193959a1daaf121070b44fdec",
+      "sourceBytes": 2073556,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/goddess_of_the_dark/level_10.webp",
+          "bytes": 10606,
+          "sha256": "755603663c5e2dad96ecf722c92faeae27716b6564e3d1b8401fae1c7d133dac",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/goddess_of_the_dark/level_10.webp",
+          "bytes": 25786,
+          "sha256": "65c55caa4aeafa1214eafcf2dd9f17db35a9338a3e3500d3e5236157d80e25be",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/goddess_of_the_dark/level_10.webp",
+          "bytes": 60622,
+          "sha256": "119058d82f428638f16ccdd701f3c910356eea519dbc61aa9df0e65a9f965b63",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/goddess_of_the_dark/level_10.webp",
+          "bytes": 125314,
+          "sha256": "f4d41566700d1d6c0397e1ab2bd2fbf88e00bb029aac2faa3864262529ac0f5c",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/goddess_of_the_dark/level_20": {
+      "source": "waifumon/goddess_of_the_dark/level_20.png",
+      "sourceSha256": "39be60a2c993b3b00179c704177b5bbfe773f1064328edb23ab7a15ac623d169",
+      "sourceBytes": 2082508,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/goddess_of_the_dark/level_20.webp",
+          "bytes": 10234,
+          "sha256": "87242d2644813ac2db01b3d36e35fcc605d9ea001b5d5ad7b1b50572675accbb",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/goddess_of_the_dark/level_20.webp",
+          "bytes": 24716,
+          "sha256": "b2b1d810ed6caf06e3f25a90c6aba852db6ac4feeca3ddfb24a686c66e86c888",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/goddess_of_the_dark/level_20.webp",
+          "bytes": 57578,
+          "sha256": "cf18fb6735e1cd482308e74c3a7a0c692894eee78d1a72a2d48e49acea88ba7c",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/goddess_of_the_dark/level_20.webp",
+          "bytes": 120908,
+          "sha256": "861d862600824bc44a70b428d9f3d59b8ba410bf545886b8eebb8a7edb798d8e",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/goddess_of_the_dark/level_30": {
+      "source": "waifumon/goddess_of_the_dark/level_30.png",
+      "sourceSha256": "cfcfb360b110b8d90398d0bd3616967f69bf42385e7dd596d3bf71106ffa9081",
+      "sourceBytes": 2068980,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/goddess_of_the_dark/level_30.webp",
+          "bytes": 9938,
+          "sha256": "2a980a5feee830043a2202e54d7182234ea6a19d5ef836bb7b08e725df0fb22b",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/goddess_of_the_dark/level_30.webp",
+          "bytes": 24156,
+          "sha256": "d3784e1b6691288a7f6cc5ab9c34880893dd1479d4de81524b6b633a4d3b9fe9",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/goddess_of_the_dark/level_30.webp",
+          "bytes": 55828,
+          "sha256": "33779eb869931e1548f2be1c229ee071fba4f0e61cd431257706087753b317cf",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/goddess_of_the_dark/level_30.webp",
+          "bytes": 118372,
+          "sha256": "f09dd2cc8d9b480c3983ef1a0e5108f49b04244ea1678dfb9944ec168573f604",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/goddess_of_the_dark/level_40": {
+      "source": "waifumon/goddess_of_the_dark/level_40.png",
+      "sourceSha256": "c06832cd6eba7e7e9f93fda245ca3a9ddb7ad53776811c7a4cdbff2d19f373fb",
+      "sourceBytes": 2183706,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/goddess_of_the_dark/level_40.webp",
+          "bytes": 10564,
+          "sha256": "33dc6c80a182c6780320210dfe3ed056e17b151110aae38bd8a1328a64a43706",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/goddess_of_the_dark/level_40.webp",
+          "bytes": 25698,
+          "sha256": "dfebf7f96462c30e7fb9d7028904bc5a60aaba74496f571d9adb311821621034",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/goddess_of_the_dark/level_40.webp",
+          "bytes": 60002,
+          "sha256": "8d9e4df1da244b9123f72774cc4179ecff09153ae7c0dac38f11c6b06a8eee10",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/goddess_of_the_dark/level_40.webp",
+          "bytes": 126676,
+          "sha256": "6e99ad149e2297fecee9f41dfce6aa276d1e3c5656bcaa19e22db75b4154eeb2",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/goddess_of_the_dark/level_50": {
+      "source": "waifumon/goddess_of_the_dark/level_50.png",
+      "sourceSha256": "351fb26e1c6cae47b1e4cbf4771c201b292ccc04b8b07580e951ba38603edea0",
+      "sourceBytes": 1937466,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/goddess_of_the_dark/level_50.webp",
+          "bytes": 7828,
+          "sha256": "a4226bd06a9aea37a01418632d0175b6ff03538d941a97d55eaba74ee485df47",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/goddess_of_the_dark/level_50.webp",
+          "bytes": 20240,
+          "sha256": "471b1ff7b4c7aa75ecc32315f721d3a749df3c0d22fb373da53157027d861d8a",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/goddess_of_the_dark/level_50.webp",
+          "bytes": 49810,
+          "sha256": "7e827aac18dd1a9f4f18bd6ff98779e759d1357a43a9b37c45ca06c27374227c",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/goddess_of_the_dark/level_50.webp",
+          "bytes": 109466,
+          "sha256": "496462cb4d16c58358b017a5449ab31994710c3a20edcceee419d508fb0db7b7",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/goddess_of_the_dark/standard": {
+      "source": "waifumon/goddess_of_the_dark/standard.png",
+      "sourceSha256": "3df34f037416f41069a8cfe3e3e36b7b55faa48bf2c9b58496c621f907bc3f16",
+      "sourceBytes": 1985046,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/goddess_of_the_dark/standard.webp",
+          "bytes": 8972,
+          "sha256": "5062a2841f03426c2152ae60d413f20c1e6110c063a6538af9a6c6bbb6f93e7d",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/goddess_of_the_dark/standard.webp",
+          "bytes": 21206,
+          "sha256": "f638587740bf1c964a95634ca017f89961c9573d927ba96e039655774c58cef0",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/goddess_of_the_dark/standard.webp",
+          "bytes": 51220,
+          "sha256": "8b2ddaf7a2682009ceb3cfc5dcae5610fa00ae2ac8df73dd30a560bd4850c8fd",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/goddess_of_the_dark/standard.webp",
+          "bytes": 109632,
+          "sha256": "16939f4736d55b35a88a37913c2ee5c9b97ffd4eb0a4e5794e4f2609e539fb33",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",

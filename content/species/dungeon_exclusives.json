@@ -1,0 +1,454 @@
+[
+ {
+  "slug": "forgotten_valkyrie",
+  "name": "Forgotten Valkyrie",
+  "rarity": "SSR",
+  "archetype": "valkyrie",
+  "race": "valkyrie",
+  "baseCaptureRate": null,
+  "description": "She stood guard over the Forgotten Temple long after everyone stopped coming. She is still waiting for the order to stand down.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "Last of the Temple Guard",
+   "ability": {
+    "name": "Unbroken Vigil",
+    "text": "Has not left her post in three hundred years and sees no reason to start now."
+   },
+   "flavorQuote": "Nobody relieved me. So I stayed.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/forgotten_valkyrie/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Sisterhood of the Shield",
+   "flavorText": "Sisterhood of the Shield: +12% capture chance against valkyrie Waifumon.",
+   "effectId": "capture_chance",
+   "value": 12,
+   "target": {
+    "type": "race",
+    "value": "valkyrie"
+   }
+  }
+ },
+ {
+  "slug": "glint_moth",
+  "name": "Glint Moth",
+  "rarity": "R",
+  "archetype": "moth",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "She lives behind the gallery frames of the tower and eats the shine off stored Baddie shards, which is why the vault has to be polished and why she is always where the light is coming from.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Eats The Shine",
+   "ability": {
+    "name": "Drawn To It",
+    "text": "Finds every shard in a room before you do. Takes the gleam, leaves the shard, ruining both."
+   },
+   "flavorQuote": "It is not stealing if I leave the thing behind. It just looks poorer now.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/glint_moth/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Only The Bright Ones",
+   "flavorText": "Only The Bright Ones: +12% capture chance against SSR and above Waifumon.",
+   "effectId": "capture_chance",
+   "value": 12,
+   "target": {
+    "type": "rarity_min",
+    "value": "SSR"
+   }
+  }
+ },
+ {
+  "slug": "goddess_of_the_dark",
+  "name": "Goddess of the Dark",
+  "rarity": "LR",
+  "archetype": "spirit",
+  "race": "spirit",
+  "baseCaptureRate": null,
+  "description": "Every unlit room is hers. She was in the cellar before anyone thought to be afraid of it, and she has never needed to be seen to be present. The eyes in the dark behind her are hers to command, and they are not looking at you.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Every Unlit Room",
+   "ability": {
+    "name": "Lights Out",
+    "text": "The lamp will fail. It always fails. She has never had to hurry."
+   },
+   "flavorQuote": "You brought a light. That was polite.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/goddess_of_the_dark/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Nobody Sees It Coming",
+   "flavorText": "Nobody Sees It Coming: +20% capture chance against SSR and above Waifumon.",
+   "effectId": "capture_chance",
+   "value": 20,
+   "target": {
+    "type": "rarity_min",
+    "value": "SSR"
+   }
+  }
+ },
+ {
+  "slug": "crusher_queen",
+  "name": "Crusher Queen",
+  "rarity": "UR",
+  "archetype": "android",
+  "race": "android",
+  "baseCaptureRate": null,
+  "description": "She has run the crusher since the yard opened and has not stood up out of the cab in years. Everything in the valley comes down on her schedule, and the best of it comes up through the hatch under the plate she sits on.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "She Decides What Comes Down",
+   "ability": {
+    "name": "Scheduled Demolition",
+    "text": "Nothing in this yard moves until she has looked under it, and she has never once been early."
+   },
+   "flavorQuote": "You can have what I have already weighed. Nothing else.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/crusher_queen/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Salvage Rights",
+   "flavorText": "Salvage Rights: +15% chance to find an item while hunting. Nothing leaves this yard without passing through her hands first.",
+   "effectId": "hunt_item_find_chance",
+   "value": 15
+  }
+ },
+ {
+  "slug": "copper_kitsune",
+  "name": "Copper Kitsune",
+  "rarity": "SR",
+  "archetype": "kitsune",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "She hoards gear the way a fox hoards eggs. The transformer stack is warm, the current in it never stops, and every piece of salvage in the yard worth having is already in her nest, sorted by shine. She will trade. She will not be robbed.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Nest Rights",
+   "ability": {
+    "name": "Mine By Finding",
+    "text": "Everything in the nest is hers by right of finding. Gear you want from her is gear you buy back."
+   },
+   "flavorQuote": "You may buy it back. You may look at the nest. You may not reach into it.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/copper_kitsune/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "She Knows Its Worth",
+   "flavorText": "She Knows Its Worth: +50% to the quantity of every item a boss encounter pays out. Nothing leaves the nest without a price being named first.",
+   "effectId": "boss_reward_gain",
+   "value": 50
+  }
+ }
+]
