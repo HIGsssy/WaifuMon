@@ -103,6 +103,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     requiresPermission: 'equipment.read',
   },
   {
+    to: '/admin/equipment/affix-libraries',
+    label: 'Admin — Equipment · Affix Libraries',
+    icon: Hammer,
+    requiresPermission: 'equipment.read',
+  },
+  {
     // Region encounter pools: drafts, publication, odds and history.
     to: '/admin/region-pools',
     label: 'Admin — Region Pools',

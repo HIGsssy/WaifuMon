@@ -179,6 +179,9 @@ function RulesEditor({ initial }: { initial: api.RulesBundle }) {
           Equipment Catalogue
         </Link>
         <span aria-current="page">Rarity Rules</span>
+        <Link className="text-accent underline" to="/admin/equipment/affix-libraries">
+          Affix Libraries
+        </Link>
       </nav>
       <Card className="space-y-3 p-4">
         <div className="grid gap-3 sm:grid-cols-2">

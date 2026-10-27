@@ -221,6 +221,18 @@ const EquipmentRarityRulesPage = lazy(() =>
     default: m.EquipmentRarityRulesPage,
   })),
 );
+const AffixLibrariesPage = lazy(() =>
+  import('@/features/adminEquipment/AffixLibrariesPage').then((m) => ({ default: m.AffixLibrariesPage })),
+);
+const AffixLibraryCreatePage = lazy(() =>
+  import('@/features/adminEquipment/AffixLibrariesPage').then((m) => ({ default: m.AffixLibraryCreatePage })),
+);
+const AffixLibraryEditorPage = lazy(() =>
+  import('@/features/adminEquipment/AffixLibraryEditorPage').then((m) => ({ default: m.AffixLibraryEditorPage })),
+);
+const AffixLibraryImportPage = lazy(() =>
+  import('@/features/adminEquipment/AffixLibraryImportPage').then((m) => ({ default: m.AffixLibraryImportPage })),
+);
 // The Enemy Catalogue: combat enemies as shared content. Gated on
 // `enemies.read`; the editor is read-only without `enemies.write`.
 const EnemiesListPage = lazy(() =>
@@ -648,6 +660,22 @@ export const routes: RouteObject[] = [
           {
             path: 'admin/equipment/rarity-rules',
             element: <EquipmentRarityRulesPage />,
+          },
+          {
+            path: 'admin/equipment/affix-libraries',
+            element: <AffixLibrariesPage />,
+          },
+          {
+            path: 'admin/equipment/affix-libraries/new',
+            element: <AffixLibraryCreatePage />,
+          },
+          {
+            path: 'admin/equipment/affix-libraries/import',
+            element: <AffixLibraryImportPage />,
+          },
+          {
+            path: 'admin/equipment/affix-libraries/:libraryKey',
+            element: <AffixLibraryEditorPage />,
           },
           {
             path: 'admin/equipment/:key',

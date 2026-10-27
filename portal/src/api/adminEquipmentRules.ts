@@ -88,7 +88,7 @@ export interface RollRulesExport {
   exportedAt: string;
   config: RollRules;
 }
-interface LibrarySummary {
+export interface LibrarySummary {
   key: string;
   name: string;
   description: string;

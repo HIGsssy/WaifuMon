@@ -123,6 +123,9 @@ export function EquipmentCataloguePage() {
             <Button variant="outline" asChild>
               <Link to="/admin/equipment/rarity-rules">Rarity Rules</Link>
             </Button>
+            <Button variant="outline" asChild>
+              <Link to="/admin/equipment/affix-libraries">Affix Libraries</Link>
+            </Button>
             <Button
               variant="outline"
               disabled={exporting.isPending}

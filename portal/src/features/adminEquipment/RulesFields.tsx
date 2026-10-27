@@ -396,7 +396,7 @@ export function HighRarityFields({
               {libraries.length === 0
                 ? 'No managed libraries exist yet; affixless rules remain available.'
                 : 'Only published libraries with enabled entries for every slot are available.'}{' '}
-              Library editing belongs to the upcoming Affix Libraries editor.
+              Create and publish libraries in Affix Libraries, then reload this page to select them.
             </p>
           </>
         )}
