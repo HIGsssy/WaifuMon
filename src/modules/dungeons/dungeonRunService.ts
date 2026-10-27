@@ -129,6 +129,7 @@ import {
   DungeonRunNotFoundError,
   DungeonUnavailableError,
   EquipmentRewardConfigError,
+  EquipmentRollPinMissingError,
   FeatureLockedError,
   DungeonStepContendedError,
   InsufficientItemsError,
@@ -153,6 +154,7 @@ import type { EnemyCatalogueService } from '../enemies/enemyService';
 import type { CombatStatsService } from '../equipment/combatStatsService';
 import type { CombatStats, CombatStatsUnavailableReason } from '../equipment/equipmentMath';
 import { listRewardableDefinitions, type EquipmentRewardService } from '../equipment/equipmentRewardService';
+import { readEquipmentRollPin, type EquipmentRollPin } from '../equipment/rollRules';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { InventoryService } from '../inventory/inventoryService';
 import { regionLabel } from '../locations/regions';
@@ -236,6 +238,15 @@ export interface DungeonDependencySnapshot extends EngineDependencies {
   } | null;
   /** `<category>:<contentHash>` of each managed reference → the asset it resolved to here, or null. */
   artwork: Record<string, string | null>;
+  /**
+   * The equipment roll configuration (rules and affix-library revisions) the
+   * run's gear was promised under (Equipment 3.0 E3-C). Every equipment drop
+   * the run pays rolls from it, whatever is published while it runs. Absent
+   * on runs started before E3-C, or on a server without managed rules: their
+   * drops read the live rules, which for N/R/SR carry the same immutable
+   * legacy block.
+   */
+  equipmentRollPin?: EquipmentRollPin;
 }
 
 // ── read models ─────────────────────────────────────────────────────────────
@@ -455,7 +466,7 @@ export interface DungeonRunServiceDeps {
   currency: Pick<CurrencyService, 'grantWaifubux' | 'grantEssence'>;
   collection: Pick<CollectionService, 'awardCopyAffection'>;
   inventory: Pick<InventoryService, 'addItem' | 'consumeItem'>;
-  equipmentRewards: Pick<EquipmentRewardService, 'grantChosenEquipmentReward'>;
+  equipmentRewards: Pick<EquipmentRewardService, 'grantChosenEquipmentReward' | 'pinRollConfiguration'>;
   /**
    * The capture system's transaction-joining operations. Optional so wirings
    * with no encounters keep working; without it a run that reaches a capture
@@ -643,6 +654,8 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     }
     const currencyKey = definition.settings.progressionCurrency;
     const currency = currencyKey ? await deps.currencies.get(currencyKey, tx) : null;
+    // The run promises its gear now, so it pins the roll configuration now.
+    const equipmentRollPin = (await deps.equipmentRewards.pinRollConfiguration?.(tx)) ?? null;
     return {
       format: DUNGEON_DEPENDENCY_SNAPSHOT_FORMAT,
       version: DUNGEON_DEPENDENCY_SNAPSHOT_VERSION,
@@ -662,7 +675,19 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         enabled: currency.enabled,
       },
       artwork: await resolveManagedArtwork(tx, needs.artwork),
+      ...(equipmentRollPin ? { equipmentRollPin } : {}),
     };
+  }
+
+  /**
+   * The pin a run's equipment drops roll under: the one frozen at start, or
+   * none for a run that predates it. A pin that is present but unreadable
+   * fails the payout closed — it is never replaced by the live rules.
+   */
+  function equipmentRollPinOf(run: LoadedRun): EquipmentRollPin | null {
+    const pin = readEquipmentRollPin(run.snapshot.equipmentRollPin);
+    if (pin === 'invalid') throw new EquipmentRollPinMissingError(`dungeon run ${run.row.id} has an unreadable equipment roll pin`);
+    return pin;
   }
 
   // ── loading and viewing a run ─────────────────────────────────────────────
@@ -994,6 +1019,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         dependency = `equipment:${drop.definitionKey}:${drop.dropId}`;
         const grant = await deps.equipmentRewards.grantChosenEquipmentReward(tx, {
           playerId: row.playerId, definitionKey: drop.definitionKey, rollSeed: drop.rollSeed,
+          rollPin: equipmentRollPinOf(run),
           allowDisabled: true, promised: true, source: { type: 'dungeon', key: row.dungeonKey },
           grantKey: `dungeon:${claimKey}:${drop.dropId}`,
         });
@@ -1233,6 +1259,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
               // The run was promised this definition when it started, while the
               // player held the Equipment unlock and the definition was enabled.
               allowDisabled: true,
+              rollPin: equipmentRollPinOf(run),
               promised: true,
               source: { type: 'dungeon', key: row.dungeonKey },
               grantKey: equipmentGrantKey(claimKey, rewardIndex),

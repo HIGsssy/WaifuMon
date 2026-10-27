@@ -79,6 +79,7 @@ import {
 import type { EventVisibility } from '../../src/modules/events/gameEvents';
 import type { Rng } from '../../src/shared/random';
 import { createEquipmentRewardService } from '../../src/modules/equipment/equipmentRewardService';
+import type { EquipmentRollRulesService } from '../../src/modules/equipment/equipmentRollRulesService';
 import { createDungeonAvailabilityProvider } from '../../src/modules/dungeons/dungeonAvailability';
 import { buildEquipmentServices, type EquipmentServices } from './equipmentFixtures';
 import type { Logger } from '../../src/shared/logger';
@@ -199,6 +200,12 @@ export interface BootstrapOptions {
    */
   bossEncounters?: Partial<LoadedContent['tables']['bossEncounters']>;
   /**
+   * The database-authoritative equipment roll rules (Equipment 3.0), wired
+   * into the equipment and reward services as production does. Omitted, gear
+   * rolls from the test catalogue and delayed rewards take no pin.
+   */
+  equipmentRollRules?: EquipmentRollRulesService;
+  /**
    * Drives the world-encounter trigger roll and the weighted draw that follows
    * it. A test that wants to prove `forceTrigger` overrides a *losing* roll
    * needs the dice to be losing, and the Discord-facing path
@@ -261,12 +268,16 @@ export async function bootstrapApp(
   // The production lifecycle: seed species and items, then bootstrap and
   // project Region Pools, exactly as startup and Reload Content do.
   await applyContent(t.db, content, t.logger);
-  const gear = buildEquipmentServices(t.db, opts.equipmentRng ? { rng: opts.equipmentRng } : {});
+  const gear = buildEquipmentServices(t.db, {
+    ...(opts.equipmentRng ? { rng: opts.equipmentRng } : {}),
+    ...(opts.equipmentRollRules ? { rollRules: opts.equipmentRollRules } : {}),
+  });
   const equipmentRewards = createEquipmentRewardService({
     equipment: gear.equipment,
     getAffixes: gear.getAffixes,
     featureUnlocks: gear.featureUnlocks,
     ...(opts.equipmentRewardRng ? { rng: opts.equipmentRewardRng } : {}),
+    ...(opts.equipmentRollRules ? { rollRules: opts.equipmentRollRules } : {}),
   });
   const currency = createCurrencyService(t.db);
   const inventory = createInventoryService(t.db);

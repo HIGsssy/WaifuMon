@@ -40,6 +40,8 @@ describe('EquipmentDefinitionInputSchema', () => {
       multiplierMaxBp: 8_000,
       multiplierStepBp: 500,
       secondaryEffects: [],
+      primarySpEligible: false,
+      maxAdditionalBonuses: null,
       tags: [],
       regionId: null,
       artworkPath: null,

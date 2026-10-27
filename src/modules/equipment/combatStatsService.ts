@@ -130,6 +130,12 @@ export interface CombatStatsServiceDeps {
   getMaxLevel(): number;
   /** The affix catalogue, read live — names only; affixes never enter the arithmetic. */
   getAffixes(): EquipmentAffixCatalogue;
+  /**
+   * The published flat SP limits (Equipment 3.0), read through the
+   * calculation's transaction. They can only lower the code rails; without
+   * the dependency, or before the rules are bootstrapped, the rails apply.
+   */
+  flatSpLimits?(tx: DbOrTx): Promise<{ perLoadoutMax: number } | null>;
 }
 
 export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatStatsService {
@@ -203,8 +209,10 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
   async function calculate(tx: DbOrTx, playerId: number, opts: CombatStatsOptions): Promise<CombatStats> {
     const buddy = await resolveBuddy(tx, playerId, opts.buddyWaifuId);
     const { loadoutId, slots } = await resolveSlots(tx, playerId, opts.slotOverrides);
-    return assembleCombatStats({ buddy, loadoutId, slots });
+    return assembleCombatStats({ buddy, loadoutId, slots, flatSpLimits: await flatSpLimits(tx) });
   }
+
+  const flatSpLimits = async (tx: DbOrTx) => (deps.flatSpLimits ? deps.flatSpLimits(tx) : null);
 
   return {
     calculateCombatStats(playerId, opts = {}) {
@@ -219,7 +227,8 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
       }
       const buddy = await resolveBuddy(db, playerId);
       const { loadoutId, slots } = await resolveSlots(db, playerId, undefined);
-      const stats = assembleCombatStats({ buddy, loadoutId, slots });
+      const limits = await flatSpLimits(db);
+      const stats = assembleCombatStats({ buddy, loadoutId, slots, flatSpLimits: limits });
       const key = SLOT_STAT_KEY[slot];
       const current = stats.stats[key];
       const candidates: SlotCandidatePreview[] = [];
@@ -233,6 +242,7 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
           buddy,
           loadoutId,
           slots: { ...slots, [slot]: toCombatSlotItem(owned.instance, owned.definition, deps.getAffixes()) },
+          flatSpLimits: limits,
         });
         const value = preview.stats[key];
         candidates.push({

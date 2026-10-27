@@ -1128,6 +1128,44 @@ export class EquipmentRulesUnavailableError extends AppError {
 }
 
 /**
+ * A high-rarity (SSR/UR/LR) random roll the published configuration cannot
+ * support: no rule for the rarity, an affix library missing or empty for the
+ * slot, no rollable bonus count under the definition's maximum, or a rule set
+ * that no longer validates. Detected before any draw; nothing is granted.
+ */
+export class EquipmentRollUnavailableError extends AppError {
+  readonly issues: EquipmentIssue[];
+  constructor(
+    readonly definitionKey: string,
+    readonly rarity: string,
+    issues: readonly EquipmentIssue[],
+  ) {
+    const summary = issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+    super(
+      'EQUIPMENT_ROLL_UNAVAILABLE',
+      `Equipment definition "${definitionKey}" (${rarity}) cannot be rolled under the published rules: ${summary}`,
+      'That equipment cannot be generated right now.',
+    );
+    this.issues = [...issues];
+  }
+}
+
+/**
+ * A delayed reward pinned a roll-rules or affix-library revision that this
+ * database does not hold. Fail-closed: the reward is never rolled under a
+ * different revision instead.
+ */
+export class EquipmentRollPinMissingError extends AppError {
+  constructor(readonly what: string) {
+    super(
+      'EQUIPMENT_ROLL_PIN_MISSING',
+      `The equipment roll configuration this reward was promised under is missing: ${what}`,
+      'That equipment reward cannot be paid right now.',
+    );
+  }
+}
+
+/**
  * The instance does not exist, belongs to someone else, or has been removed.
  * Deliberately one error for all three, so a guessed id learns nothing.
  */

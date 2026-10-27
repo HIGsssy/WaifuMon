@@ -468,5 +468,43 @@ export function readRollRulesExport(raw: unknown): { config: unknown; issues: Eq
   return { config: parsed.data.config, issues: [], handEdited: contentHash(parsed.data.config) !== parsed.data.contentHash };
 }
 
+// ── delayed-reward pins ───────────────────────────────────────────────────
+
+/**
+ * The exact roll configuration a delayed reward was promised under — taken
+ * when the reward becomes promised (a dungeon run starts, an expedition
+ * deploys) and handed back to `grantEquipment` when it is paid, so a publish
+ * in between never changes what the reward rolls:
+ *
+ *  - `rulesRevision` — the published roll-rules revision number;
+ *  - `affixLibraryRevisions` — for every library those rules assign, its
+ *    published revision number then. Libraries are versioned independently
+ *    of the rules, so the rules revision alone does not fix their content.
+ *
+ * Revisions are immutable and never deleted (trigger), so a pin stays
+ * resolvable; if one is ever missing the grant fails closed rather than
+ * rolling under another revision.
+ */
+export const EquipmentRollPinSchema = z
+  .object({
+    rulesRevision: z.number().int().min(1),
+    affixLibraryRevisions: z.record(z.string(), z.number().int().min(1)),
+  })
+  .strict();
+export type EquipmentRollPin = z.infer<typeof EquipmentRollPinSchema>;
+
+/**
+ * A pin as stored in a reward snapshot. `undefined`/`null` — every snapshot
+ * taken before E3-C — means "not pinned": the grant reads the live published
+ * revision, which for N/R/SR carries the same immutable legacy block. A value
+ * that is present but malformed is returned as `'invalid'` so the caller can
+ * fail closed.
+ */
+export function readEquipmentRollPin(raw: unknown): EquipmentRollPin | null | 'invalid' {
+  if (raw == null) return null;
+  const parsed = EquipmentRollPinSchema.safeParse(raw);
+  return parsed.success ? parsed.data : 'invalid';
+}
+
 /** Exposed for tests and the future rules editor: the families a managed rarity may name. */
 export const MANAGED_FAMILY_STATS: readonly EquipmentBonusStat[] = [...COMBAT_BONUS_STATS, FLAT_SP_BONUS_STAT];

@@ -400,13 +400,17 @@ async function main(): Promise<void> {
   // The one path World Encounters, bosses and expeditions hand out random gear
   // through: they choose *whether* and *which kind*; it picks the base
   // definition and `grantEquipment` rolls the instance.
-  const equipmentRewards = createEquipmentRewardService({ equipment, getAffixes, featureUnlocks });
+  // Delayed rewards (dungeon runs, expeditions) pin the roll configuration
+  // through it when they promise gear, so a later publish never re-rolls it.
+  const equipmentRewards = createEquipmentRewardService({ equipment, getAffixes, featureUnlocks, rollRules: equipmentRollRules });
   const equipmentDefinitions = createEquipmentDefinitionService(db);
   const combatStats = createCombatStatsService({
     db,
     resolveActiveBuddy: (tx, playerId) => collection.resolveActiveBuddy(tx, playerId),
     getMaxLevel: () => contentSnapshot.tables.waifuProgression.maxLevel,
     getAffixes,
+    // The published per-loadout flat SP limit (never above the code rail).
+    flatSpLimits: (tx) => equipmentRollRules.flatSpLimits(tx),
   });
   const equipmentPromotion = createEquipmentPromotionService({ db });
   /**

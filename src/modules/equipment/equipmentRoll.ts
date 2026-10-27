@@ -9,8 +9,10 @@
  * (`rolled_properties.flatSp`). The instance's values are the only ones combat
  * reads.
  *
- * A random roll, in draw order: multiplier → affix → combat bonuses (the
- * rarity's bonus chance, the distinct families, each magnitude).
+ * A random N/R/SR roll, in draw order: multiplier → affix → combat bonuses
+ * (the rarity's bonus chance, the distinct families, each magnitude). SSR/UR/LR
+ * roll by the published distribution rules instead (`highRarityRoll.ts`, which
+ * documents its own draw order), and only when the caller passes them.
  *
  * Every source of loot — onboarding today, bosses, expeditions and shops later
  * — goes through {@link rollEquipmentInstance} (via `grantEquipment`), so RNG
@@ -22,7 +24,7 @@
 import { EquipmentAffixPoolEmptyError, type EquipmentIssue } from '../../shared/errors';
 import type { Rng } from '../../shared/random';
 import { affixPoolOf, isEquipmentAffixPool, type EquipmentAffixCatalogue } from './affixCatalogue';
-import { readAffixSuffixSnapshot } from './affixLibraries';
+import { affixSnapshotProperties, readAffixSuffixSnapshot } from './affixLibraries';
 import {
   additionalFlatSpOf,
   combatBonusListIssues,
@@ -32,6 +34,7 @@ import {
   type CombatBonusConfig,
 } from './combatBonuses';
 import { PRIMARY_FLAT_SP_PROPERTY } from './equipmentMath';
+import { isHighRarity, rollHighRarityInstance, type HighRarityRollContext } from './highRarityRoll';
 import {
   EQUIPMENT_FLAT_SP_MAX_PER_ITEM,
   EQUIPMENT_MULTIPLIER_BP_MAX,
@@ -54,19 +57,31 @@ export interface EquipmentRoll {
   combatBonuses: CombatBonus[];
   /**
    * Primary flat SP, whole points; absent or 0 for none. Stored as
-   * `rolled_properties.flatSp` (`rolledPropertiesOf`). Random rolls never set
-   * it and draw nothing for it — no rarity rule grants primary SP yet.
+   * `rolled_properties.flatSp` (`rolledPropertiesOf`). Only the SSR/UR/LR
+   * distribution roll (and fixed grants) set it; N/R/SR random rolls never
+   * draw for it.
    */
   flatSp?: number;
+  /**
+   * Set when the affix came from a managed library (SSR/UR/LR): the suffix as
+   * rendered at grant, snapshotted into `rolled_properties` so later library
+   * edits never rename the copy. `libraryRevision` is diagnostics (the grant
+   * event records it); it is not stored on the copy.
+   */
+  affixSnapshot?: { library: string; libraryRevision: number; suffix: string };
 }
 
 /**
  * The `rolled_properties` a roll stores: `{ flatSp }` when it has primary flat
- * SP, otherwise `{}` — exactly what every pre-3.0 copy holds, so ordinary
+ * SP, plus `{ affixSuffix, affixLibrary }` when its affix came from a managed
+ * library — otherwise `{}`, exactly what every pre-3.0 copy holds, so ordinary
  * N/R/SR rows are unchanged and still group with their older twins.
  */
-export function rolledPropertiesOf(roll: Pick<EquipmentRoll, 'flatSp'>): Record<string, unknown> {
-  return roll.flatSp != null && roll.flatSp > 0 ? { [PRIMARY_FLAT_SP_PROPERTY]: roll.flatSp } : {};
+export function rolledPropertiesOf(roll: Pick<EquipmentRoll, 'flatSp' | 'affixSnapshot'>): Record<string, unknown> {
+  return {
+    ...(roll.flatSp != null && roll.flatSp > 0 ? { [PRIMARY_FLAT_SP_PROPERTY]: roll.flatSp } : {}),
+    ...(roll.affixSnapshot ? affixSnapshotProperties(roll.affixSnapshot.library, roll.affixSnapshot) : {}),
+  };
 }
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
@@ -112,7 +127,14 @@ export function isMultiplierInRange(range: MultiplierRange, bp: number): boolean
 }
 
 /** What a roll needs to know about a definition. */
-export type RollableDefinition = MultiplierRange & { key: string; slot: EquipmentSlot | string; rarity: string };
+export type RollableDefinition = MultiplierRange & {
+  key: string;
+  slot: EquipmentSlot | string;
+  rarity: string;
+  /** Roll policy (migration 0072); read by the SSR/UR/LR roll only. */
+  primarySpEligible?: boolean | null;
+  maxAdditionalBonuses?: number | null;
+};
 
 /**
  * Roll the properties of one new instance: a uniformly chosen discrete
@@ -127,6 +149,12 @@ export type RollableDefinition = MultiplierRange & { key: string; slot: Equipmen
  * The affix is checked before anything is drawn, so a failed roll consumes no
  * randomness.
  *
+ * **SSR/UR/LR** roll by the published distribution rules when — and only
+ * when — the caller passes them as `highRarity` (`grantEquipment` does, from
+ * the revision its transaction read). Without them they fail closed exactly
+ * as before: no affix pool, so `EquipmentAffixPoolEmptyError` before any
+ * draw. N/R/SR ignore `highRarity` entirely.
+ *
  * @throws {EquipmentAffixPoolEmptyError} when the derived pool is not a
  * supported pool, or has no enabled affix — a content error, never papered
  * over with an unaffixed item.
@@ -134,14 +162,24 @@ export type RollableDefinition = MultiplierRange & { key: string; slot: Equipmen
  * with no catalogue deployed (and the feature is not explicitly disabled).
  * @throws {RangeError} for a range that is not valid — a definition that
  * reached the grant path without passing validation is a bug to surface.
+ * @throws {EquipmentRollUnavailableError} for an SSR/UR/LR roll the given
+ * configuration cannot support (before any draw).
  */
 export function rollEquipmentInstance(
   definition: RollableDefinition,
-  opts: { rng: Rng; affixes: EquipmentAffixCatalogue; combatBonuses?: CombatBonusConfig | null },
+  opts: {
+    rng: Rng;
+    affixes: EquipmentAffixCatalogue;
+    combatBonuses?: CombatBonusConfig | null;
+    highRarity?: HighRarityRollContext | null;
+  },
 ): EquipmentRoll {
   const issues = multiplierRangeIssues(definition.slot, definition);
   if (issues.length > 0) {
     throw new RangeError(`cannot roll an invalid multiplier range: ${issues.map((i) => `${i.path} ${i.message}`).join('; ')}`);
+  }
+  if (opts.highRarity && isHighRarity(definition.rarity)) {
+    return rollHighRarityInstance(definition, { rng: opts.rng, config: opts.highRarity });
   }
   const pool = affixPoolOf(definition);
   if (!isEquipmentAffixPool(pool)) throw new EquipmentAffixPoolEmptyError(definition.key, pool, 'unsupported');

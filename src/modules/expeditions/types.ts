@@ -18,6 +18,7 @@ import type {
 } from '../../db/schema';
 import type { RaceCode } from '../cards/race';
 import type { EquipmentRewardGrant } from '../equipment/equipmentRewardService';
+import type { EquipmentRollPin } from '../equipment/rollRules';
 import type { ExpeditionEquipmentPools, ExpeditionRewardPayload } from './expeditionRewards';
 import type { SuitabilityFactor } from './expeditionMath';
 import type { MatchAssessment } from './expeditionMatch';
@@ -84,6 +85,14 @@ export interface ExpeditionResolutionPlan {
    * existed). Trimmed with the tables at resolution.
    */
   equipmentPools?: ExpeditionEquipmentPools;
+  /**
+   * The equipment roll configuration (rules and affix-library revisions) the
+   * gear was promised under, pinned at deploy beside the pools (Equipment 3.0
+   * E3-C). Kept through resolution so the claim rolls from it. Absent when the
+   * plan pays no gear, on plans written before E3-C, and on a server without
+   * managed rules: those claims read the live rules.
+   */
+  equipmentRollPin?: EquipmentRollPin;
   /**
    * The tables paid gear, but the player did not have the Equipment feature
    * at deploy, so every Equipment entry was removed from them. Audit only —

@@ -505,6 +505,13 @@
       "when": 1821909600000,
       "tag": "0071_equipment_managed_rules",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1821996000000,
+      "tag": "0072_equipment_definition_roll_policy",
+      "breakpoints": true
     }
   ]
 }

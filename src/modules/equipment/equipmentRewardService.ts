@@ -52,6 +52,8 @@ import type { EquipmentAffixCatalogue } from './affixCatalogue';
 import type { CombatBonus } from './combatBonuses';
 import { equipmentDisplayName } from './equipmentRoll';
 import type { EquipmentService, GrantKeyRecord } from './equipmentService';
+import type { EquipmentRollRulesService } from './equipmentRollRulesService';
+import type { EquipmentRollPin } from './rollRules';
 import type { EquipmentDefinitionView, EquipmentInstanceView } from './equipmentQueries';
 import { FeatureLockedError, type EquipmentIssue } from '../../shared/errors';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
@@ -118,6 +120,13 @@ export interface GrantChosenEquipmentRewardInput extends RewardGrantCommon {
    */
   rollSeed?: number;
   /**
+   * The roll configuration this reward was promised under
+   * ({@link EquipmentRewardService.pinRollConfiguration}, stored by the source
+   * when it promised the reward). Omitted or null: the live published rules,
+   * as for every reward promised before Equipment 3.0 E3-C.
+   */
+  rollPin?: EquipmentRollPin | null;
+  /**
    * Pay it even if it has since been disabled — for a reward that was won
    * while it was enabled (an expedition whose pool was snapshotted at deploy).
    */
@@ -141,6 +150,14 @@ export interface EquipmentRewardService {
   /** Grant one random instance of a definition the source selected earlier. */
   grantChosenEquipmentReward(tx: DbOrTx, input: GrantChosenEquipmentRewardInput): Promise<EquipmentRewardGrant>;
   /**
+   * The roll-configuration pin a source stores when it *promises* gear it
+   * pays later (a dungeon run at start, an expedition at deploy), and hands
+   * back as `rollPin` when it pays. Null when this server has no managed
+   * rules (the payout then reads the live rules, and fails closed without
+   * them). Optional so test doubles need not implement it.
+   */
+  pinRollConfiguration?(tx: DbOrTx): Promise<EquipmentRollPin | null>;
+  /**
    * The definitions `selector` may hand out right now.
    * @throws {EquipmentRewardConfigError} when the selector is invalid or matches nothing.
    */
@@ -154,6 +171,8 @@ export interface EquipmentRewardServiceDeps {
   featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
   /** Picks the base definition when a caller supplies no RNG. Injected by tests. */
   rng?: Rng;
+  /** The managed roll rules, for delayed-reward pins. Without it no pin is taken. */
+  rollRules?: Pick<EquipmentRollRulesService, 'pinForReward'>;
 }
 
 /**
@@ -277,7 +296,12 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
 
   async function grantOne(
     tx: DbOrTx,
-    input: RewardGrantCommon & { definitionKey: string; allowDisabled?: boolean; rollSeed?: number },
+    input: RewardGrantCommon & {
+      definitionKey: string;
+      allowDisabled?: boolean;
+      rollSeed?: number;
+      rollPin?: EquipmentRollPin | null;
+    },
   ): Promise<EquipmentRewardGrant> {
     const result = await deps.equipment.grantEquipment(tx, {
       playerId: input.playerId,
@@ -288,6 +312,7 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
       actorDiscordId: input.actorDiscordId ?? null,
       ...(input.allowDisabled ? { allowDisabled: true } : {}),
       ...(input.rollSeed !== undefined ? { rollSeed: input.rollSeed } : {}),
+      ...(input.rollPin ? { rollPin: input.rollPin } : {}),
       roll: { kind: 'random' },
     });
     return fromInstance(result.definition, result.instances[0]!, result.alreadyGranted);
@@ -312,6 +337,10 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
       if (!input.promised) await requireEligible(tx, input.playerId);
       const { promised: _promised, ...grant } = input;
       return grantOne(tx, grant);
+    },
+
+    async pinRollConfiguration(tx) {
+      return deps.rollRules ? deps.rollRules.pinForReward(tx) : null;
     },
 
     async eligibleDefinitions(tx, selector) {

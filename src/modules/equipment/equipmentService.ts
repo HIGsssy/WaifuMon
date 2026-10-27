@@ -55,6 +55,8 @@ import {
   EquipmentDismantleSelectionError,
   EquipmentLockedError,
   EquipmentNotOwnedError,
+  EquipmentRollPinMissingError,
+  EquipmentRollUnavailableError,
   EquipmentSlotMismatchError,
   EquipmentValidationError,
   FeatureLockedError,
@@ -65,6 +67,7 @@ import { defaultRng, seededRng, type Rng } from '../../shared/random';
 import { recordDomainAdminAction } from '../admin/adminActionAudit';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
 import type { EquipmentAffixCatalogue } from './affixCatalogue';
+import { AFFIX_SUFFIX_PROPERTY } from './affixLibraries';
 import {
   CombatBonusPoolError,
   readStoredCombatBonuses,
@@ -83,6 +86,8 @@ import {
 } from './equipmentRoll';
 import { readPrimaryFlatSp } from './equipmentMath';
 import type { EquipmentRollRulesService, GrantRollRules } from './equipmentRollRulesService';
+import { isHighRarity, type HighRarityRollContext } from './highRarityRoll';
+import type { EquipmentRollPin } from './rollRules';
 import {
   readActiveLoadoutRow,
   readActiveLoadoutView,
@@ -163,6 +168,15 @@ export interface GrantEquipmentInput {
    * unchanged. Fixed rolls remain dictated and do not use the seed.
    */
   rollSeed?: number;
+  /**
+   * The roll configuration a delayed reward was promised under
+   * (`EquipmentRollRulesService.pinForReward`). With it, a random grant rolls
+   * from exactly that rules revision and those affix-library revisions,
+   * whatever has been published since; a pinned revision that is missing
+   * fails the grant closed. Omitted (immediate grants, and every reward
+   * promised before E3-C) the grant reads the live published revision.
+   */
+  rollPin?: EquipmentRollPin | null;
 }
 
 export interface GrantEquipmentResult {
@@ -466,7 +480,7 @@ export interface EquipmentServiceDeps {
    * without a database configuration. A database that was never bootstrapped
    * fails the grant closed (`EquipmentRulesUnavailableError`).
    */
-  rollRules?: Pick<EquipmentRollRulesService, 'forGrant'>;
+  rollRules?: Pick<EquipmentRollRulesService, 'forGrant' | 'affixLibraryForGrant'>;
   /** The RNG random grants roll with. Injected by tests; `Math.random` otherwise. */
   rng?: Rng;
 }
@@ -663,18 +677,21 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
    * The display name as SQL: `equipmentDisplayName`, evaluated per row. The
    * affix catalogue is deployed content rather than a table, so its suffixes
    * travel as bound parameters of a CASE — keys never reach the comparison,
-   * only the text a player sees.
+   * only the text a player sees. A managed-library copy's snapshotted suffix
+   * (`rolled_properties.affixSuffix`) wins, as it does in
+   * `equipmentDisplayName`, so search finds the name the player is shown.
    */
   function displayNameSql(): SQL {
     const affixes = deps.getAffixes().all();
-    const suffix =
+    const catalogued =
       affixes.length === 0
         ? sql`${UNKNOWN_AFFIX_LABEL}::text`
         : sql`(case ${playerEquipment.affixKey} ${sql.join(
             affixes.map((a) => sql`when ${a.key}::text then ${a.suffix}::text`),
             sql` `,
           )} else ${UNKNOWN_AFFIX_LABEL}::text end)`;
-    return sql`(case when ${playerEquipment.affixKey} is null then ${equipmentDefinitions.name} else ${equipmentDefinitions.name} || ' ' || ${suffix} end)`;
+    const snapshot = sql`(case when jsonb_typeof(${playerEquipment.rolledProperties} -> ${AFFIX_SUFFIX_PROPERTY}::text) = 'string' then nullif(btrim(${playerEquipment.rolledProperties} ->> ${AFFIX_SUFFIX_PROPERTY}::text), '') end)`;
+    return sql`(case when ${snapshot} is not null then ${equipmentDefinitions.name} || ' ' || (${playerEquipment.rolledProperties} ->> ${AFFIX_SUFFIX_PROPERTY}::text) when ${playerEquipment.affixKey} is null then ${equipmentDefinitions.name} else ${equipmentDefinitions.name} || ' ' || ${catalogued} end)`;
   }
 
   function filterConditions(
@@ -735,6 +752,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     quantity: number,
     rollSeed: number | undefined,
     published: GrantRollRules | null,
+    highRarity: HighRarityRollContext | null,
   ): EquipmentRoll[] {
     const affixes = deps.getAffixes();
     const kind: unknown = spec?.kind ?? 'random';
@@ -752,7 +770,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       const rollRng = rollSeed === undefined ? rng : seededRng(rollSeed);
       try {
         return Array.from({ length: quantity }, () =>
-          rollEquipmentInstance(definition, { rng: rollRng, affixes, combatBonuses }),
+          rollEquipmentInstance(definition, { rng: rollRng, affixes, combatBonuses, highRarity }),
         );
       } catch (err) {
         // A pool that cannot supply its rarity's distinct bonuses is a content
@@ -981,20 +999,39 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
 
       const copyKeys = grantKey === null ? null : Array.from({ length: quantity }, (_, i) => `${grantKey}:${i}`);
 
-      // One published rule revision for the whole grant, read inside its
-      // transaction (`FOR SHARE`: a publish waits for this grant to finish).
+      // One rule revision for the whole grant, read inside its transaction:
+      // the published one (`FOR SHARE`: a publish waits for this grant to
+      // finish), or exactly the one a delayed reward was pinned to.
       const random = (input.roll?.kind ?? 'random') === 'random';
-      const published = random && deps.rollRules ? await deps.rollRules.forGrant(tx) : null;
 
+      let published: GrantRollRules | null = null;
+      let highRarity: HighRarityRollContext | null = null;
       let rolls: EquipmentRoll[];
       try {
-        rolls = rollCopies(definition, input.roll, quantity, input.rollSeed, published);
+        published = random && deps.rollRules ? await deps.rollRules.forGrant(tx, input.rollPin ?? null) : null;
+        if (published && isHighRarity(definition.rarity)) {
+          // The library the rarity's rule names, at the grant's revision — or
+          // none; a missing one is the roll's to refuse, never substituted.
+          const assignment = published.rules.rarities[definition.rarity]?.affixes;
+          const affixLibrary =
+            assignment?.mode === 'library'
+              ? await deps.rollRules!.affixLibraryForGrant(tx, published, assignment.library)
+              : null;
+          highRarity = { rules: published.rules, affixLibrary };
+        }
+        rolls = rollCopies(definition, input.roll, quantity, input.rollSeed, published, highRarity);
       } catch (err) {
         // A retry must return what the grant created the first time, even if
         // the definition's range has since moved and the dictated roll no
-        // longer fits it. Only a complete replay is let through: if any copy
-        // is still missing, the refusal stands and nothing is created.
-        if (!(err instanceof EquipmentValidationError) || copyKeys === null) throw err;
+        // longer fits it — or the high-rarity configuration (or a pinned
+        // revision) it rolled under can no longer roll. Only a complete
+        // replay is let through: if any copy is still missing, the refusal
+        // stands and nothing is created.
+        const replayable =
+          err instanceof EquipmentValidationError ||
+          err instanceof EquipmentRollUnavailableError ||
+          err instanceof EquipmentRollPinMissingError;
+        if (!replayable || copyKeys === null) throw err;
         const existing = await tx.select().from(playerEquipment).where(inArray(playerEquipment.grantKey, copyKeys));
         if (existing.length < quantity) throw err;
         // Placeholders only: every insert below conflicts and is discarded.
@@ -1005,6 +1042,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           flatSp: readPrimaryFlatSp(row.rolledProperties),
         }));
       }
+      const libraryOf = (i: number) => rolls[i]?.affixSnapshot;
       // On a retry the insert below conflicts and these freshly rolled values
       // are discarded: the copies read back carry the roll they were first
       // granted with. A grant key therefore pins the roll, not just the count.
@@ -1068,9 +1106,16 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
             combatBonuses: row.combatBonuses,
             rolledProperties: row.rolledProperties,
             rollKind: input.roll?.kind ?? 'random',
-            // The published roll-rule revision this grant read; null for a
-            // fixed roll or a service built without managed rules.
+            // The roll-rule revision this grant read (published, or pinned by
+            // a delayed reward); null for a fixed roll or a service built
+            // without managed rules.
             rollRulesRevision: published?.revision ?? null,
+            rollRulesPinned: input.rollPin != null,
+            // The managed affix library revision a high-rarity copy drew from.
+            affixLibrary: (() => {
+              const snap = libraryOf(copyKeys ? copyKeys.indexOf(row.grantKey!) : inserted.indexOf(row));
+              return snap ? { key: snap.library, revision: snap.libraryRevision } : null;
+            })(),
             sourceType: input.source.type,
             sourceKey: input.source.key ?? null,
             grantKey: row.grantKey,

@@ -114,15 +114,30 @@ export interface CombatSp {
 }
 
 /**
+ * The per-loadout flat SP ceiling a calculation applies: the published rules'
+ * `flatSpLimits.perLoadoutMax` when the caller has it (Equipment 3.0), never
+ * above the code rail {@link EQUIPMENT_FLAT_SP_MAX_PER_LOADOUT}; the rail
+ * itself otherwise. Published configuration can only lower it.
+ */
+export function loadoutFlatSpCeiling(limits?: { perLoadoutMax: number } | null): number {
+  const configured = limits?.perLoadoutMax;
+  return Number.isSafeInteger(configured) && configured! >= 0
+    ? Math.min(configured!, EQUIPMENT_FLAT_SP_MAX_PER_LOADOUT)
+    : EQUIPMENT_FLAT_SP_MAX_PER_LOADOUT;
+}
+
+/**
  * **The** flat SP sum. Each equipped copy counts once: its primary and
  * additional flat SP, held to the per-copy ceiling; then the loadout total,
- * held to the per-loadout ceiling. Deterministic and lossless for storage —
- * stored values are never rewritten; only the amount added to SP is clamped
- * (the same model `aggregateCombatBonuses` applies to combat modifiers).
- * Empty slots contribute nothing.
+ * held to the per-loadout ceiling ({@link loadoutFlatSpCeiling}).
+ * Deterministic and lossless for storage — stored values are never
+ * rewritten; only the amount added to SP is clamped (the same model
+ * `aggregateCombatBonuses` applies to combat modifiers). Empty slots
+ * contribute nothing.
  */
 export function flatSpOf(
   items: Iterable<{ rolledProperties?: unknown; combatBonuses?: readonly CombatBonus[] | null } | null | undefined>,
+  limits?: { perLoadoutMax: number } | null,
 ): Pick<CombatSp, 'primaryFlat' | 'additionalFlat' | 'equipmentBonus' | 'capped'> {
   let primaryFlat = 0;
   let additionalFlat = 0;
@@ -133,7 +148,7 @@ export function flatSpOf(
     additionalFlat += sp.additional;
     contributions += sp.contribution;
   }
-  const equipmentBonus = Math.min(contributions, EQUIPMENT_FLAT_SP_MAX_PER_LOADOUT);
+  const equipmentBonus = Math.min(contributions, loadoutFlatSpCeiling(limits));
   return { primaryFlat, additionalFlat, equipmentBonus, capped: equipmentBonus < primaryFlat + additionalFlat };
 }
 
@@ -262,6 +277,8 @@ export function assembleCombatStats(input: {
   buddy: CombatBuddy | null;
   loadoutId: number | null;
   slots: Record<EquipmentSlot, CombatSlotItem | null>;
+  /** The published flat SP limits; omitted, the code rails apply. */
+  flatSpLimits?: { perLoadoutMax: number } | null;
 }): CombatStats {
   const { buddy, loadoutId } = input;
   const slots = { ...emptySlots(), ...input.slots };
@@ -270,7 +287,10 @@ export function assembleCombatStats(input: {
 
   // Flat SP first, once, from every equipped copy — so it reaches all three
   // stats, whichever slot carries it.
-  const flat = flatSpOf(EQUIPMENT_SLOTS.map((slot) => slots[slot]));
+  const flat = flatSpOf(
+    EQUIPMENT_SLOTS.map((slot) => slots[slot]),
+    input.flatSpLimits,
+  );
   const sp: CombatSp | null =
     buddy == null ? null : { natural: buddy.currentSp, ...flat, effective: buddy.currentSp + flat.equipmentBonus };
 

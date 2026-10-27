@@ -25,6 +25,7 @@ import {
 } from '../../src/modules/equipment/affixCatalogue';
 import { COMBAT_BONUSES_DISABLED, type CombatBonusConfig } from '../../src/modules/equipment/combatBonuses';
 import type { Rng } from '../../src/shared/random';
+import type { EquipmentRollRulesService } from '../../src/modules/equipment/equipmentRollRulesService';
 import { STARTER_EQUIPMENT, STARTER_ROLLS } from '../../src/modules/onboarding/vocabulary';
 import type { EquipmentSlot } from '../../src/modules/equipment/vocabulary';
 
@@ -61,10 +62,19 @@ export const TEST_AFFIXES: EquipmentAffixCatalogue = buildAffixCatalogue(TEST_AF
  * their draw counts — an intentional feature-off config, not a (now
  * fail-closed) missing catalogue. A test about bonuses passes `combatBonuses`
  * (a getter, so it can be swapped mid-test).
+ *
+ * `rollRules` wires the database-authoritative roll rules, as production does
+ * (Equipment 3.0); random grants then read the published revision instead of
+ * `combatBonuses`.
  */
 export function buildEquipmentServices(
   db: Db,
-  opts: { affixes?: EquipmentAffixCatalogue; rng?: Rng; combatBonuses?: () => CombatBonusConfig | null } = {},
+  opts: {
+    affixes?: EquipmentAffixCatalogue;
+    rng?: Rng;
+    combatBonuses?: () => CombatBonusConfig | null;
+    rollRules?: EquipmentRollRulesService;
+  } = {},
 ) {
   const featureUnlocks = createFeatureUnlockService(db);
   const affixes = opts.affixes ?? TEST_AFFIXES;
@@ -77,7 +87,9 @@ export function buildEquipmentServices(
       getAffixes: () => affixes,
       getCombatBonuses: opts.combatBonuses ?? (() => COMBAT_BONUSES_DISABLED),
       ...(opts.rng ? { rng: opts.rng } : {}),
+      ...(opts.rollRules ? { rollRules: opts.rollRules } : {}),
     }),
+    rollRules: opts.rollRules,
     definitions: createEquipmentDefinitionService(db),
     promotion: createEquipmentPromotionService({ db }),
   };

@@ -41,6 +41,8 @@ import {
   parseEquipmentDefinition,
   type EquipmentDefinitionInput,
 } from './definitionSchema';
+import { readPublishedRollRules } from './equipmentRollRulesService';
+import { definitionRollPolicyIssues } from './highRarityRoll';
 import type { EquipmentSlot } from './vocabulary';
 
 export interface DefinitionFilters {
@@ -122,6 +124,22 @@ export async function assertReferencedFieldsUnchanged(
   throw new EquipmentRarityLockedError(existing.key);
 }
 
+/**
+ * Refuse an **enabled** SSR/UR/LR definition whose roll policy leaves it no
+ * rollable bonus count under the published rules. A rarity the rules do not
+ * configure yet is allowed: nothing can roll or reward it.
+ */
+export async function assertRollPolicyFeasible(
+  tx: DbOrTx,
+  definition: { key: string; rarity: string; enabled: boolean; maxAdditionalBonuses?: number | null },
+): Promise<void> {
+  if (!definition.enabled) return;
+  const published = await readPublishedRollRules(tx);
+  if (!published) return;
+  const issues = definitionRollPolicyIssues(definition, published.rules);
+  if (issues.length > 0) throw new EquipmentValidationError(issues);
+}
+
 function isForeignKeyViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {
     const e = err as { code?: unknown; cause?: unknown };
@@ -180,6 +198,7 @@ export function createEquipmentDefinitionService(db: Db): EquipmentDefinitionSer
 
     async create(input, opts = {}) {
       const parsed = parseEquipmentDefinition(input);
+      await assertRollPolicyFeasible(db, parsed);
       try {
         const [row] = await db
           .insert(equipmentDefinitions)
@@ -202,6 +221,7 @@ export function createEquipmentDefinitionService(db: Db): EquipmentDefinitionSer
       return db.transaction(async (tx) => {
         const existing = await lockByKey(tx, key);
         await assertReferencedFieldsUnchanged(tx, existing, parsed);
+        await assertRollPolicyFeasible(tx, parsed);
         const [row] = await tx
           .update(equipmentDefinitions)
           .set({
@@ -216,13 +236,16 @@ export function createEquipmentDefinitionService(db: Db): EquipmentDefinitionSer
     },
 
     async setEnabled(key, enabled, opts = {}) {
-      const [row] = await db
-        .update(equipmentDefinitions)
-        .set({ enabled, updatedAt: sql`now()`, updatedBy: opts.actorDiscordId ?? null })
-        .where(eq(equipmentDefinitions.key, key))
-        .returning();
-      if (!row) throw new EquipmentDefinitionNotFoundError(key);
-      return row;
+      return db.transaction(async (tx) => {
+        const existing = await lockByKey(tx, key);
+        await assertRollPolicyFeasible(tx, { ...existing, enabled });
+        const [row] = await tx
+          .update(equipmentDefinitions)
+          .set({ enabled, updatedAt: sql`now()`, updatedBy: opts.actorDiscordId ?? null })
+          .where(eq(equipmentDefinitions.id, existing.id))
+          .returning();
+        return row!;
+      });
     },
 
     async referenceBlockers(key) {

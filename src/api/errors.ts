@@ -551,6 +551,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   EQUIPMENT_CONFIG_NOT_FOUND: 404,
   EQUIPMENT_CONFIG_CONFLICT: 409,
   EQUIPMENT_RULES_UNAVAILABLE: 503,
+  /** The published high-rarity configuration cannot roll this definition. */
+  EQUIPMENT_ROLL_UNAVAILABLE: 409,
+  /** A delayed reward's pinned roll configuration is missing; never re-rolled under another. */
+  EQUIPMENT_ROLL_PIN_MISSING: 503,
   EQUIPMENT_SLOT_MISMATCH: 409,
   EQUIPMENT_LOCKED: 409,
   /** The caller's view of a slot is stale; refetch and retry. */

@@ -22,6 +22,8 @@
  */
 import type { EquipmentDefinitionRow } from '../../db/schema';
 import { EquipmentValidationError, type EquipmentIssue } from '../../shared/errors';
+import { definitionRollPolicyIssues } from './highRarityRoll';
+import type { RollRules } from './rollRules';
 import {
   changedDefinitionFields,
   definitionInputFromRow,
@@ -32,17 +34,28 @@ import {
 /** Identifies the package kind, so a stray JSON file is refused early. */
 export const EQUIPMENT_PACKAGE_FORMAT = 'waifumon-equipment' as const;
 /**
- * The only shape this build reads or writes.
+ * The version this build writes.
  *
  * Version 2 replaced each definition's fixed `attackBp` / `defenseBp` /
  * `healthBp` with a rolled range (`multiplierMinBp`, `multiplierMaxBp`,
  * `multiplierStepBp`). A version-1 package is refused rather than converted:
  * it predates ranges, so re-export it from a server that has migrated.
  *
+ * Version 3 (Equipment 3.0) adds the high-rarity roll policy,
+ * `primarySpEligible` and `maxAdditionalBonuses`. Version 2 is still read —
+ * the startup seed is one — and its entries take the defaults (`false`,
+ * `null`), which is exactly what every definition rolled before 3.0; a v2
+ * entry naming either field is refused, since v2 has no such fields.
+ *
  * The affix catalogue is deployed content (`content/equipment/affixes.json`),
  * not database content, so it is not part of a package.
  */
-export const EQUIPMENT_PACKAGE_VERSION = 2 as const;
+export const EQUIPMENT_PACKAGE_VERSION = 3 as const;
+/** Every version this build reads. */
+export const EQUIPMENT_PACKAGE_READABLE_VERSIONS = [2, 3] as const;
+export type EquipmentPackageVersion = (typeof EQUIPMENT_PACKAGE_READABLE_VERSIONS)[number];
+/** Fields version 3 introduced; refused in a version-2 entry. */
+const V3_DEFINITION_FIELDS = ['primarySpEligible', 'maxAdditionalBonuses'] as const;
 /** A sanity ceiling, far above any real catalogue. */
 export const EQUIPMENT_PACKAGE_MAX_DEFINITIONS = 1000;
 
@@ -50,7 +63,8 @@ const PACKAGE_FIELDS = new Set(['format', 'version', 'exportedAt', 'label', 'def
 
 export interface EquipmentPackage {
   format: typeof EQUIPMENT_PACKAGE_FORMAT;
-  version: typeof EQUIPMENT_PACKAGE_VERSION;
+  /** As read; a package this build builds is always {@link EQUIPMENT_PACKAGE_VERSION}. */
+  version: EquipmentPackageVersion;
   exportedAt: string | null;
   label: string | null;
   definitions: EquipmentDefinitionInput[];
@@ -74,15 +88,17 @@ export function parseEquipmentPackage(raw: unknown): EquipmentPackage {
   }
   // A number check rather than a literal, so a future package is reported as
   // "this build cannot read version N" rather than as a generic shape error.
-  if (body.version !== EQUIPMENT_PACKAGE_VERSION) {
+  const readable = (EQUIPMENT_PACKAGE_READABLE_VERSIONS as readonly unknown[]).includes(body.version);
+  const versions = EQUIPMENT_PACKAGE_READABLE_VERSIONS.join(' or ');
+  if (!readable) {
     issues.push({
       path: 'version',
       message:
         body.version === 1
-          ? `version 1 packages predate rolled multiplier ranges; re-export it from a migrated server (this build reads version ${EQUIPMENT_PACKAGE_VERSION})`
+          ? `version 1 packages predate rolled multiplier ranges; re-export it from a migrated server (this build reads version ${versions})`
           : typeof body.version === 'number'
-            ? `this build reads version ${EQUIPMENT_PACKAGE_VERSION} only, got ${body.version}`
-            : `must be ${EQUIPMENT_PACKAGE_VERSION}`,
+            ? `this build reads version ${versions} only, got ${body.version}`
+            : `must be ${versions}`,
     });
   }
   const unknown = Object.keys(body).filter((k) => !PACKAGE_FIELDS.has(k));
@@ -104,6 +120,13 @@ export function parseEquipmentPackage(raw: unknown): EquipmentPackage {
   } else {
     const seen = new Map<string, number>();
     body.definitions.forEach((entry, i) => {
+      if (body.version === 2 && entry != null && typeof entry === 'object') {
+        const v3 = V3_DEFINITION_FIELDS.filter((f) => Object.hasOwn(entry as object, f));
+        if (v3.length > 0) {
+          issues.push({ path: `definitions[${i}]`, message: `${v3.join(', ')} require a version 3 package` });
+          return;
+        }
+      }
       const result = validateEquipmentDefinition(entry, `definitions[${i}]`);
       if (!result.ok) {
         issues.push(...result.issues);
@@ -125,7 +148,7 @@ export function parseEquipmentPackage(raw: unknown): EquipmentPackage {
   if (issues.length > 0) throw new EquipmentValidationError(issues);
   return {
     format: EQUIPMENT_PACKAGE_FORMAT,
-    version: EQUIPMENT_PACKAGE_VERSION,
+    version: body.version as EquipmentPackageVersion,
     exportedAt: (body.exportedAt as string | undefined) ?? null,
     label: (body.label as string | undefined) ?? null,
     definitions,
@@ -183,16 +206,26 @@ export interface EquipmentImportPlan {
  * slot at grant time, and changing it underneath them would break the loadout
  * foreign key's premise; they were rolled, named and valued as their rarity,
  * and reward snapshots promised them as it.
+ *
+ * With the published roll `rules`, an **enabled** SSR/UR/LR entry whose
+ * `maxAdditionalBonuses` leaves no rollable bonus count is refused too
+ * (`definitionRollPolicyIssues`) — it could never roll.
  */
 export function planEquipmentImport(
   pkg: EquipmentPackage,
   target: ReadonlyMap<string, ImportTargetDefinition>,
+  rules?: RollRules | null,
 ): EquipmentImportPlan {
   const entries: EquipmentImportPlanEntry[] = [];
   const issues: EquipmentIssue[] = [];
   const counts = { create: 0, update: 0, unchanged: 0 };
 
   pkg.definitions.forEach((definition, i) => {
+    if (rules && definition.enabled) {
+      for (const issue of definitionRollPolicyIssues(definition, rules)) {
+        issues.push({ path: `definitions[${i}].${issue.path}`, message: issue.message });
+      }
+    }
     const existing = target.get(definition.key);
     if (!existing) {
       entries.push({ key: definition.key, action: 'create', changedFields: [] });

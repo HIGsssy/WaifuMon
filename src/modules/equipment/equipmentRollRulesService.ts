@@ -37,14 +37,26 @@
  * grants in flight, and a grant that starts after a publish commits sees the
  * new revision. One grant therefore uses exactly one revision, across every
  * copy it creates. Bodies are immutable, so they are cached by revision id.
+ *
+ * ## Delayed rewards (E3-C)
+ *
+ * A reward promised now and paid later (a dungeon run, an expedition) takes
+ * a pin when it is promised ({@link EquipmentRollRulesService.pinForReward}):
+ * the published rules revision number and the published revision of every
+ * affix library those rules assign. Its grant passes the pin back to
+ * `forGrant`, which then reads exactly that rules revision (never the
+ * pointer), and `affixLibraryForGrant` exactly that library revision. A
+ * pinned revision that cannot be found fails closed
+ * (`EquipmentRollPinMissingError`); it is never replaced by the latest.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
 import {
   equipmentAdminEvents,
   equipmentAffixLibraries,
+  equipmentDefinitions,
   equipmentAffixLibraryRevisions,
   equipmentRollConfig,
   equipmentRollConfigRevisions,
@@ -58,10 +70,12 @@ import {
   EquipmentConfigInvalidError,
   EquipmentConfigNotFoundError,
   EquipmentConfigStaleError,
+  EquipmentRollPinMissingError,
   EquipmentRulesUnavailableError,
   type EquipmentIssue,
 } from '../../shared/errors';
 import { slotsCovered, type ManagedAffixEntry } from './affixLibraries';
+import { definitionRollPolicyIssues, type ResolvedAffixLibrary } from './highRarityRoll';
 import {
   EQUIPMENT_COMBAT_BONUS_FILE,
   EquipmentCombatBonusFileSchema,
@@ -69,15 +83,18 @@ import {
   type EquipmentCombatBonusFile,
 } from './combatBonuses';
 import {
+  assignedLibraries,
   bootstrapRollRules,
   buildRollRulesExport,
   contentHash,
   diffRollRules,
   legacyCombatBonusCatalogue,
+  MANAGED_RULE_RARITIES,
   readRollRulesExport,
   RollRulesSchema,
   validateRollRules,
   type AffixLibraryFacts,
+  type EquipmentRollPin,
   type RollRules,
   type RollRulesChange,
   type RollRulesExport,
@@ -296,6 +313,11 @@ export interface GrantRollRules {
   /** The frozen N/R/SR catalogue, for the unchanged legacy roll. */
   combatBonuses: CombatBonusCatalogue;
   rules: RollRules;
+  /**
+   * Set when the grant was pinned: the library revisions the pin recorded,
+   * which `affixLibraryForGrant` must use. Null for a live (unpinned) grant.
+   */
+  pinnedLibraries: Readonly<Record<string, number>> | null;
 }
 
 export interface EquipmentRollRulesService {
@@ -313,14 +335,68 @@ export interface EquipmentRollRulesService {
   export(kind: 'published' | 'draft', now?: Date): Promise<RollRulesExport>;
   /** Validate an export file and make it the draft. Never publishes. */
   importDraft(raw: unknown, opts: { expectedDraftRevision: number; actor: string | null }): Promise<DraftRollRules & { handEdited: boolean }>;
-  /** The published revision, read inside a grant's transaction (`FOR SHARE`). */
-  forGrant(tx: DbOrTx): Promise<GrantRollRules>;
+  /**
+   * The rules a grant rolls from, inside its transaction: the published
+   * revision (pointer read `FOR SHARE`), or — with a pin — exactly the pinned
+   * revision. A missing pinned revision throws `EquipmentRollPinMissingError`.
+   */
+  forGrant(tx: DbOrTx, pin?: EquipmentRollPin | null): Promise<GrantRollRules>;
+  /**
+   * One managed library's entries for a grant: the published revision (row
+   * read `FOR SHARE`, so a library publish waits for the grant), or the
+   * revision the grant's pin recorded. Null when an unpinned grant names a
+   * library that does not exist or has never been published — the roll then
+   * fails closed. A pinned revision that is missing throws.
+   */
+  affixLibraryForGrant(tx: DbOrTx, rules: GrantRollRules, libraryKey: string): Promise<ResolvedAffixLibrary | null>;
+  /**
+   * The pin a delayed reward stores when it is promised: the published rules
+   * revision and the published revision of every library those rules assign.
+   * Null when the database has no rules yet (the grant will fail closed then
+   * anyway).
+   */
+  pinForReward(tx: DbOrTx): Promise<EquipmentRollPin | null>;
+  /** The published flat SP limits, for the live per-loadout clamp; null before bootstrap. */
+  flatSpLimits(tx: DbOrTx): Promise<RollRules['flatSpLimits'] | null>;
 }
 
 export function createEquipmentRollRulesService(deps: { db: Db }): EquipmentRollRulesService {
   const { db } = deps;
   /** Published bodies by revision id. Revisions are immutable, so an entry never goes stale. */
   const cache = new Map<number, GrantRollRules>();
+  /** The same, by revision number, for pinned grants. */
+  const pinnedCache = new Map<number, GrantRollRules>();
+
+  function grantEntry(revision: EquipmentRollConfigRevisionRow): GrantRollRules {
+    const rules = parseStoredRules(revision);
+    return { revision: revision.number, rules, combatBonuses: legacyCombatBonusCatalogue(rules), pinnedLibraries: null };
+  }
+
+  async function libraryForGrant(tx: DbOrTx, rules: GrantRollRules, libraryKey: string): Promise<ResolvedAffixLibrary | null> {
+    if (rules.pinnedLibraries) {
+      const number = rules.pinnedLibraries[libraryKey];
+      if (number === undefined) {
+        throw new EquipmentRollPinMissingError(`affix library "${libraryKey}" (the pin records no revision of it)`);
+      }
+      const [rev] = await tx
+        .select()
+        .from(equipmentAffixLibraryRevisions)
+        .where(and(eq(equipmentAffixLibraryRevisions.libraryKey, libraryKey), eq(equipmentAffixLibraryRevisions.number, number)));
+      if (!rev) throw new EquipmentRollPinMissingError(`affix library "${libraryKey}" revision ${number}`);
+      return { key: libraryKey, revision: rev.number, entries: rev.entries as ManagedAffixEntry[] };
+    }
+    const [lib] = await tx
+      .select()
+      .from(equipmentAffixLibraries)
+      .where(eq(equipmentAffixLibraries.key, libraryKey))
+      .for('share');
+    if (lib?.publishedRevisionId == null) return null;
+    const [rev] = await tx
+      .select()
+      .from(equipmentAffixLibraryRevisions)
+      .where(eq(equipmentAffixLibraryRevisions.id, lib.publishedRevisionId));
+    return rev ? { key: libraryKey, revision: rev.number, entries: rev.entries as ManagedAffixEntry[] } : null;
+  }
 
   async function configRow(tx: DbOrTx, lock: 'update' | 'share' | null) {
     const query = tx.select().from(equipmentRollConfig).where(eq(equipmentRollConfig.id, CONFIG_ROW_ID));
@@ -366,7 +442,25 @@ export function createEquipmentRollRulesService(deps: { db: Db }): EquipmentRoll
   async function validateAgainstLive(tx: DbOrTx, raw: unknown): Promise<RollRulesValidation> {
     const row = await configRow(tx, null);
     const published = parseStoredRules(await revisionById(tx, row.publishedRevisionId));
-    return validateRollRules(raw, { publishedLegacy: published.legacy, libraries: await readAffixLibraryFacts(tx) });
+    const validation = validateRollRules(raw, { publishedLegacy: published.legacy, libraries: await readAffixLibraryFacts(tx) });
+    if (!validation.value) return validation;
+    // Every enabled SSR/UR/LR definition must still be able to roll under
+    // the new rules: its own maximum must leave a count with positive weight.
+    const definitions = await tx
+      .select({
+        key: equipmentDefinitions.key,
+        rarity: equipmentDefinitions.rarity,
+        maxAdditionalBonuses: equipmentDefinitions.maxAdditionalBonuses,
+      })
+      .from(equipmentDefinitions)
+      .where(and(eq(equipmentDefinitions.enabled, true), inArray(equipmentDefinitions.rarity, [...MANAGED_RULE_RARITIES])));
+    const errors = [...validation.errors];
+    for (const definition of definitions) {
+      for (const issue of definitionRollPolicyIssues(definition, validation.value)) {
+        errors.push({ path: `rarities.${definition.rarity}.bonusCountWeightsBp`, message: issue.message });
+      }
+    }
+    return { ...validation, ok: errors.length === 0, errors };
   }
 
   async function writeDraft(
@@ -573,15 +667,54 @@ export function createEquipmentRollRulesService(deps: { db: Db }): EquipmentRoll
       return { ...draft, handEdited: read.handEdited };
     },
 
-    async forGrant(tx) {
+    async forGrant(tx, pin) {
+      if (pin) {
+        let entry = pinnedCache.get(pin.rulesRevision);
+        if (!entry) {
+          const [revision] = await tx
+            .select()
+            .from(equipmentRollConfigRevisions)
+            .where(eq(equipmentRollConfigRevisions.number, pin.rulesRevision));
+          if (!revision) throw new EquipmentRollPinMissingError(`roll rules revision ${pin.rulesRevision}`);
+          entry = grantEntry(revision);
+          pinnedCache.set(pin.rulesRevision, entry);
+        }
+        return { ...entry, pinnedLibraries: pin.affixLibraryRevisions };
+      }
       const row = await configRow(tx, 'share');
       const cached = cache.get(row.publishedRevisionId);
       if (cached) return cached;
-      const revision = await revisionById(tx, row.publishedRevisionId);
-      const rules = parseStoredRules(revision);
-      const entry: GrantRollRules = { revision: revision.number, rules, combatBonuses: legacyCombatBonusCatalogue(rules) };
+      const entry = grantEntry(await revisionById(tx, row.publishedRevisionId));
       cache.set(row.publishedRevisionId, entry);
       return entry;
+    },
+
+    affixLibraryForGrant: libraryForGrant,
+
+    async pinForReward(tx) {
+      const [row] = await tx.select().from(equipmentRollConfig).where(eq(equipmentRollConfig.id, CONFIG_ROW_ID)).for('share');
+      if (!row) return null;
+      const revision = await revisionById(tx, row.publishedRevisionId);
+      const live = grantEntry(revision);
+      const affixLibraryRevisions: Record<string, number> = {};
+      for (const key of [...assignedLibraries(live.rules).keys()].sort()) {
+        const library = await libraryForGrant(tx, live, key);
+        // Publish validation keeps every assigned library published; one that
+        // is not stays out of the pin, and the grant refuses it as it would live.
+        if (library) affixLibraryRevisions[key] = library.revision;
+      }
+      return { rulesRevision: revision.number, affixLibraryRevisions };
+    },
+
+    async flatSpLimits(tx) {
+      const [row] = await tx.select().from(equipmentRollConfig).where(eq(equipmentRollConfig.id, CONFIG_ROW_ID));
+      if (!row) return null;
+      let entry = cache.get(row.publishedRevisionId);
+      if (!entry) {
+        entry = grantEntry(await revisionById(tx, row.publishedRevisionId));
+        cache.set(row.publishedRevisionId, entry);
+      }
+      return entry.rules.flatSpLimits;
     },
   };
 }

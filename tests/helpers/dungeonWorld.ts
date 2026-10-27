@@ -34,6 +34,12 @@ import { createEnemyCatalogueService, type EnemyCatalogueService } from '../../s
 import { seedCombatEnemies, shippedCombatEnemies } from '../../src/modules/enemies/enemyStore';
 import { createCombatStatsService, type CombatStatsService } from '../../src/modules/equipment/combatStatsService';
 import { createEquipmentRewardService } from '../../src/modules/equipment/equipmentRewardService';
+import {
+  bootstrapEquipmentRollRules,
+  createEquipmentRollRulesService,
+  loadShippedCombatBonusFile,
+  type EquipmentRollRulesService,
+} from '../../src/modules/equipment/equipmentRollRulesService';
 import { loadEquipmentSeedCatalogue, seedEquipmentDefinitions } from '../../src/modules/equipment/seed';
 import {
   createProgressionCurrencyService,
@@ -103,6 +109,11 @@ export async function createDungeonWorld(
     equipment?: Parameters<typeof buildEquipmentServices>[1];
     /** Wrap the capture service the run service calls, to observe or fail an encounter effect. */
     capture?: (real: App['capture']) => NonNullable<Parameters<typeof createDungeonRunService>[0]['capture']>;
+    /**
+     * Roll gear from the database-authoritative rules (bootstrapped from the
+     * shipped file), as production does — runs then pin them at start.
+     */
+    managedRollRules?: boolean;
   } = {},
 ): Promise<DungeonWorld> {
   const t = await createTestDb();
@@ -111,7 +122,12 @@ export async function createDungeonWorld(
   const speciesAccess = new Map<string, DungeonSpeciesAccess[]>(
     app.content.species.flatMap((s) => (s.dungeonAccess ? [[s.slug, s.dungeonAccess] as const] : [])),
   );
-  const svc = buildEquipmentServices(t.db, opts.equipment ?? {});
+  let rollRules: EquipmentRollRulesService | undefined;
+  if (opts.managedRollRules) {
+    rollRules = createEquipmentRollRulesService({ db: t.db });
+    await bootstrapEquipmentRollRules(t.db, loadShippedCombatBonusFile(CONTENT_DIR));
+  }
+  const svc = buildEquipmentServices(t.db, { ...(opts.equipment ?? {}), ...(rollRules ? { rollRules } : {}) });
 
   await seedEquipmentDefinitions(t.db, { catalogue: loadEquipmentSeedCatalogue(CONTENT_DIR) });
   await seedRewardTables(t.db, loadShippedRewardTables(CONTENT_DIR));
@@ -176,6 +192,7 @@ export async function createDungeonWorld(
       equipment: svc.equipment,
       getAffixes: svc.getAffixes,
       featureUnlocks: svc.featureUnlocks,
+      ...(svc.rollRules ? { rollRules: svc.rollRules } : {}),
     }),
     capture: opts.capture ? opts.capture(app.capture) : app.capture,
     speciesAccess: (slug) => speciesAccess.get(slug),

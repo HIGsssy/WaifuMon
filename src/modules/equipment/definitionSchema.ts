@@ -20,6 +20,7 @@ import { isRegion } from '../locations/regions';
 import { multiplierRangeIssues } from './equipmentRoll';
 import {
   EQUIPMENT_AUTHORING_RARITIES,
+  EQUIPMENT_HIGH_RARITY_ROLL_RARITIES,
   EQUIPMENT_KEY_MAX_LENGTH,
   EQUIPMENT_KEY_PATTERN,
   EQUIPMENT_SLOTS,
@@ -72,6 +73,18 @@ export const EquipmentDefinitionInputSchema = z
       .array(z.unknown())
       .max(0, 'secondary effects are not supported in V1')
       .default([]),
+    /**
+     * Roll policy (Equipment 3.0) — SSR/UR/LR only, future grants only. May
+     * this definition roll primary flat SP? The published rarity rule decides
+     * the chance and range; false (the default) never draws for it.
+     */
+    primarySpEligible: z.boolean().default(false),
+    /**
+     * At most this many additional bonuses (0–3), or null for the rarity's
+     * own ceiling. Bonus counts above it are excluded from the rarity's
+     * distribution and the rest renormalised — never clamped onto it.
+     */
+    maxAdditionalBonuses: z.number().int().min(0).max(3).nullable().default(null),
     tags: z.array(z.string().trim().min(1).max(40)).max(20).default([]),
     regionId: regionId.nullable().default(null),
     artworkPath: artworkPath.nullable().default(null),
@@ -89,6 +102,25 @@ export const EquipmentDefinitionInputSchema = z
     // range this would reject.
     for (const issue of multiplierRangeIssues(def.slot, def)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: [issue.path], message: issue.message });
+    }
+    // N/R/SR run the unchanged legacy roll, which has no roll policy: a
+    // capability authored there would be silently inert, or — were the legacy
+    // roll ever to read it — shift every seeded N/R/SR roll.
+    if (!(EQUIPMENT_HIGH_RARITY_ROLL_RARITIES as readonly string[]).includes(def.rarity)) {
+      if (def.primarySpEligible) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['primarySpEligible'],
+          message: `primary SP rolls are available to SSR, UR and LR only, not ${def.rarity}`,
+        });
+      }
+      if (def.maxAdditionalBonuses !== null) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['maxAdditionalBonuses'],
+          message: `a bonus maximum applies to SSR, UR and LR only; ${def.rarity} keeps its fixed rule (must be null)`,
+        });
+      }
     }
     if (new Set(def.tags).size !== def.tags.length) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['tags'], message: 'contains duplicates' });
@@ -157,6 +189,8 @@ export function definitionColumnValues(input: EquipmentDefinitionInput) {
     multiplierMaxBp: input.multiplierMaxBp,
     multiplierStepBp: input.multiplierStepBp,
     secondaryEffects: input.secondaryEffects as Record<string, unknown>[],
+    primarySpEligible: input.primarySpEligible,
+    maxAdditionalBonuses: input.maxAdditionalBonuses,
     tags: input.tags,
     regionId: input.regionId,
     artworkPath: input.artworkPath,
@@ -184,6 +218,8 @@ export function definitionInputFromRow(row: EquipmentDefinitionRow): EquipmentDe
     multiplierMaxBp: row.multiplierMaxBp,
     multiplierStepBp: row.multiplierStepBp,
     secondaryEffects: row.secondaryEffects,
+    primarySpEligible: row.primarySpEligible,
+    maxAdditionalBonuses: row.maxAdditionalBonuses,
     tags: row.tags,
     regionId: row.regionId as EquipmentDefinitionInput['regionId'],
     artworkPath: row.artworkPath,

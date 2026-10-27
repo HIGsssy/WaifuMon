@@ -28,7 +28,8 @@ import { seededRng, type Rng } from '../../src/shared/random';
 describe('rarity capability lists', () => {
   it('pins each list', () => {
     expect(EQUIPMENT_AUTHORING_RARITIES).toEqual(['N', 'R', 'SR', 'SSR', 'UR', 'LR']);
-    expect(EQUIPMENT_RANDOM_ROLL_RARITIES).toEqual(['N', 'R', 'SR']);
+    // E3-C: SSR/UR/LR are rollable when explicitly configured — never rewardable.
+    expect(EQUIPMENT_RANDOM_ROLL_RARITIES).toEqual(['N', 'R', 'SR', 'SSR', 'UR', 'LR']);
     expect(EQUIPMENT_REWARD_RARITIES).toEqual(['N', 'R', 'SR']);
     expect(WORKSHOP_RECIPE_RARITIES).toEqual(['N', 'R', 'SR']);
     expect(COMBAT_BONUS_RARITIES).toEqual(['N', 'R', 'SR']);
@@ -92,7 +93,7 @@ describe('existing reward selectors keep their rarity restriction', () => {
   });
 });
 
-describe('random rolls of SSR/UR/LR stay fail-closed', () => {
+describe('random rolls of SSR/UR/LR stay fail-closed without published rules', () => {
   const affixes = buildAffixCatalogue([]);
   const counting = (): Rng & { calls: number } => {
     const inner = seededRng(1);

@@ -84,7 +84,9 @@ export type EquipmentEventKind = (typeof EQUIPMENT_EVENT_KINDS)[number];
  *
  *  - {@link EQUIPMENT_AUTHORING_RARITIES} — what a definition may be authored as.
  *  - {@link EQUIPMENT_RANDOM_ROLL_RARITIES} — what `rollEquipmentInstance` can
- *    generate today (the rarities with affix pools and bonus rules).
+ *    generate: N/R/SR by the legacy roll, SSR/UR/LR
+ *    ({@link EQUIPMENT_HIGH_RARITY_ROLL_RARITIES}) by the distribution roll,
+ *    and only while the published rules configure them.
  *  - `EQUIPMENT_REWARD_RARITIES` (`rewardSelector.ts`) — what a random reward
  *    selector may hand out, and what one without `rarity` defaults to.
  *  - `WORKSHOP_RECIPE_RARITIES` (`workshopConfig.ts`) — what Patch can salvage
@@ -103,10 +105,22 @@ export const EQUIPMENT_AUTHORING_RARITIES = ['N', 'R', 'SR', 'SSR', 'UR', 'LR'] 
 export type EquipmentRarity = (typeof EQUIPMENT_AUTHORING_RARITIES)[number];
 
 /**
- * Rarities a random roll can generate. SSR and above fail closed (no affix
- * pool, no bonus rule) until the Equipment 3.0 high-rarity engine ships.
+ * Rarities a random roll can generate *when explicitly invoked*. N/R/SR use
+ * the unchanged legacy roll; SSR/UR/LR use the distribution roll and only
+ * when the published rules carry a valid rule for them — otherwise they fail
+ * closed before any draw. Being rollable is not being obtainable: no reward
+ * selector, loot table or recipe can name SSR+ (`EQUIPMENT_REWARD_RARITIES`).
  */
-export const EQUIPMENT_RANDOM_ROLL_RARITIES = ['N', 'R', 'SR'] as const;
+export const EQUIPMENT_RANDOM_ROLL_RARITIES = ['N', 'R', 'SR', 'SSR', 'UR', 'LR'] as const;
+
+/**
+ * The rarities the distribution roll (`highRarityRoll.ts`) owns, and the only
+ * ones a definition's roll policy (`primarySpEligible`,
+ * `maxAdditionalBonuses`) may be set on. Mirrors `MANAGED_RULE_RARITIES` and
+ * `equipment_definitions_roll_policy_rarity_check` (migration 0072).
+ */
+export const EQUIPMENT_HIGH_RARITY_ROLL_RARITIES = ['SSR', 'UR', 'LR'] as const;
+export type EquipmentHighRarity = (typeof EQUIPMENT_HIGH_RARITY_ROLL_RARITIES)[number];
 
 /**
  * Stable definition keys: lowercase snake_case, the same shape as a world

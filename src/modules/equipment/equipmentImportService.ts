@@ -39,6 +39,7 @@ import {
   type EquipmentIssue,
 } from '../../shared/errors';
 import { definitionColumnValues, definitionInputFromRow } from './definitionSchema';
+import { readPublishedRollRules } from './equipmentRollRulesService';
 import {
   buildEquipmentPackage,
   parseEquipmentPackage,
@@ -133,7 +134,7 @@ export function createEquipmentPromotionService(deps: { db: Db }): EquipmentProm
   ): Promise<ApplyImportResult> {
     return db.transaction(async (tx) => {
       const { rows, target } = await readTarget(tx, pkg.definitions.map((d) => d.key), true);
-      const plan = planEquipmentImport(pkg, target);
+      const plan = planEquipmentImport(pkg, target, (await readPublishedRollRules(tx))?.rules ?? null);
       if (!plan.ok) throw new EquipmentImportRejectedError(plan);
 
       const touched: string[] = [];
@@ -192,7 +193,7 @@ export function createEquipmentPromotionService(deps: { db: Db }): EquipmentProm
     async previewImport(raw) {
       const pkg = parseEquipmentPackage(raw);
       const { target } = await readTarget(db, pkg.definitions.map((d) => d.key), false);
-      return planEquipmentImport(pkg, target);
+      return planEquipmentImport(pkg, target, (await readPublishedRollRules(db))?.rules ?? null);
     },
 
     async applyImport(raw, opts = {}) {

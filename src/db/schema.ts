@@ -2667,6 +2667,19 @@ export const equipmentDefinitions = pgTable(
       .$type<Record<string, unknown>[]>()
       .notNull()
       .default([]),
+    /**
+     * Roll policy (Equipment 3.0, migration 0072) — read only by the SSR/UR/LR
+     * distribution roll, for **future** grants; owned copies keep what they
+     * rolled. N/R/SR are pinned to the defaults by
+     * `equipment_definitions_roll_policy_rarity_check`.
+     *
+     * `primarySpEligible`: may roll primary flat SP (the published rarity rule
+     * decides the chance and range). `maxAdditionalBonuses`: 0–3, or null for
+     * the rarity's own ceiling; counts above it are excluded and the rest
+     * renormalised, never clamped.
+     */
+    primarySpEligible: boolean('primary_sp_eligible').notNull().default(false),
+    maxAdditionalBonuses: smallint('max_additional_bonuses'),
     tags: text('tags')
       .array()
       .notNull()
@@ -2712,6 +2725,14 @@ export const equipmentDefinitions = pgTable(
     ),
     check('equipment_definitions_buy_price_check', sql`${t.buyPrice} is null or ${t.buyPrice} > 0`),
     check('equipment_definitions_price_currency_check', sql`${t.priceCurrency} in ('waifubux','essence')`),
+    check(
+      'equipment_definitions_max_additional_bonuses_check',
+      sql`${t.maxAdditionalBonuses} is null or (${t.maxAdditionalBonuses} >= 0 and ${t.maxAdditionalBonuses} <= 3)`,
+    ),
+    check(
+      'equipment_definitions_roll_policy_rarity_check',
+      sql`${t.rarity} in ('SSR','UR','LR') or (${t.primarySpEligible} = false and ${t.maxAdditionalBonuses} is null)`,
+    ),
     index('equipment_definitions_enabled_slot_idx').on(t.enabled, t.slot),
     index('equipment_definitions_region_idx').on(t.regionId),
   ],

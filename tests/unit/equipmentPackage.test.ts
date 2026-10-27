@@ -55,9 +55,9 @@ describe('parseEquipmentPackage', () => {
   });
 
   it('refuses an unknown version by name', () => {
-    expect(issuesOf(pkg([], { version: 3 }))).toContainEqual({
+    expect(issuesOf(pkg([], { version: 4 }))).toContainEqual({
       path: 'version',
-      message: 'this build reads version 2 only, got 3',
+      message: 'this build reads version 2 or 3 only, got 4',
     });
   });
 
@@ -67,7 +67,7 @@ describe('parseEquipmentPackage', () => {
     expect(issues).toContainEqual({
       path: 'version',
       message:
-        'version 1 packages predate rolled multiplier ranges; re-export it from a migrated server (this build reads version 2)',
+        'version 1 packages predate rolled multiplier ranges; re-export it from a migrated server (this build reads version 2 or 3)',
     });
   });
 
@@ -75,7 +75,7 @@ describe('parseEquipmentPackage', () => {
     const built = buildEquipmentPackage([row({ key: 'spiked_ring', ...range(6_000, 8_000, 500) })], {
       exportedAt: '2026-10-01T00:00:00Z',
     });
-    expect(built.version).toBe(2);
+    expect(built.version).toBe(3);
     expect(built.definitions[0]).toMatchObject(range(6_000, 8_000, 500));
     expect(parseEquipmentPackage(JSON.parse(JSON.stringify(built))).definitions[0]).toMatchObject(range(6_000, 8_000, 500));
   });
@@ -120,6 +120,8 @@ function row(over: Partial<EquipmentDefinitionRow> & { key: string }): Equipment
     multiplierMaxBp: 7_000,
     multiplierStepBp: 100,
     secondaryEffects: [],
+    primarySpEligible: false,
+    maxAdditionalBonuses: null,
     tags: [],
     regionId: null,
     artworkPath: null,

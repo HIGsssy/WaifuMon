@@ -124,6 +124,7 @@ import {
   type SpeciesRow,
 } from '../../db/schema';
 import {
+  EquipmentRollPinMissingError,
   ExpeditionAlreadyClaimedError,
   ExpeditionContentError,
   ExpeditionNotActiveError,
@@ -169,6 +170,7 @@ import {
 } from './expeditionRewards';
 import type { EquipmentRewardService } from '../equipment/equipmentRewardService';
 import { describeEquipmentSelector } from '../equipment/rewardSelector';
+import { readEquipmentRollPin } from '../equipment/rollRules';
 import { withoutEquipmentRewards } from '../rewardTables/rewardTableCore';
 import { contentRewardTableSource, type RewardTableSource } from '../rewardTables/rewardTableStore';
 import {
@@ -574,6 +576,8 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
           successTable: null,
           bonusTable: null,
           failureTable: null,
+          // The claim pays the gear just rolled, under the pin taken at deploy.
+          ...(plan.equipmentRollPin ? { equipmentRollPin: plan.equipmentRollPin } : {}),
         } as unknown as Record<string, unknown>,
       })
       .where(
@@ -899,7 +903,12 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             withholdEquipment(plan);
           }
           const equipmentPools = await equipmentPoolsFor(tx, definition, plan);
-          if (equipmentPools) plan.equipmentPools = equipmentPools;
+          if (equipmentPools) {
+            plan.equipmentPools = equipmentPools;
+            // The gear is promised now, so its roll configuration is pinned now.
+            const equipmentRollPin = await equipmentRewards?.pinRollConfiguration?.(tx);
+            if (equipmentRollPin) plan.equipmentRollPin = equipmentRollPin;
+          }
           const input = {
             definition,
             waifu: {
@@ -1109,6 +1118,10 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
         // claim that fails and is retried finds the same instance, and the
         // conditional claim above already guarantees one payout.
         const equipmentGranted: ExpeditionClaimResult['equipmentGranted'] = [];
+        const storedPin = readEquipmentRollPin(planOf(won)?.equipmentRollPin);
+        if (storedPin === 'invalid') {
+          throw new EquipmentRollPinMissingError(`expedition ${won.id} has an unreadable equipment roll pin`);
+        }
         for (const drop of rewards.equipment ?? []) {
           if (!equipmentRewards) {
             throw new ExpeditionContentError(
@@ -1122,6 +1135,7 @@ export function createExpeditionService(deps: ExpeditionServiceDeps): Expedition
             // Eligibility was decided at deploy: gear is only in this plan
             // because the player could receive it then.
             promised: true,
+            rollPin: storedPin,
             source: { type: 'expedition', key: won.expeditionKey },
             grantKey: `expedition:${won.id}:${drop.drawKey}`,
           });
