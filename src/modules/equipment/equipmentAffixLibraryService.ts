@@ -59,7 +59,7 @@ import {
   type ReadOnlyAffixLibrary,
 } from './affixLibraries';
 import { lockEquipmentConfig, readPublishedRollRules, recordEquipmentAdminEvent } from './equipmentRollRulesService';
-import { assignedLibraries, LEGACY_RULE_RARITIES, MANAGED_RULE_RARITIES, type ManagedRuleRarity } from './rollRules';
+import { assignedLibraries, contentHash, LEGACY_RULE_RARITIES, MANAGED_RULE_RARITIES, type ManagedRuleRarity } from './rollRules';
 import { EQUIPMENT_SLOTS } from './vocabulary';
 
 const subject = (key: string) => `affix library "${key}"`;
@@ -103,6 +103,13 @@ export interface LibraryValidation {
   errors: EquipmentIssue[];
 }
 
+export interface LibraryPreview {
+  draftRevision: number;
+  publishedRevision: number | null;
+  validation: LibraryValidation;
+  changes: { path: string; before: unknown; after: unknown }[];
+}
+
 /** Where a rarity's affixes come from, per the published rules. */
 export type RarityAffixSource =
   | { mode: 'legacy'; rarity: 'N' | 'R' | 'SR' }
@@ -123,6 +130,7 @@ export interface EquipmentAffixLibraryService {
   /** Add an entry, or replace the one with the same key. */
   upsertEntry(key: string, entry: unknown, opts: { expectedDraftRevision: number; actor: string | null }): Promise<ManagedLibraryDetail>;
   validate(key: string): Promise<LibraryValidation>;
+  preview(key: string): Promise<LibraryPreview>;
   publish(key: string, opts: { expectedDraftRevision: number; actor: string | null }): Promise<ManagedLibraryDetail>;
   revisions(key: string): Promise<LibraryRevisionSummary[]>;
   rollback(key: string, revision: number, opts: { expectedDraftRevision: number; actor: string | null }): Promise<ManagedLibraryDetail>;
@@ -251,8 +259,9 @@ export function createEquipmentAffixLibraryService(deps: {
     opts: { expectedDraftRevision: number; actor: string | null },
     change: (lib: EquipmentAffixLibraryRow) => { entries: unknown; meta?: LibraryMeta },
     action: 'draft_saved' | 'draft_imported' | 'updated',
+    transaction?: DbOrTx,
   ): Promise<ManagedLibraryDetail> {
-    return db.transaction(async (tx) => {
+    const apply = async (tx: DbOrTx) => {
       await lockEquipmentConfig(tx);
       const lib = await row(tx, key, true);
       assertFresh(key, lib.draftRevision, opts.expectedDraftRevision);
@@ -283,7 +292,8 @@ export function createEquipmentAffixLibraryService(deps: {
         opts.actor,
       );
       return detail(tx, updated!);
-    });
+    };
+    return transaction ? apply(transaction) : db.transaction(apply);
   }
 
   async function publishEntries(
@@ -416,6 +426,26 @@ export function createEquipmentAffixLibraryService(deps: {
       return { ok: errors.length === 0, errors };
     },
 
+    async preview(key) {
+      return db.transaction(async (tx) => {
+        await lockEquipmentConfig(tx);
+        const lib = await row(tx, key);
+        const published = await publishedRevision(tx, lib);
+        const { errors } = await publishIssues(tx, key, lib.draftEntries);
+        const changes = (['name', 'description', 'entries'] as const).flatMap((field) => {
+          const before = published?.[field] ?? null;
+          const after = field === 'entries' ? lib.draftEntries : lib[field];
+          return contentHash(before) === contentHash(after) ? [] : [{ path: field, before, after }];
+        });
+        return {
+          draftRevision: lib.draftRevision,
+          publishedRevision: published?.number ?? null,
+          validation: { ok: errors.length === 0, errors },
+          changes,
+        };
+      });
+    },
+
     async publish(key, opts) {
       return db.transaction(async (tx) => {
         await lockEquipmentConfig(tx);
@@ -543,25 +573,26 @@ export function createEquipmentAffixLibraryService(deps: {
       if (!read.ok) throw new EquipmentConfigInvalidError('affix library import', read.issues);
       const key = read.library.key;
       const meta: LibraryMeta = { name: read.library.name, description: read.library.description };
-      const [existing] = await db.select().from(equipmentAffixLibraries).where(eq(equipmentAffixLibraries.key, key));
-      let expected = opts.expectedDraftRevision;
-      if (!existing) {
-        // Validate before creating, so a refused file leaves no empty library
-        // behind; `writeDraft` re-validates under the lock.
-        const checked = validateLibraryEntries(read.affixes, await namespaceExcluding(db, key));
-        if (!checked.ok) throw new EquipmentConfigInvalidError(subject(key), checked.errors);
-        await db.transaction(async (tx) => {
-          await lockEquipmentConfig(tx);
+      return db.transaction(async (tx) => {
+        await lockEquipmentConfig(tx);
+        const [existing] = await tx.select().from(equipmentAffixLibraries).where(eq(equipmentAffixLibraries.key, key));
+        let expected = opts.expectedDraftRevision;
+        if (!existing) {
+          if (expected !== undefined) throw new EquipmentConfigNotFoundError(subject(key));
+          // Validate before creating, so a refused file leaves no empty library
+          // behind; `writeDraft` re-validates under the lock.
+          const checked = validateLibraryEntries(read.affixes, await namespaceExcluding(tx, key));
+          if (!checked.ok) throw new EquipmentConfigInvalidError(subject(key), checked.errors);
           await createIn(tx, key, meta, opts.actor);
-        });
-        expected = 1;
-      } else if (expected === undefined) {
-        throw new EquipmentConfigConflictError(
-          subject(key),
-          `the library already exists; import into it with its current draft revision (${existing.draftRevision})`,
-        );
-      }
-      return writeDraft(key, { expectedDraftRevision: expected!, actor: opts.actor }, () => ({ entries: read.affixes, meta }), 'draft_imported');
+          expected = 1;
+        } else if (expected === undefined) {
+          throw new EquipmentConfigConflictError(
+            subject(key),
+            `the library already exists; import into it with its current draft revision (${existing.draftRevision})`,
+          );
+        }
+        return writeDraft(key, { expectedDraftRevision: expected!, actor: opts.actor }, () => ({ entries: read.affixes, meta }), 'draft_imported', tx);
+      });
     },
 
     async resolveAssignment(rarity, tx = db) {

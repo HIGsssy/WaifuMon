@@ -80,10 +80,11 @@ export const ALL_PORTAL_PERMISSIONS = [
   // The Admin Equipment Catalogue: equipment definitions across all six
   // rarities. `write` covers create, edit, enable/disable, duplicate and
   // import; every new definition starts disabled. Roll previews, reward-impact
-  // checks and exports write nothing and need only `read`. Publishing rarity
-  // rules (a separate `equipment.publish`) belongs to the rules editor, not here.
+  // checks and exports write nothing and need only `read`. Managed rarity
+  // rules and affix libraries use write for drafts and publish for activation.
   'equipment.read',
   'equipment.write',
+  'equipment.publish',
   // Region Pools: which Waifumon each region's hunt can meet, and at what
   // region-local weight. Drafts plus immutable published revisions, so the
   // same three-way split as dungeons: `write` saves drafts (never live),
@@ -151,9 +152,10 @@ export const PORTAL_PERMISSION_DESCRIPTIONS: Readonly<Record<PortalPermission, s
   'enemies.write':
     'Create, edit, enable/disable, duplicate and delete enemies (affects future dungeon runs and Combat Trial fights only).',
   'equipment.read':
-    'View the Equipment Catalogue: definitions, roll previews, reward impact, import history and exports.',
+    'View equipment definitions, rarity rules, affix libraries, previews, revision history and exports.',
   'equipment.write':
-    'Create, edit, enable/disable, duplicate and import equipment definitions (affects future grants only; owned copies never change).',
+    'Create, edit, enable/disable, duplicate and import equipment definitions; edit, validate and import rule and affix-library drafts.',
+  'equipment.publish': 'Publish equipment rarity rules and affix libraries, and roll them back (affects future rolls).',
   'regions.read':
     'View Region Pools: each region\'s published and draft pool, revision history, drift and encounter odds.',
   'regions.write': 'Edit Region Pool drafts (no effect on hunting until published).',

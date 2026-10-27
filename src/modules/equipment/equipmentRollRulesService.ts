@@ -327,7 +327,7 @@ export interface EquipmentRollRulesService {
   saveDraft(rules: unknown, opts: { expectedDraftRevision: number; actor: string | null }): Promise<DraftRollRules>;
   /** Validate the given document, or the saved draft, against the live libraries. */
   validate(rules?: unknown): Promise<RollRulesValidation>;
-  preview(): Promise<RollRulesPreview>;
+  preview(rules?: unknown): Promise<RollRulesPreview>;
   publish(opts: { expectedDraftRevision: number; actor: string | null }): Promise<PublishedRollRules>;
   revisions(): Promise<RollRulesRevisionSummary[]>;
   /** Publish an earlier revision's body again, as a new revision; the draft becomes it too. */
@@ -538,16 +538,19 @@ export function createEquipmentRollRulesService(deps: { db: Db }): EquipmentRoll
       return validateAgainstLive(db, raw);
     },
 
-    async preview() {
-      const row = await configRow(db, null);
-      const published = await revisionById(db, row.publishedRevisionId);
-      const validation = await validateAgainstLive(db, row.draftBody);
-      return {
-        validation,
-        changes: validation.value ? diffRollRules(parseStoredRules(published), validation.value) : [],
-        draftRevision: row.draftRevision,
-        publishedRevision: published.number,
-      };
+    async preview(rules) {
+      return db.transaction(async (tx) => {
+        await lockEquipmentConfig(tx);
+        const row = await configRow(tx, null);
+        const published = await revisionById(tx, row.publishedRevisionId);
+        const validation = await validateAgainstLive(tx, rules === undefined ? row.draftBody : rules);
+        return {
+          validation,
+          changes: validation.value ? diffRollRules(parseStoredRules(published), validation.value) : [],
+          draftRevision: row.draftRevision,
+          publishedRevision: published.number,
+        };
+      });
     },
 
     async publish(opts) {
