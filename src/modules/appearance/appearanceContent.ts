@@ -139,11 +139,21 @@ export function resolveAppearances(species: AppearanceSpecies): ResolvedAppearan
     .sort((a, b) => a.sortOrder - b.sortOrder || a.id.localeCompare(b.id));
 }
 
-/** The `owned` entry — what a freshly-captured copy wears. Never undefined. */
+/**
+ * The `owned` entry — what a freshly-captured copy wears. Never undefined.
+ *
+ * A species may now carry MORE than one `owned` appearance (a seasonal skin is
+ * owned like the base look), so the choice cannot be first-match: it is the
+ * `standard` entry by id, and the content schema guarantees `standard` is
+ * present whenever several entries are `owned`. A single-`owned` catalog is
+ * unaffected, which is every species that shipped before this.
+ */
 export function defaultAppearance(species: AppearanceSpecies): ResolvedAppearance {
   const all = resolveAppearances(species);
+  const owned = all.filter((a) => a.unlock.type === 'owned');
   return (
-    all.find((a) => a.unlock.type === 'owned') ??
+    owned.find((a) => a.id === DEFAULT_APPEARANCE_ID) ??
+    owned[0] ??
     all[0] ??
     implicitStandardAppearance(species)
   );

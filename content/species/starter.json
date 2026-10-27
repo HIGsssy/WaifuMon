@@ -79,6 +79,19 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_spider",
+        "name": "Halloween Spider",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -3348,6 +3361,19 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_magical",
+        "name": "Halloween Magical Girl",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "magical-girl"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -3680,6 +3706,18 @@
         "unlock": {
           "type": "level",
           "atLevel": 50
+        }
+      },
+      {
+        "id": "halloween",
+        "name": "Halloween",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween"
+        ],
+        "unlock": {
+          "type": "owned"
         }
       }
     ],
@@ -5521,6 +5559,18 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_zombie",
+        "name": "Zombie",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -6278,6 +6328,19 @@
         "unlock": {
           "type": "level",
           "atLevel": 50
+        }
+      },
+      {
+        "id": "halloween_cosplay",
+        "name": "Halloween Cosplay",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay"
+        ],
+        "unlock": {
+          "type": "owned"
         }
       }
     ],

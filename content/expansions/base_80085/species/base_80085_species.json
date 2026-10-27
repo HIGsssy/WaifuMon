@@ -1184,6 +1184,18 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_vampire_hunter",
+        "name": "Vampire Hunter",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {

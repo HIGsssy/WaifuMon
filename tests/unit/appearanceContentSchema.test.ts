@@ -107,16 +107,32 @@ describe('SpeciesContentSchema — appearance validation', () => {
     });
     expect(parsed.success).toBe(false);
     expect(parsed.success === false && JSON.stringify(parsed.error.issues)).toContain(
-      'exactly one appearance must have unlock.type',
+      'at least one appearance must have unlock.type',
     );
   });
 
-  it('rejects two owned defaults — "which one" must never be a coin flip', () => {
+  it('accepts several owned appearances when `standard` is among them', () => {
+    // A seasonal skin is owned like the base look. The default stays deterministic
+    // because it resolves to `standard` by id, never to whichever came first.
     const parsed = SpeciesContentSchema.safeParse({
       ...BASE,
-      appearances: [OWNED, { id: 'alt', name: 'Alt', unlock: { type: 'owned' } }],
+      appearances: [OWNED, { id: 'halloween', name: 'Halloween', unlock: { type: 'owned' } }],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects several owned appearances with no `standard` — the default would be a coin flip', () => {
+    const parsed = SpeciesContentSchema.safeParse({
+      ...BASE,
+      appearances: [
+        { id: 'alt_a', name: 'A', unlock: { type: 'owned' } },
+        { id: 'alt_b', name: 'B', unlock: { type: 'owned' } },
+      ],
     });
     expect(parsed.success).toBe(false);
+    expect(parsed.success === false && JSON.stringify(parsed.error.issues)).toContain(
+      'but none is "standard"',
+    );
   });
 
   it('rejects a non-positive level gate', () => {

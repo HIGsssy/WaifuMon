@@ -538,5 +538,445 @@
    "effectId": "energy_save_chance",
    "value": 10
   }
+ },
+ {
+  "slug": "shardkeeper",
+  "name": "Shardkeeper",
+  "rarity": "UR",
+  "archetype": "spirit",
+  "race": "spirit",
+  "baseCaptureRate": null,
+  "description": "Grown out of the shards that were ground and never spent \u2014 a woman with a vault's worth of edges in her instead of bones. She sorts every Baddie shard in the tower by whose it was, and she does not give them back.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "Sorted By Whose",
+   "ability": {
+    "name": "Sharp Tally",
+    "text": "Knows what every shard in the tower came from. Pays out slowly, and never the good ones first."
+   },
+   "flavorQuote": "You want her back? Bring me enough of her and we will talk about the edges.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/shardkeeper/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Keeper's Ledger",
+   "flavorText": "Keeper's Ledger: +60% essence gained. Every shard she weighs goes back into the ledger, and the ledger has never once been wrong about what a thing is worth.",
+   "effectId": "essence_gain",
+   "value": 60
+  }
+ },
+ {
+  "slug": "armoury_fitter",
+  "name": "Armoury Fitter",
+  "rarity": "SR",
+  "archetype": "human",
+  "race": "human",
+  "baseCaptureRate": null,
+  "description": "Fits and repairs every piece of kit that comes off the tower's floors. Hands you your gear the way a tailor hands you a coat \u2014 and will not let you leave the garrison in something that does not fit her.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "Wear It Properly",
+   "ability": {
+    "name": "Proper Fit",
+    "text": "Refits your kit between floors. Armour she has touched stops hanging badly."
+   },
+   "flavorQuote": "Stand still. If it does not fit you, it will kill you, and I will have wasted the morning.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/armoury_fitter/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Broken In",
+   "flavorText": "Broken In: 12% chance a hunt costs you no energy. Anything she has fitted you has already been walked a mile before you got it.",
+   "effectId": "energy_save_chance",
+   "value": 12
+  }
+ },
+ {
+  "slug": "bloom_maiden",
+  "name": "Bloom Maiden",
+  "rarity": "SR",
+  "archetype": "plant",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "Half-plant and half-keeper of the tower's conservatory, grown up out of the shard drifts that were left to rot in the soil. The vines go where the shards went, which is how she knows where every one of them is buried.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "switch",
+  "card": {
+   "subtitle": "Roots In The Vault",
+   "ability": {
+    "name": "Cultivated Ground",
+    "text": "The conservatory grows over what the tower grinds. Nothing it puts down comes back up cheap."
+   },
+   "flavorQuote": "You are standing on my roots. Say something worth the water.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/bloom_maiden/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Grown For You",
+   "flavorText": "Grown For You: +50% care energy gained. Nothing in this conservatory was grown for the market, and she has never once let a bed go hungry.",
+   "effectId": "care_energy_gain",
+   "value": 50
+  }
+ },
+ {
+  "slug": "night_nanny",
+  "name": "Night Nanny",
+  "rarity": "UR",
+  "archetype": "nanny",
+  "race": "demon",
+  "baseCaptureRate": null,
+  "description": "She keeps a nursery in a tower with no children in it, and has kept it a very long time. The cot is bolted to the floor, the door is not on the floor plan, and she is very good at getting you to lie down.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "caregiver",
+  "card": {
+   "subtitle": "Lights Out At Nine",
+   "ability": {
+    "name": "Tucked In",
+    "text": "Whatever she puts to bed stays put, and the tower does not wake it."
+   },
+   "flavorQuote": "Sleep. I will be here when you wake up, and every night after.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/night_nanny/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Raised Right",
+   "flavorText": "Raised Right: +75% affection gained. She has raised everything in this tower that was ever left with her, and it always came out stronger than it went in.",
+   "effectId": "affection_gain",
+   "value": 75
+  }
+ },
+ {
+  "slug": "sister_grace",
+  "name": "Sister Grace",
+  "rarity": "SSR",
+  "archetype": "nun",
+  "race": "human",
+  "baseCaptureRate": null,
+  "description": "She hears confession on the ritual-hall floor and takes Baddie shards as penance, and she has been taking rather a lot of penance lately. Whatever she forgives you for, she keeps the record.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "caregiver",
+  "card": {
+   "subtitle": "Penance Accepted",
+   "ability": {
+    "name": "Last Rites",
+    "text": "Your shards go over the rail and your sins go with them. Neither one gets handed back."
+   },
+   "flavorQuote": "Kneel. You can keep the rest of it.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/sister_grace/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Benediction",
+   "flavorText": "Benediction: +18% to world encounter checks. Whatever she forgives you for, she blesses first, and the blessing takes.",
+   "effectId": "encounter_check_bonus",
+   "value": 18
+  }
  }
 ]

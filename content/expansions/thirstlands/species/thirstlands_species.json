@@ -80,6 +80,18 @@
      "type": "level",
      "atLevel": 50
     }
+   },
+   {
+    "id": "halloween_dwarf",
+    "name": "Dwarf Costume",
+    "cosmeticRarity": "seasonal",
+    "sortOrder": 60,
+    "tags": [
+     "halloween"
+    ],
+    "unlock": {
+     "type": "owned"
+    }
    }
   ],
   "buddyBonus": {
@@ -1163,6 +1175,19 @@
     "unlock": {
      "type": "level",
      "atLevel": 50
+    }
+   },
+   {
+    "id": "halloween_nurse",
+    "name": "Halloween Nurse",
+    "cosmeticRarity": "seasonal",
+    "sortOrder": 60,
+    "tags": [
+     "halloween",
+     "cosplay"
+    ],
+    "unlock": {
+     "type": "owned"
     }
    }
   ],
