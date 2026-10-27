@@ -97,6 +97,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
     requiresPermission: 'equipment.read',
   },
   {
+    to: '/admin/equipment/rarity-rules',
+    label: 'Admin — Equipment · Rarity Rules',
+    icon: Hammer,
+    requiresPermission: 'equipment.read',
+  },
+  {
     // Region encounter pools: drafts, publication, odds and history.
     to: '/admin/region-pools',
     label: 'Admin — Region Pools',

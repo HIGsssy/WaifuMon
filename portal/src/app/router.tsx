@@ -216,6 +216,11 @@ const EquipmentImportPage = lazy(() =>
     default: m.EquipmentImportPage,
   })),
 );
+const EquipmentRarityRulesPage = lazy(() =>
+  import('@/features/adminEquipment/EquipmentRarityRulesPage').then((m) => ({
+    default: m.EquipmentRarityRulesPage,
+  })),
+);
 // The Enemy Catalogue: combat enemies as shared content. Gated on
 // `enemies.read`; the editor is read-only without `enemies.write`.
 const EnemiesListPage = lazy(() =>
@@ -639,6 +644,10 @@ export const routes: RouteObject[] = [
                 <EquipmentImportPage />
               </RequirePortalPermission>
             ),
+          },
+          {
+            path: 'admin/equipment/rarity-rules',
+            element: <EquipmentRarityRulesPage />,
           },
           {
             path: 'admin/equipment/:key',

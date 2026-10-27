@@ -120,6 +120,9 @@ export function EquipmentCataloguePage() {
         description="Every equipment definition. Changes reach future drops only — gear players already own keeps what it rolled. New equipment starts disabled."
         actions={
           <div className="flex flex-wrap gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/admin/equipment/rarity-rules">Rarity Rules</Link>
+            </Button>
             <Button
               variant="outline"
               disabled={exporting.isPending}
