@@ -122,6 +122,7 @@ function row(over: Partial<EquipmentDefinitionRow> & { key: string }): Equipment
     secondaryEffects: [],
     primarySpEligible: false,
     maxAdditionalBonuses: null,
+    revision: 1,
     tags: [],
     regionId: null,
     artworkPath: null,

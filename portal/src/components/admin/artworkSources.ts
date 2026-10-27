@@ -13,6 +13,11 @@ import {
   searchDungeonArtwork,
 } from '@/api/adminDungeons';
 import {
+  browseEquipmentArtwork,
+  equipmentArtworkBlob,
+  searchEquipmentArtwork,
+} from '@/api/adminEquipment';
+import {
   adminEncounterArtworkBlob,
   browseAdminEncounterArtwork,
   searchAdminEncounterArtwork,
@@ -45,4 +50,12 @@ export const encounterArtworkSource: ArtworkSource = {
   browse: (path, signal) => browseAdminEncounterArtwork(path, signal),
   search: (query, signal) => searchAdminEncounterArtwork(query, signal),
   loadImage: (path) => adminEncounterArtworkBlob(path),
+};
+
+/** The Equipment Catalogue: `equipment.read`, `equipment/`. */
+export const equipmentArtworkSource: ArtworkSource = {
+  scope: 'equipment',
+  browse: (path, signal) => browseEquipmentArtwork(path, signal),
+  search: (query, signal) => searchEquipmentArtwork(query, signal),
+  loadImage: (path) => equipmentArtworkBlob(path),
 };

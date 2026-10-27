@@ -82,6 +82,8 @@ const ALL_DEV_PERMISSIONS: readonly string[] = [
   'dungeons.publish',
   'enemies.read',
   'enemies.write',
+  'equipment.read',
+  'equipment.write',
   'regions.read',
   'regions.write',
   'regions.publish',

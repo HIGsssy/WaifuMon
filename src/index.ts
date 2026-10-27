@@ -94,6 +94,7 @@ import {
 } from './modules/equipment/equipmentRollRulesService';
 import { createEquipmentAffixLibraryService } from './modules/equipment/equipmentAffixLibraryService';
 import { createCombatStatsService } from './modules/equipment/combatStatsService';
+import { createEquipmentCatalogueService } from './modules/equipment/equipmentCatalogueService';
 import { createEquipmentManagementService } from './modules/equipment/equipmentManagementService';
 import { createEquipmentWorkshopService } from './modules/equipment/equipmentWorkshopService';
 import {
@@ -438,6 +439,16 @@ async function main(): Promise<void> {
     currency,
     getAffixes,
     getConfig: () => contentSnapshot.equipmentWorkshop ?? null,
+  });
+  // The Admin Equipment Catalogue: Portal authoring over the definition and
+  // package services, with roll previews on the published rules.
+  const equipmentCatalogue = createEquipmentCatalogueService({
+    db,
+    definitions: equipmentDefinitions,
+    promotion: equipmentPromotion,
+    rollRules: equipmentRollRules,
+    getAffixes,
+    getWorkshopConfig: () => contentSnapshot.equipmentWorkshop ?? null,
   });
   /**
    * Combat Trials: automatic fights against content-defined enemies, gated by
@@ -943,6 +954,7 @@ async function main(): Promise<void> {
       equipmentPromotion,
       equipmentRollRules,
       equipmentAffixLibraries,
+      equipmentCatalogue,
       featureUnlocks,
       equipmentOnboarding,
       equipmentManagement,

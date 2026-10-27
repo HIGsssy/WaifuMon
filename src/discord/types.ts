@@ -52,6 +52,7 @@ import type { GuildRoleService } from '../modules/portalAuth/guildRoleService';
 import type { EquipmentService } from '../modules/equipment/equipmentService';
 import type { EquipmentDefinitionService } from '../modules/equipment/equipmentDefinitionService';
 import type { EquipmentRollRulesService } from '../modules/equipment/equipmentRollRulesService';
+import type { EquipmentCatalogueService } from '../modules/equipment/equipmentCatalogueService';
 import type { EquipmentAffixLibraryService } from '../modules/equipment/equipmentAffixLibraryService';
 import type { CombatStatsService } from '../modules/equipment/combatStatsService';
 import type { EquipmentPromotionService } from '../modules/equipment/equipmentImportService';
@@ -251,6 +252,8 @@ export interface AppServices {
    */
   equipmentRollRules?: EquipmentRollRulesService | undefined;
   equipmentAffixLibraries?: EquipmentAffixLibraryService | undefined;
+  /** The Admin Equipment Catalogue (E3-D): Portal-only, behind `equipment.*`. */
+  equipmentCatalogue?: EquipmentCatalogueService | undefined;
   featureUnlocks?: FeatureUnlockService | undefined;
   /** Equipment onboarding (Patch) and the read-only Equipment overview. */
   equipmentOnboarding?: EquipmentOnboardingService | undefined;

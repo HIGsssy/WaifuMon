@@ -23,6 +23,15 @@
  * It never deletes, and it never rewrites a definition the plan found
  * `unchanged` — so re-importing an identical package touches nothing, not even
  * `updated_at`.
+ *
+ * ## Admin Equipment Catalogue (E3-D)
+ *
+ * With `catalogueDefaults`, new definitions start disabled and updated ones
+ * keep their enabled state (`applyCatalogueImportDefaults`). A preview
+ * returns a `planHash`; applying with `expectedPlanHash` refuses with
+ * `EquipmentImportStaleError` if the catalogue moved in between. Every write
+ * increments the definition's `revision` and appends an `imported`
+ * `equipment_admin_events` row beside the `equipment_import_log` row.
  */
 import { eq, inArray, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
@@ -35,17 +44,21 @@ import {
 import {
   AppError,
   EquipmentImportConflictError,
+  EquipmentImportStaleError,
   uniqueViolationConstraint,
   type EquipmentIssue,
 } from '../../shared/errors';
 import { definitionColumnValues, definitionInputFromRow } from './definitionSchema';
-import { readPublishedRollRules } from './equipmentRollRulesService';
+import { readPublishedRollRules, recordEquipmentAdminEvent } from './equipmentRollRulesService';
 import {
+  applyCatalogueImportDefaults,
   buildEquipmentPackage,
+  importPlanHash,
   parseEquipmentPackage,
   planEquipmentImport,
   type EquipmentImportPlan,
   type EquipmentPackage,
+  type ImportStatusNote,
   type ImportTargetDefinition,
 } from './equipmentPackage';
 
@@ -72,6 +85,22 @@ export class EquipmentImportRejectedError extends AppError {
 export interface ApplyImportResult {
   plan: EquipmentImportPlan;
   logId: number;
+  planHash: string;
+  /** Enabled values the Catalogue defaults overrode. */
+  statusNotes: ImportStatusNote[];
+}
+
+/** A plan, the package it planned (after any defaults) and its fingerprint. */
+export interface ImportPreview extends EquipmentImportPlan {
+  planHash: string;
+  statusNotes: ImportStatusNote[];
+  /** The package as it would be applied. */
+  package: EquipmentPackage;
+}
+
+export interface ImportOptions {
+  /** New definitions start disabled; updated ones keep their enabled state (E3-D). */
+  catalogueDefaults?: boolean;
 }
 
 export interface EquipmentPromotionService {
@@ -80,14 +109,15 @@ export interface EquipmentPromotionService {
    * Validate and plan without writing anything.
    * @throws {EquipmentValidationError} for a malformed package.
    */
-  previewImport(raw: unknown): Promise<EquipmentImportPlan>;
+  previewImport(raw: unknown, opts?: ImportOptions): Promise<ImportPreview>;
   /**
    * @throws {EquipmentValidationError} for a malformed package.
    * @throws {EquipmentImportRejectedError} when the plan has issues.
+   * @throws {EquipmentImportStaleError} when `expectedPlanHash` no longer matches.
    */
   applyImport(
     raw: unknown,
-    opts?: { actorDiscordId?: string | null; sourceFilename?: string | null },
+    opts?: ImportOptions & { actorDiscordId?: string | null; sourceFilename?: string | null; expectedPlanHash?: string },
   ): Promise<ApplyImportResult>;
 }
 
@@ -114,7 +144,11 @@ async function readTarget(
 
   for (const row of found) {
     rows.set(row.key, row);
-    target.set(row.key, { input: definitionInputFromRow(row), instanceCount: countById.get(row.id) ?? 0 });
+    target.set(row.key, {
+      input: definitionInputFromRow(row),
+      instanceCount: countById.get(row.id) ?? 0,
+      revision: row.revision,
+    });
   }
   return { rows, target };
 }
@@ -127,35 +161,63 @@ export function createEquipmentPromotionService(deps: { db: Db }): EquipmentProm
    * log. `onCreate` reports each key just before it is inserted, so a unique
    * violation can be attributed to the definition that lost the race.
    */
+  /** Plan `parsed` against `target`, with the Catalogue defaults when asked. */
+  function planAgainst(
+    parsed: EquipmentPackage,
+    target: Map<string, ImportTargetDefinition>,
+    rules: Parameters<typeof planEquipmentImport>[2],
+    opts: ImportOptions,
+  ) {
+    const adjusted = opts.catalogueDefaults ? applyCatalogueImportDefaults(parsed, target) : { pkg: parsed, notes: [] };
+    return {
+      pkg: adjusted.pkg,
+      statusNotes: adjusted.notes,
+      plan: planEquipmentImport(adjusted.pkg, target, rules),
+      planHash: importPlanHash(adjusted.pkg, target),
+    };
+  }
+
   function applyInTransaction(
-    pkg: EquipmentPackage,
-    opts: { actorDiscordId?: string | null; sourceFilename?: string | null },
+    parsed: EquipmentPackage,
+    opts: ImportOptions & { actorDiscordId?: string | null; sourceFilename?: string | null; expectedPlanHash?: string },
     onCreate: (key: string) => void,
   ): Promise<ApplyImportResult> {
     return db.transaction(async (tx) => {
-      const { rows, target } = await readTarget(tx, pkg.definitions.map((d) => d.key), true);
-      const plan = planEquipmentImport(pkg, target, (await readPublishedRollRules(tx))?.rules ?? null);
+      const { rows, target } = await readTarget(tx, parsed.definitions.map((d) => d.key), true);
+      const { pkg, plan, planHash, statusNotes } = planAgainst(
+        parsed,
+        target,
+        (await readPublishedRollRules(tx))?.rules ?? null,
+        opts,
+      );
+      if (opts.expectedPlanHash !== undefined && opts.expectedPlanHash !== planHash) throw new EquipmentImportStaleError();
       if (!plan.ok) throw new EquipmentImportRejectedError(plan);
 
+      const actor = opts.actorDiscordId ?? null;
       const touched: string[] = [];
+      const audits: { key: string; action: 'create' | 'update'; changedFields: string[]; revision: number }[] = [];
       for (const definition of pkg.definitions) {
         const entry = plan.entries.find((e) => e.key === definition.key)!;
         if (entry.action === 'create') {
           onCreate(definition.key);
           await tx
             .insert(equipmentDefinitions)
-            .values({ ...definitionColumnValues(definition), updatedBy: opts.actorDiscordId ?? null });
+            .values({ ...definitionColumnValues(definition), updatedBy: actor });
           touched.push(definition.key);
+          audits.push({ key: definition.key, action: 'create', changedFields: [], revision: 1 });
         } else if (entry.action === 'update') {
+          const existing = rows.get(definition.key)!;
           await tx
             .update(equipmentDefinitions)
             .set({
               ...definitionColumnValues(definition),
+              revision: existing.revision + 1,
               updatedAt: sql`now()`,
-              updatedBy: opts.actorDiscordId ?? null,
+              updatedBy: actor,
             })
-            .where(eq(equipmentDefinitions.id, rows.get(definition.key)!.id));
+            .where(eq(equipmentDefinitions.id, existing.id));
           touched.push(definition.key);
+          audits.push({ key: definition.key, action: 'update', changedFields: entry.changedFields, revision: existing.revision + 1 });
         }
       }
 
@@ -174,7 +236,24 @@ export function createEquipmentPromotionService(deps: { db: Db }): EquipmentProm
           definitionKeys: touched,
         })
         .returning({ id: equipmentImportLog.id });
-      return { plan, logId: log!.id };
+      for (const audit of audits) {
+        await recordEquipmentAdminEvent(
+          tx,
+          'definition',
+          audit.key,
+          'imported',
+          {
+            importAction: audit.action,
+            importLogId: log!.id,
+            revision: audit.revision,
+            changedFields: audit.changedFields,
+            packageVersion: pkg.version,
+            packageLabel: pkg.label,
+          },
+          actor,
+        );
+      }
+      return { plan, logId: log!.id, planHash, statusNotes };
     });
   }
 
@@ -190,10 +269,16 @@ export function createEquipmentPromotionService(deps: { db: Db }): EquipmentProm
       });
     },
 
-    async previewImport(raw) {
-      const pkg = parseEquipmentPackage(raw);
-      const { target } = await readTarget(db, pkg.definitions.map((d) => d.key), false);
-      return planEquipmentImport(pkg, target, (await readPublishedRollRules(db))?.rules ?? null);
+    async previewImport(raw, opts = {}) {
+      const parsed = parseEquipmentPackage(raw);
+      const { target } = await readTarget(db, parsed.definitions.map((d) => d.key), false);
+      const { pkg, plan, planHash, statusNotes } = planAgainst(
+        parsed,
+        target,
+        (await readPublishedRollRules(db))?.rules ?? null,
+        opts,
+      );
+      return { ...plan, planHash, statusNotes, package: pkg };
     },
 
     async applyImport(raw, opts = {}) {

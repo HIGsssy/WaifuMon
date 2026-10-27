@@ -89,7 +89,8 @@ export async function seedEquipmentDefinitions(
       await assertReferencedFieldsUnchanged(tx, existing, input);
       await tx
         .update(equipmentDefinitions)
-        .set({ ...definitionColumnValues(input), updatedAt: sql`now()`, updatedBy: null })
+        // A reset is a write like any other: an editor holding the old revision must not overwrite it.
+        .set({ ...definitionColumnValues(input), revision: existing.revision + 1, updatedAt: sql`now()`, updatedBy: null })
         .where(eq(equipmentDefinitions.id, existing.id));
       result.updated.push(input.key);
     });

@@ -2680,6 +2680,12 @@ export const equipmentDefinitions = pgTable(
      */
     primarySpEligible: boolean('primary_sp_eligible').notNull().default(false),
     maxAdditionalBonuses: smallint('max_additional_bonuses'),
+    /**
+     * Optimistic-concurrency token (migration 0073). Every write increments
+     * it; the Portal editor names the revision it loaded and a stale save is
+     * refused (`EQUIPMENT_DEFINITION_STALE`) rather than overwriting.
+     */
+    revision: integer('revision').notNull().default(1),
     tags: text('tags')
       .array()
       .notNull()
@@ -2725,6 +2731,7 @@ export const equipmentDefinitions = pgTable(
     ),
     check('equipment_definitions_buy_price_check', sql`${t.buyPrice} is null or ${t.buyPrice} > 0`),
     check('equipment_definitions_price_currency_check', sql`${t.priceCurrency} in ('waifubux','essence')`),
+    check('equipment_definitions_revision_check', sql`${t.revision} >= 1`),
     check(
       'equipment_definitions_max_additional_bonuses_check',
       sql`${t.maxAdditionalBonuses} is null or (${t.maxAdditionalBonuses} >= 0 and ${t.maxAdditionalBonuses} <= 3)`,
@@ -3227,7 +3234,8 @@ export const equipmentAffixLibraryRevisions = pgTable(
 
 export type EquipmentAffixLibraryRevisionRow = typeof equipmentAffixLibraryRevisions.$inferSelect;
 
-export const EQUIPMENT_ADMIN_SUBJECT_KINDS = ['roll_rules', 'affix_library'] as const;
+/** `definition` (migration 0073): Admin Equipment Catalogue authoring. */
+export const EQUIPMENT_ADMIN_SUBJECT_KINDS = ['roll_rules', 'affix_library', 'definition'] as const;
 export type EquipmentAdminSubjectKind = (typeof EQUIPMENT_ADMIN_SUBJECT_KINDS)[number];
 export const EQUIPMENT_ADMIN_EVENT_ACTIONS = [
   'bootstrapped',
@@ -3238,6 +3246,11 @@ export const EQUIPMENT_ADMIN_EVENT_ACTIONS = [
   'draft_imported',
   'published',
   'rolled_back',
+  // Definitions (migration 0073).
+  'enabled',
+  'disabled',
+  'duplicated',
+  'imported',
 ] as const;
 export type EquipmentAdminEventAction = (typeof EQUIPMENT_ADMIN_EVENT_ACTIONS)[number];
 
@@ -3257,10 +3270,10 @@ export const equipmentAdminEvents = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    check('equipment_admin_events_subject_kind_check', sql`${t.subjectKind} in ('roll_rules','affix_library')`),
+    check('equipment_admin_events_subject_kind_check', sql`${t.subjectKind} in ('roll_rules','affix_library','definition')`),
     check(
       'equipment_admin_events_action_check',
-      sql`${t.action} in ('bootstrapped','drift_detected','created','updated','draft_saved','draft_imported','published','rolled_back')`,
+      sql`${t.action} in ('bootstrapped','drift_detected','created','updated','draft_saved','draft_imported','published','rolled_back','enabled','disabled','duplicated','imported')`,
     ),
     check('equipment_admin_events_details_check', sql`jsonb_typeof(${t.details}) = 'object'`),
     index('equipment_admin_events_subject_idx').on(t.subjectKind, t.subjectKey, t.id.desc()),

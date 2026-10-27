@@ -1063,6 +1063,58 @@ export class EquipmentRarityLockedError extends AppError {
 }
 
 /**
+ * A definition save named a revision that is no longer current: someone else
+ * saved first. Nothing was changed (Admin Equipment Catalogue, E3-D).
+ */
+export class EquipmentDefinitionStaleError extends AppError {
+  constructor(
+    readonly key: string,
+    readonly expectedRevision: number,
+    readonly currentRevision: number,
+    readonly updatedBy: string | null,
+    readonly updatedAt: Date,
+  ) {
+    super(
+      'EQUIPMENT_DEFINITION_STALE',
+      `Equipment definition "${key}": expected revision ${expectedRevision}, but it is ${currentRevision}`,
+      'Someone else changed this equipment first. Reload it and try again.',
+    );
+  }
+}
+
+/**
+ * An import's catalogue changed between its preview and its application — a
+ * definition it touches was edited, or one it would create now exists.
+ * Nothing was applied; preview it again.
+ */
+export class EquipmentImportStaleError extends AppError {
+  constructor() {
+    super(
+      'EQUIPMENT_IMPORT_STALE',
+      'The equipment catalogue changed since this import was previewed',
+      'The catalogue changed since you previewed this import. Preview it again before applying.',
+    );
+  }
+}
+
+/**
+ * Enabling this definition would add it to automatic reward sources right
+ * away, and the request did not acknowledge that. `impact` names them.
+ */
+export class EquipmentEnableConfirmationRequiredError extends AppError {
+  constructor(
+    readonly key: string,
+    readonly impact: readonly unknown[],
+  ) {
+    super(
+      'EQUIPMENT_ENABLE_CONFIRMATION_REQUIRED',
+      `Enabling equipment definition "${key}" adds it to ${impact.length} automatic reward source(s); confirmation required`,
+      'Enabling this equipment adds it to automatic rewards. Review the list and confirm.',
+    );
+  }
+}
+
+/**
  * Managed equipment configuration (Equipment 3.0): the roll rules or an affix
  * library. `subject` is `roll rules` or `affix library "<key>"`.
  */

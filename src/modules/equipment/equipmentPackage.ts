@@ -23,7 +23,7 @@
 import type { EquipmentDefinitionRow } from '../../db/schema';
 import { EquipmentValidationError, type EquipmentIssue } from '../../shared/errors';
 import { definitionRollPolicyIssues } from './highRarityRoll';
-import type { RollRules } from './rollRules';
+import { contentHash, type RollRules } from './rollRules';
 import {
   changedDefinitionFields,
   definitionInputFromRow,
@@ -178,6 +178,8 @@ export interface ImportTargetDefinition {
   input: EquipmentDefinitionInput;
   /** Instances referencing it, removed ones included. */
   instanceCount: number;
+  /** The stored revision (migration 0073), for the plan hash. */
+  revision?: number;
 }
 
 export type EquipmentImportAction = 'create' | 'update' | 'unchanged';
@@ -195,6 +197,64 @@ export interface EquipmentImportPlan {
   issues: EquipmentIssue[];
   counts: { create: number; update: number; unchanged: number };
   ok: boolean;
+}
+
+/** An `enabled` value the Catalogue import overrode, so the preview can say so. */
+export interface ImportStatusNote {
+  key: string;
+  /** What the package said. */
+  packageEnabled: boolean;
+  /** What will be stored. */
+  enabled: boolean;
+  reason: 'new_definitions_start_disabled' | 'existing_status_kept';
+}
+
+/**
+ * The Admin Equipment Catalogue's import rules (E3-D), applied before
+ * planning: a definition the import **creates** starts disabled whatever the
+ * file says, and one it **updates** keeps its current enabled state — an
+ * import never switches a definition on (or off). Enabling is its own
+ * reviewed action. Pure; returns the adjusted package and what changed.
+ */
+export function applyCatalogueImportDefaults(
+  pkg: EquipmentPackage,
+  target: ReadonlyMap<string, ImportTargetDefinition>,
+): { pkg: EquipmentPackage; notes: ImportStatusNote[] } {
+  const notes: ImportStatusNote[] = [];
+  const definitions = pkg.definitions.map((definition) => {
+    const existing = target.get(definition.key);
+    const enabled = existing ? existing.input.enabled : false;
+    if (enabled !== definition.enabled) {
+      notes.push({
+        key: definition.key,
+        packageEnabled: definition.enabled,
+        enabled,
+        reason: existing ? 'existing_status_kept' : 'new_definitions_start_disabled',
+      });
+    }
+    return { ...definition, enabled };
+  });
+  return { pkg: { ...pkg, definitions }, notes };
+}
+
+/**
+ * A fingerprint of what an import would do *and* of the catalogue it was
+ * planned against: the (adjusted) definitions, and for every key they name,
+ * the target's revision and copy count — or its absence. A preview returns
+ * it; applying with `expectedPlanHash` re-plans under lock and refuses if it
+ * moved (someone edited, created or granted one of those definitions).
+ */
+export function importPlanHash(
+  pkg: EquipmentPackage,
+  target: ReadonlyMap<string, ImportTargetDefinition & { revision?: number }>,
+): string {
+  return contentHash({
+    definitions: pkg.definitions,
+    target: pkg.definitions.map((d) => {
+      const t = target.get(d.key);
+      return t ? { key: d.key, revision: t.revision ?? null, instanceCount: t.instanceCount } : { key: d.key, absent: true };
+    }),
+  });
 }
 
 /**

@@ -512,6 +512,13 @@
       "when": 1821996000000,
       "tag": "0072_equipment_definition_roll_policy",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1822082400000,
+      "tag": "0073_equipment_catalogue_admin",
+      "breakpoints": true
     }
   ]
 }

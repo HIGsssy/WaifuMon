@@ -19,6 +19,12 @@
  *    removed copies included, since they still reference the row. Deletion
  *    is refused with the blocker count (disable it instead); the
  *    `ON DELETE RESTRICT` foreign key is the backstop.
+ *
+ * Every write increments the definition's integer `revision` (migration
+ * 0073) and, in the same transaction, appends an `equipment_admin_events`
+ * row (subject `definition`) naming the actor and what changed. A caller that
+ * names `expectedRevision` (the Portal editor) is refused with
+ * `EquipmentDefinitionStaleError` when someone else saved first.
  */
 import { and, asc, count, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
@@ -30,6 +36,7 @@ import {
 import {
   EquipmentDefinitionNotFoundError,
   EquipmentDefinitionReferencedError,
+  EquipmentDefinitionStaleError,
   EquipmentKeyTakenError,
   EquipmentRarityLockedError,
   EquipmentSlotLockedError,
@@ -37,11 +44,13 @@ import {
   isUniqueViolation,
 } from '../../shared/errors';
 import {
+  changedDefinitionFields,
   definitionColumnValues,
+  definitionInputFromRow,
   parseEquipmentDefinition,
   type EquipmentDefinitionInput,
 } from './definitionSchema';
-import { readPublishedRollRules } from './equipmentRollRulesService';
+import { readPublishedRollRules, recordEquipmentAdminEvent } from './equipmentRollRulesService';
 import { definitionRollPolicyIssues } from './highRarityRoll';
 import type { EquipmentSlot } from './vocabulary';
 
@@ -65,20 +74,23 @@ export interface DefinitionBlockers {
   instanceCount: number;
 }
 
+/** How a write is attributed and guarded. */
+export interface DefinitionWriteOptions {
+  actorDiscordId?: string | null;
+  /** Refuse with `EquipmentDefinitionStaleError` unless the stored revision is this one. */
+  expectedRevision?: number;
+}
+
 export interface EquipmentDefinitionService {
   listDefinitions(filters?: DefinitionFilters): Promise<DefinitionSummary[]>;
   getByKey(key: string): Promise<EquipmentDefinitionRow | null>;
-  create(input: unknown, opts?: { actorDiscordId?: string | null }): Promise<EquipmentDefinitionRow>;
-  update(
-    key: string,
+  /** `audit` names the event (`created`, or `duplicated` with its source). */
+  create(
     input: unknown,
-    opts?: { actorDiscordId?: string | null },
+    opts?: { actorDiscordId?: string | null; audit?: { action: 'created' | 'duplicated'; details?: Record<string, unknown> } },
   ): Promise<EquipmentDefinitionRow>;
-  setEnabled(
-    key: string,
-    enabled: boolean,
-    opts?: { actorDiscordId?: string | null },
-  ): Promise<EquipmentDefinitionRow>;
+  update(key: string, input: unknown, opts?: DefinitionWriteOptions): Promise<EquipmentDefinitionRow>;
+  setEnabled(key: string, enabled: boolean, opts?: DefinitionWriteOptions): Promise<EquipmentDefinitionRow>;
   /** What stops `key` being deleted. */
   referenceBlockers(key: string): Promise<DefinitionBlockers>;
   delete(key: string): Promise<void>;
@@ -140,6 +152,13 @@ export async function assertRollPolicyFeasible(
   if (issues.length > 0) throw new EquipmentValidationError(issues);
 }
 
+/** Refuse a write that names a revision other than the stored one. */
+export function assertDefinitionRevision(existing: EquipmentDefinitionRow, expectedRevision: number | undefined): void {
+  if (expectedRevision !== undefined && existing.revision !== expectedRevision) {
+    throw new EquipmentDefinitionStaleError(existing.key, expectedRevision, existing.revision, existing.updatedBy, existing.updatedAt);
+  }
+}
+
 function isForeignKeyViolation(err: unknown): boolean {
   if (err && typeof err === 'object') {
     const e = err as { code?: unknown; cause?: unknown };
@@ -199,12 +218,23 @@ export function createEquipmentDefinitionService(db: Db): EquipmentDefinitionSer
     async create(input, opts = {}) {
       const parsed = parseEquipmentDefinition(input);
       await assertRollPolicyFeasible(db, parsed);
+      const actor = opts.actorDiscordId ?? null;
       try {
-        const [row] = await db
-          .insert(equipmentDefinitions)
-          .values({ ...definitionColumnValues(parsed), updatedBy: opts.actorDiscordId ?? null })
-          .returning();
-        return row!;
+        return await db.transaction(async (tx) => {
+          const [row] = await tx
+            .insert(equipmentDefinitions)
+            .values({ ...definitionColumnValues(parsed), updatedBy: actor })
+            .returning();
+          await recordEquipmentAdminEvent(
+            tx,
+            'definition',
+            parsed.key,
+            opts.audit?.action ?? 'created',
+            { revision: row!.revision, rarity: parsed.rarity, slot: parsed.slot, enabled: parsed.enabled, ...(opts.audit?.details ?? {}) },
+            actor,
+          );
+          return row!;
+        });
       } catch (err) {
         if (isUniqueViolation(err)) throw new EquipmentKeyTakenError(parsed.key);
         throw err;
@@ -220,17 +250,28 @@ export function createEquipmentDefinitionService(db: Db): EquipmentDefinitionSer
       }
       return db.transaction(async (tx) => {
         const existing = await lockByKey(tx, key);
+        assertDefinitionRevision(existing, opts.expectedRevision);
         await assertReferencedFieldsUnchanged(tx, existing, parsed);
         await assertRollPolicyFeasible(tx, parsed);
+        const changedFields = changedDefinitionFields(definitionInputFromRow(existing), parsed).map(String);
         const [row] = await tx
           .update(equipmentDefinitions)
           .set({
             ...definitionColumnValues(parsed),
+            revision: existing.revision + 1,
             updatedAt: sql`now()`,
             updatedBy: opts.actorDiscordId ?? null,
           })
           .where(eq(equipmentDefinitions.id, existing.id))
           .returning();
+        await recordEquipmentAdminEvent(
+          tx,
+          'definition',
+          key,
+          'updated',
+          { revision: row!.revision, previousRevision: existing.revision, changedFields },
+          opts.actorDiscordId ?? null,
+        );
         return row!;
       });
     },
@@ -238,12 +279,21 @@ export function createEquipmentDefinitionService(db: Db): EquipmentDefinitionSer
     async setEnabled(key, enabled, opts = {}) {
       return db.transaction(async (tx) => {
         const existing = await lockByKey(tx, key);
+        assertDefinitionRevision(existing, opts.expectedRevision);
         await assertRollPolicyFeasible(tx, { ...existing, enabled });
         const [row] = await tx
           .update(equipmentDefinitions)
-          .set({ enabled, updatedAt: sql`now()`, updatedBy: opts.actorDiscordId ?? null })
+          .set({ enabled, revision: existing.revision + 1, updatedAt: sql`now()`, updatedBy: opts.actorDiscordId ?? null })
           .where(eq(equipmentDefinitions.id, existing.id))
           .returning();
+        await recordEquipmentAdminEvent(
+          tx,
+          'definition',
+          key,
+          enabled ? 'enabled' : 'disabled',
+          { revision: row!.revision, previousRevision: existing.revision, wasEnabled: existing.enabled },
+          opts.actorDiscordId ?? null,
+        );
         return row!;
       });
     },

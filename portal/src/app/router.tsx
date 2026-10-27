@@ -194,6 +194,28 @@ const DungeonZoneEditorPage = lazy(() =>
     default: m.DungeonZoneEditorPage,
   })),
 );
+// The Equipment Catalogue (Equipment 3.0): definitions across all six
+// rarities. Gated on `equipment.read`; writing needs `equipment.write`.
+const EquipmentCataloguePage = lazy(() =>
+  import('@/features/adminEquipment/EquipmentCataloguePage').then((m) => ({
+    default: m.EquipmentCataloguePage,
+  })),
+);
+const EquipmentCreatePage = lazy(() =>
+  import('@/features/adminEquipment/EquipmentDefinitionEditorPage').then((m) => ({
+    default: m.EquipmentCreatePage,
+  })),
+);
+const EquipmentEditorPage = lazy(() =>
+  import('@/features/adminEquipment/EquipmentDefinitionEditorPage').then((m) => ({
+    default: m.EquipmentEditorPage,
+  })),
+);
+const EquipmentImportPage = lazy(() =>
+  import('@/features/adminEquipment/EquipmentImportPage').then((m) => ({
+    default: m.EquipmentImportPage,
+  })),
+);
 // The Enemy Catalogue: combat enemies as shared content. Gated on
 // `enemies.read`; the editor is read-only without `enemies.write`.
 const EnemiesListPage = lazy(() =>
@@ -587,6 +609,42 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="enemies.read">
                 <EnemyEditorPage />
+              </RequirePortalPermission>
+            ),
+          },
+
+          // Admin — Equipment Catalogue. The API re-checks every request; the
+          // editor is read-only without `equipment.write`. `new` and `import`
+          // are declared before `:key`, so neither is read as a key.
+          {
+            path: 'admin/equipment',
+            element: (
+              <RequirePortalPermission permission="equipment.read">
+                <EquipmentCataloguePage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/equipment/new',
+            element: (
+              <RequirePortalPermission permission="equipment.write">
+                <EquipmentCreatePage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/equipment/import',
+            element: (
+              <RequirePortalPermission permission="equipment.write">
+                <EquipmentImportPage />
+              </RequirePortalPermission>
+            ),
+          },
+          {
+            path: 'admin/equipment/:key',
+            element: (
+              <RequirePortalPermission permission="equipment.read">
+                <EquipmentEditorPage />
               </RequirePortalPermission>
             ),
           },

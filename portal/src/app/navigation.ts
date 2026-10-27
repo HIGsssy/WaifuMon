@@ -25,6 +25,7 @@ import {
   FlaskConical,
   Gauge,
   Gift,
+  Hammer,
   Heart,
   Images,
   ImageUp,
@@ -87,6 +88,13 @@ export const NAV_ITEMS: readonly NavItem[] = [
     label: 'Admin — Reward Tables',
     icon: Gift,
     requiresPermission: 'rewards.read',
+  },
+  {
+    // Equipment definitions across all six rarities: authoring, import/export.
+    to: '/admin/equipment',
+    label: 'Admin — Equipment',
+    icon: Hammer,
+    requiresPermission: 'equipment.read',
   },
   {
     // Region encounter pools: drafts, publication, odds and history.

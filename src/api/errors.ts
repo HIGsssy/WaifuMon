@@ -546,6 +546,12 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   EQUIPMENT_DEFINITION_IN_USE: 409,
   EQUIPMENT_SLOT_LOCKED: 409,
   EQUIPMENT_RARITY_LOCKED: 409,
+  /** Admin Equipment Catalogue: a definition saved by someone else first. */
+  EQUIPMENT_DEFINITION_STALE: 409,
+  /** The catalogue changed between import preview and apply; preview again. */
+  EQUIPMENT_IMPORT_STALE: 409,
+  /** Enabling would join automatic rewards; resend with the acknowledgement. */
+  EQUIPMENT_ENABLE_CONFIRMATION_REQUIRED: 409,
   EQUIPMENT_CONFIG_STALE: 409,
   EQUIPMENT_CONFIG_INVALID: 400,
   EQUIPMENT_CONFIG_NOT_FOUND: 404,
