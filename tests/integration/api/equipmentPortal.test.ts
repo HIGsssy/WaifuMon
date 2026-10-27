@@ -241,14 +241,15 @@ describe('secondary combat bonuses', () => {
   }
 
   it('an item lists its own rolled bonuses: none, one or two', async () => {
+    // `sp` is null for every percentage family; only `flat_sp` carries whole SP (Equipment 3.0).
     const p = await newPlayer();
     const id = await bonusBag(p);
     const byId = new Map((await listAll(p, 'limit=50')).map((i) => [i.id, i]));
     expect(byId.get(id.belt).combatBonuses).toEqual([]);
-    expect(byId.get(id.ring).combatBonuses).toEqual([{ stat: 'crit_chance', label: 'Crit Chance', percent: 4.25, text: '+4.25% Crit Chance' }]);
+    expect(byId.get(id.ring).combatBonuses).toEqual([{ stat: 'crit_chance', label: 'Crit Chance', percent: 4.25, sp: null, text: '+4.25% Crit Chance' }]);
     expect(byId.get(id.plasma).combatBonuses).toEqual([
-      { stat: 'armor_penetration', label: 'Armor Pen', percent: 7.5, text: '+7.5% Armor Pen' },
-      { stat: 'lifesteal', label: 'Lifesteal', percent: 4, text: '+4% Lifesteal' },
+      { stat: 'armor_penetration', label: 'Armor Pen', percent: 7.5, sp: null, text: '+7.5% Armor Pen' },
+      { stat: 'lifesteal', label: 'Lifesteal', percent: 4, sp: null, text: '+4% Lifesteal' },
     ]);
   });
 
@@ -278,7 +279,10 @@ describe('secondary combat bonuses', () => {
     expect(d.item.combatBonuses.map((b: { text: string }) => b.text)).toEqual(['+7.5% Armor Pen', '+4% Lifesteal']);
     expect(d.comparison.equippedItem.combatBonuses.map((b: { text: string }) => b.text)).toEqual(['+4.25% Crit Chance']);
     expect(d.comparison).toMatchObject({ stat: 'attack', hasBuddy: true });
-    expect(Object.keys(d.comparison).sort()).toEqual(['current', 'delta', 'equippedItem', 'hasBuddy', 'stat', 'withItem']);
+    // `changes` (Equipment 3.0) carries every stat, since flat SP can move all three.
+    expect(Object.keys(d.comparison).sort()).toEqual(['changes', 'current', 'delta', 'equippedItem', 'hasBuddy', 'stat', 'withItem']);
+    expect(d.comparison.changes.attack).toEqual({ current: d.comparison.current, withItem: d.comparison.withItem, delta: d.comparison.delta });
+    expect(d.comparison.changes.defense.delta).toBe(0);
   });
 
   it('copies that differ only in their bonuses are not counted as identical', async () => {

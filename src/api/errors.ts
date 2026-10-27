@@ -545,6 +545,7 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   /** Deleting a definition players own — disable it instead. */
   EQUIPMENT_DEFINITION_IN_USE: 409,
   EQUIPMENT_SLOT_LOCKED: 409,
+  EQUIPMENT_RARITY_LOCKED: 409,
   EQUIPMENT_SLOT_MISMATCH: 409,
   EQUIPMENT_LOCKED: 409,
   /** The caller's view of a slot is stale; refetch and retry. */

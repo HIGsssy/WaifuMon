@@ -22,7 +22,7 @@ import { eq, sql } from 'drizzle-orm';
 import type { Db } from '../../db/client';
 import { equipmentDefinitions } from '../../db/schema';
 import { definitionColumnValues, type EquipmentDefinitionInput } from './definitionSchema';
-import { assertSlotChangeAllowed } from './equipmentDefinitionService';
+import { assertReferencedFieldsUnchanged } from './equipmentDefinitionService';
 import { parseEquipmentPackage } from './equipmentPackage';
 
 /** Relative to the content directory. */
@@ -34,7 +34,8 @@ export const EQUIPMENT_SEED_FILE = path.join('equipment', 'equipment.seed.json')
  *  - `insert-missing` — production/bootstrap. An existing row is never read
  *    beyond the conflict and never written.
  *  - `reset` — destructive, tests only. Overwrites existing rows from the
- *    catalogue (still refusing a slot change on a referenced definition).
+ *    catalogue (still refusing a slot or rarity change on a referenced
+ *    definition).
  */
 export type EquipmentSeedMode = 'insert-missing' | 'reset';
 
@@ -85,7 +86,7 @@ export async function seedEquipmentDefinitions(
         result.created.push(input.key);
         return;
       }
-      await assertSlotChangeAllowed(tx, existing, input.slot);
+      await assertReferencedFieldsUnchanged(tx, existing, input);
       await tx
         .update(equipmentDefinitions)
         .set({ ...definitionColumnValues(input), updatedAt: sql`now()`, updatedBy: null })

@@ -76,10 +76,12 @@ import {
   fixedRollCombatBonuses,
   multiplierRangeIssues,
   rollEquipmentInstance,
+  rolledPropertiesOf,
   UNKNOWN_AFFIX_LABEL,
   validateFixedRoll,
   type EquipmentRoll,
 } from './equipmentRoll';
+import { readPrimaryFlatSp } from './equipmentMath';
 import {
   readActiveLoadoutRow,
   readActiveLoadoutView,
@@ -114,16 +116,23 @@ const DEFAULT_LOADOUT_NAME = 'Default';
  *  - `random` (the default) — normal loot. Each copy rolls its own multiplier
  *    from the definition's range, its own affix from the catalogue, and its
  *    own combat bonuses by its rarity's rules (`combatBonuses.ts`).
- *  - `fixed` — the caller dictates the exact multiplier, affix (or null) and
- *    combat bonuses for every copy: onboarding, admin tools, compensation,
- *    restores. `combatBonuses` omitted means **none** — a fixed grant never
- *    rolls. Validated against the definition's current range, the affix
+ *  - `fixed` — the caller dictates the exact multiplier, affix (or null),
+ *    combat bonuses and primary flat SP for every copy: onboarding, admin
+ *    tools, compensation, restores. `combatBonuses` / `flatSp` omitted mean
+ *    **none** — a fixed grant never rolls. Validated against the definition's current range, the affix
  *    catalogue and the bonus shape; anything else is refused with
  *    `EquipmentValidationError`, never clamped.
  */
 export type EquipmentRollSpec =
   | { kind: 'random' }
-  | { kind: 'fixed'; rolledMultiplierBp: number; affixKey: string | null; combatBonuses?: CombatBonus[] };
+  | {
+      kind: 'fixed';
+      rolledMultiplierBp: number;
+      affixKey: string | null;
+      combatBonuses?: CombatBonus[];
+      /** Primary flat SP, whole points (Equipment 3.0). Stored as `rolled_properties.flatSp`. */
+      flatSp?: number;
+    };
 
 export interface GrantEquipmentInput {
   playerId: number;
@@ -214,9 +223,11 @@ export interface EquipmentPage {
 /**
  * Identical owned gear, grouped. Copies group only when everything a player
  * can see about them matches — the definition, the rolled multiplier, the
- * affix **and** the combat bonuses — so two Rusty Pipes at ×0.40 and ×0.60,
- * with different suffixes, or with different bonus rolls, are separate groups. Per-copy state (favourite, lock, equipped)
- * is counted, never merged.
+ * affix, the combat bonuses **and** the rolled properties (primary flat SP) —
+ * so two Rusty Pipes at ×0.40 and ×0.60, with different suffixes, different
+ * bonus rolls or different flat SP, are separate groups. Every pre-3.0 copy
+ * holds `{}`, so existing groups are unchanged. Per-copy state (favourite,
+ * lock, equipped) is counted, never merged.
  */
 export interface EquipmentGroup {
   definition: EquipmentDefinitionView;
@@ -225,6 +236,8 @@ export interface EquipmentGroup {
   affixKey: string | null;
   /** Shared by every copy in the group, like the multiplier and affix. */
   combatBonuses: CombatBonus[];
+  /** Shared by every copy in the group: `{ flatSp }`, or `{}`. */
+  rolledProperties: Record<string, unknown>;
   displayName: string;
   count: number;
   equippedCount: number;
@@ -740,8 +753,9 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     return Array.from({ length: quantity }, () => ({
       rolledMultiplierBp: fixed.rolledMultiplierBp,
       affixKey: fixed.affixKey,
-      // Dictated, never rolled: absent means the copy has no bonuses.
+      // Dictated, never rolled: absent means the copy has no bonuses / no flat SP.
       combatBonuses: fixedRollCombatBonuses(fixed.combatBonuses),
+      ...(fixed.flatSp ? { flatSp: fixed.flatSp } : {}),
     }));
   }
 
@@ -758,6 +772,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           rolledMultiplierBp: playerEquipment.rolledMultiplierBp,
           affixKey: playerEquipment.affixKey,
           combatBonuses: playerEquipment.combatBonuses,
+          rolledProperties: playerEquipment.rolledProperties,
           count: sql<number>`count(*)::int`,
           equippedCount: sql<number>`count(${playerLoadoutSlots.equipmentId})::int`,
           favoriteCount: sql<number>`count(*) filter (where ${playerEquipment.isFavorite})::int`,
@@ -778,6 +793,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           playerEquipment.rolledMultiplierBp,
           playerEquipment.affixKey,
           playerEquipment.combatBonuses,
+          playerEquipment.rolledProperties,
         );
 
       const affixes = deps.getAffixes();
@@ -786,6 +802,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         rolledMultiplierBp: r.rolledMultiplierBp,
         affixKey: r.affixKey,
         combatBonuses: readStoredCombatBonuses(r.combatBonuses),
+        rolledProperties: r.rolledProperties,
         displayName: equipmentDisplayName(r.definition.name, r.affixKey, affixes),
         count: r.count,
         equippedCount: r.equippedCount,
@@ -796,14 +813,15 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         newest: Number(r.newest),
       }));
       const rank = (g: EquipmentGroup) => (RARITIES as readonly string[]).indexOf(g.definition.rarity);
-      // Key, then roll, then affix, then bonuses: a total order over group
-      // identity, so ties in the chosen sort never shuffle between reads.
+      // Key, then roll, then affix, then bonuses, then flat SP: a total order
+      // over group identity, so ties in the chosen sort never shuffle between reads.
       const bonusKey = (g: EquipmentGroup) => g.combatBonuses.map((b) => `${b.stat}:${b.valueBp}`).join(',');
       const identity = (a: EquipmentGroup, b: EquipmentGroup) =>
         a.definition.key.localeCompare(b.definition.key) ||
         b.rolledMultiplierBp - a.rolledMultiplierBp ||
         (a.affixKey ?? '').localeCompare(b.affixKey ?? '') ||
-        bonusKey(a).localeCompare(bonusKey(b));
+        bonusKey(a).localeCompare(bonusKey(b)) ||
+        readPrimaryFlatSp(b.rolledProperties) - readPrimaryFlatSp(a.rolledProperties);
       const sort = opts.sort ?? 'multiplier';
       groups.sort((a, b) => {
         switch (sort) {
@@ -962,6 +980,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           rolledMultiplierBp: row.rolledMultiplierBp,
           affixKey: row.affixKey,
           combatBonuses: readStoredCombatBonuses(row.combatBonuses),
+          flatSp: readPrimaryFlatSp(row.rolledProperties),
         }));
       }
       // On a retry the insert below conflicts and these freshly rolled values
@@ -974,6 +993,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         rolledMultiplierBp: rolls[i]!.rolledMultiplierBp,
         affixKey: rolls[i]!.affixKey,
         combatBonuses: rolls[i]!.combatBonuses,
+        rolledProperties: rolledPropertiesOf(rolls[i]!),
         sourceType: input.source.type,
         sourceKey: input.source.key ?? null,
         grantKey: copyKeys?.[i] ?? null,
@@ -1024,6 +1044,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
             rolledMultiplierBp: row.rolledMultiplierBp,
             affixKey: row.affixKey,
             combatBonuses: row.combatBonuses,
+            rolledProperties: row.rolledProperties,
             rollKind: input.roll?.kind ?? 'random',
             sourceType: input.source.type,
             sourceKey: input.source.key ?? null,

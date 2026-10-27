@@ -1049,6 +1049,20 @@ export class EquipmentSlotLockedError extends AppError {
 }
 
 /**
+ * A referenced definition's rarity cannot change: owned copies were rolled,
+ * named, valued for salvage and promised by reward snapshots as that rarity.
+ */
+export class EquipmentRarityLockedError extends AppError {
+  constructor(key: string) {
+    super(
+      'EQUIPMENT_RARITY_LOCKED',
+      `The rarity of equipment definition "${String(key)}" cannot change once players own it`,
+      'Players own this equipment, so its rarity can no longer change.',
+    );
+  }
+}
+
+/**
  * The instance does not exist, belongs to someone else, or has been removed.
  * Deliberately one error for all three, so a guessed id learns nothing.
  */

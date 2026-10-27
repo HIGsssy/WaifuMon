@@ -67,6 +67,12 @@ function BuddyCard({ playerId, overview }: { playerId: number; overview: Unlocke
         <p className="tabular mt-1 text-sm text-ink-muted">
           Level {buddy.level} · {buddy.currentSp.toLocaleString()} SP
         </p>
+        {(buddy.equipmentSp ?? 0) > 0 && buddy.effectiveSp != null && (
+          <p className="tabular text-sm text-ink-muted" data-testid="combat-sp">
+            Gear +{buddy.equipmentSp!.toLocaleString()} SP → {buddy.effectiveSp.toLocaleString()}{' '}
+            combat SP
+          </p>
+        )}
       </div>
     </Card>
   );

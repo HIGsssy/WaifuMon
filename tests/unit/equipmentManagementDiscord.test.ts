@@ -112,6 +112,7 @@ const instance = (id: number, d: EquipmentDefinitionView, over: Partial<Equipmen
 const group = (d: EquipmentDefinitionView, over: Partial<EquipmentGroup> = {}): EquipmentGroup => ({
   definition: d,
   rolledMultiplierBp: d.multiplierMinBp,
+  rolledProperties: {},
   affixKey: null,
   combatBonuses: [],
   displayName: d.name,

@@ -43,7 +43,6 @@
 import { z } from 'zod';
 import { RARITIES } from '../../db/schema';
 import { relativeArtworkPath } from '../assets/artworkPath';
-import { EQUIPMENT_AFFIX_RARITIES } from './affixCatalogue';
 import { EQUIPMENT_KEY_MAX_LENGTH, EQUIPMENT_KEY_PATTERN } from './vocabulary';
 
 /** Relative to the content directory. */
@@ -51,8 +50,12 @@ export const EQUIPMENT_WORKSHOP_FILE = 'equipment/workshop.json';
 export const EQUIPMENT_WORKSHOP_FILE_FORMAT = 'waifumon-equipment-workshop' as const;
 export const EQUIPMENT_WORKSHOP_FILE_VERSION = 1 as const;
 
-/** Rarities a recipe may guarantee — exactly those random Equipment can roll. */
-export const WORKSHOP_RECIPE_RARITIES = EQUIPMENT_AFFIX_RARITIES;
+/**
+ * Rarities a recipe may guarantee. Its own list, deliberately not derived
+ * from the random-roll rarities: making SSR+ rollable must never put it on
+ * Patch's workbench (see the capability lists in `vocabulary.ts`).
+ */
+export const WORKSHOP_RECIPE_RARITIES = ['N', 'R', 'SR'] as const;
 
 /** Sanity ceilings, not tuning. */
 const MAX_YIELD = 10_000;

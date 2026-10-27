@@ -18,24 +18,34 @@ import { idParam, isoDateTime, raritySchema } from './common';
 export const equipmentSlotSchema = z.enum(EQUIPMENT_SLOTS);
 
 /**
- * The five bonus families as the API names them — the same id on an item's
- * bonus and on a loadout total. Not the storage keys: nothing here says
+ * The five combat-modifier families as the API names them — the same id on an
+ * item's bonus and on a loadout total. Not the storage keys: nothing here says
  * "basis points".
  */
-export const COMBAT_BONUS_FAMILY_IDS = ['crit_chance', 'crit_damage', 'double_attack', 'armor_penetration', 'lifesteal'] as const;
+export const COMBAT_MODIFIER_FAMILY_IDS = ['crit_chance', 'crit_damage', 'double_attack', 'armor_penetration', 'lifesteal'] as const;
+/**
+ * Every family an item's bonus may name: the five modifiers plus `flat_sp`
+ * (Equipment 3.0), which raises combat SP and never appears in loadout totals.
+ */
+export const COMBAT_BONUS_FAMILY_IDS = [...COMBAT_MODIFIER_FAMILY_IDS, 'flat_sp'] as const;
 export type CombatBonusFamilyId = (typeof COMBAT_BONUS_FAMILY_IDS)[number];
+export type CombatModifierFamilyId = (typeof COMBAT_MODIFIER_FAMILY_IDS)[number];
 
 /** One rolled secondary bonus on one copy. */
 export const combatBonusSchema = z.object({
   stat: z.enum(COMBAT_BONUS_FAMILY_IDS).describe('Stable bonus-family identifier.'),
-  label: z.string().describe('Player-facing family name, e.g. "Crit Chance".'),
-  percent: z.number().describe('The rolled value as a percentage, e.g. 4.25 for +4.25%.'),
-  text: z.string().describe('Ready to display: "+4.25% Crit Chance".'),
+  label: z.string().describe('Player-facing family name, e.g. "Crit Chance" or "SP".'),
+  percent: z
+    .number()
+    .nullable()
+    .describe('The rolled value as a percentage, e.g. 4.25 for +4.25%. Null for `flat_sp`.'),
+  sp: z.number().int().nullable().describe('Whole SP for `flat_sp` (e.g. 11 for +11 SP); null for every other family.'),
+  text: z.string().describe('Ready to display: "+4.25% Crit Chance", "+11 SP".'),
 });
 
 /** One row of a loadout's cumulative combat bonuses. Zero rows are omitted. */
 export const combatModifierRowSchema = z.object({
-  key: z.enum(COMBAT_BONUS_FAMILY_IDS).describe('The bonus family this total is for.'),
+  key: z.enum(COMBAT_MODIFIER_FAMILY_IDS).describe('The bonus family this total is for.'),
   label: z.string().describe('Short label, e.g. "Crit" or "Crit DMG".'),
   value: z.string().describe('Ready to display, e.g. "9.75%". Crit DMG is the total Crit multiplier, base included.'),
 });
@@ -59,7 +69,15 @@ export const equipmentItemSchema = z.object({
     .describe('Display only: (rolled − min) / (max − min) as 0–100; 100 for a single-value range.'),
   combatBonuses: z
     .array(combatBonusSchema)
-    .describe('This copy’s rolled secondary combat bonuses: none, one or two. Empty for gear without any.'),
+    .describe('This copy’s rolled secondary combat bonuses: none to three. Empty for gear without any.'),
+  primarySp: z
+    .number()
+    .int()
+    .describe('Primary flat SP this copy rolled, separate from its bonuses; 0 for none.'),
+  spBonus: z
+    .number()
+    .int()
+    .describe('All flat SP this copy adds to combat SP: primary plus a `flat_sp` bonus, within the per-copy ceiling.'),
   equipped: z.boolean(),
   favorite: z.boolean(),
   locked: z.boolean(),
@@ -97,7 +115,12 @@ export const equipmentOverviewSchema = z.discriminatedUnion('unlocked', [
         waifuId: z.number().int(),
         name: z.string(),
         level: z.number().int(),
-        currentSp: z.number().int(),
+        currentSp: z.number().int().describe('Natural Current SP from level and Base SP — never changed by gear.'),
+        equipmentSp: z
+          .number()
+          .int()
+          .describe('Flat SP the equipped gear adds for combat, after the per-copy and per-loadout ceilings.'),
+        effectiveSp: z.number().int().describe('`currentSp + equipmentSp` — the SP ATK, DEF and HP are derived from.'),
       })
       .nullable(),
     stats: equipmentStatsSchema.describe('Null per stat when its slot is empty or there is no Buddy.'),
@@ -118,6 +141,8 @@ export const equipmentPageSchema = z.object({
   nextCursor: z.string().nullable(),
 });
 
+const statChangeSchema = z.object({ current: statValue, withItem: statValue, delta: statValue });
+
 export const equipmentComparisonSchema = z.object({
   stat: z.enum(['attack', 'defense', 'maxHp']),
   /** The slot's stat now; null when empty or without a Buddy. */
@@ -129,6 +154,11 @@ export const equipmentComparisonSchema = z.object({
   equippedItem: equipmentItemSchema.nullable(),
   /** False when there is no active Buddy, so no value could be calculated. */
   hasBuddy: z.boolean(),
+  changes: z
+    .object({ attack: statChangeSchema, defense: statChangeSchema, maxHp: statChangeSchema })
+    .describe(
+      'Every stat now and with this copy. Flat SP moves all three, so the slot’s own stat is not the whole story.',
+    ),
 });
 
 export const equipmentDetailSchema = z.object({

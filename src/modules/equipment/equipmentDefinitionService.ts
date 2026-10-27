@@ -11,10 +11,13 @@
  *
  *  - **Keys never change.** A key is the identity content and logs use; an
  *    update names the definition by key and may not rename it.
- *  - **A referenced definition keeps its slot and cannot be deleted.** Owned
- *    instances copied the slot at grant time and the loadout foreign key
- *    depends on the two agreeing, so the slot is frozen once anyone owns one.
- *    Deletion is refused with the blocker count (disable it instead); the
+ *  - **A referenced definition keeps its slot and rarity, and cannot be
+ *    deleted.** Owned instances copied the slot at grant time and the loadout
+ *    foreign key depends on the two agreeing; they were also rolled, named
+ *    and valued for salvage as their rarity, and dungeon/expedition reward
+ *    snapshots promised them as it. So both are frozen once anyone owns one —
+ *    removed copies included, since they still reference the row. Deletion
+ *    is refused with the blocker count (disable it instead); the
  *    `ON DELETE RESTRICT` foreign key is the backstop.
  */
 import { and, asc, count, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
@@ -28,6 +31,7 @@ import {
   EquipmentDefinitionNotFoundError,
   EquipmentDefinitionReferencedError,
   EquipmentKeyTakenError,
+  EquipmentRarityLockedError,
   EquipmentSlotLockedError,
   EquipmentValidationError,
   isUniqueViolation,
@@ -100,6 +104,22 @@ export async function assertSlotChangeAllowed(
   if ((await countDefinitionInstances(tx, existing.id)) > 0) {
     throw new EquipmentSlotLockedError(existing.key);
   }
+}
+
+/**
+ * Refuse a slot or rarity change on a definition that owned instances
+ * reference — removed ones included. Shared by update and the reset seed;
+ * the import planner applies the same rule from its own instance count.
+ */
+export async function assertReferencedFieldsUnchanged(
+  tx: DbOrTx,
+  existing: EquipmentDefinitionRow,
+  next: { slot: string; rarity: string },
+): Promise<void> {
+  if (existing.slot === next.slot && existing.rarity === next.rarity) return;
+  if ((await countDefinitionInstances(tx, existing.id)) === 0) return;
+  if (existing.slot !== next.slot) throw new EquipmentSlotLockedError(existing.key);
+  throw new EquipmentRarityLockedError(existing.key);
 }
 
 function isForeignKeyViolation(err: unknown): boolean {
@@ -181,7 +201,7 @@ export function createEquipmentDefinitionService(db: Db): EquipmentDefinitionSer
       }
       return db.transaction(async (tx) => {
         const existing = await lockByKey(tx, key);
-        await assertSlotChangeAllowed(tx, existing, parsed.slot);
+        await assertReferencedFieldsUnchanged(tx, existing, parsed);
         const [row] = await tx
           .update(equipmentDefinitions)
           .set({

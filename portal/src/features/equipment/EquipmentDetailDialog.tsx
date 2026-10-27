@@ -17,7 +17,12 @@ import { useState } from 'react';
 
 import { isPortalApiError } from '@/api/client';
 import { useEquipmentActions, useEquipmentDetail } from '@/api/hooks/useEquipment';
-import type { EquipmentDetail, EquipmentItem, EquipmentSlotChange } from '@/api/types';
+import type {
+  EquipmentDetail,
+  EquipmentItem,
+  EquipmentSlotChange,
+  EquipmentStat,
+} from '@/api/types';
 import { ErrorState } from '@/components/layout/ErrorState';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/components/ui/dialog';
@@ -71,6 +76,38 @@ function ComparisonSide({ heading, item }: { heading: string; item: EquipmentIte
         <p className="text-xs text-ink-subtle">No combat bonuses</p>
       )}
     </div>
+  );
+}
+
+/**
+ * Stats outside the slot's own that this copy would change — flat SP moves all
+ * three. Empty for every comparison without flat SP.
+ */
+function otherChanges(c: EquipmentDetail['comparison']): [EquipmentStat, number][] {
+  if (!c.changes) return [];
+  return (Object.keys(c.changes) as EquipmentStat[]).flatMap((stat) => {
+    const delta = c.changes![stat].delta;
+    return stat !== c.stat && delta != null && delta !== 0
+      ? [[stat, delta] as [EquipmentStat, number]]
+      : [];
+  });
+}
+
+function OtherChange({ label, delta }: { label: string; delta: number }) {
+  return (
+    <>
+      <dt className="text-ink-muted">{label} change</dt>
+      <dd
+        className={
+          delta > 0
+            ? 'text-right font-semibold text-success'
+            : 'text-right font-semibold text-danger'
+        }
+        data-testid="other-stat-change"
+      >
+        {formatDelta(delta)}
+      </dd>
+    </>
   );
 }
 
@@ -129,6 +166,9 @@ function Comparison({ detail }: { detail: EquipmentDetail }) {
             </dd>
           </>
         )}
+        {otherChanges(c).map(([stat, delta]) => (
+          <OtherChange key={stat} label={STAT_LABEL[stat]} delta={delta} />
+        ))}
         <dt className="col-span-2 mt-1 text-xs text-ink-subtle">
           {c.equippedItem
             ? `Compared with ${c.equippedItem.name} (${formatMultiplier(c.equippedItem.multiplier)}).`

@@ -52,6 +52,8 @@ export function gearItem(
     range: { min: 0.4, max: 0.6 },
     rollQuality: 50,
     combatBonuses: [],
+    primarySp: 0,
+    spBonus: 0,
     equipped: false,
     favorite: false,
     locked: false,
@@ -177,10 +179,22 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
     };
   };
   const find = (id: number) => state.items.find((item) => item.id === id);
-  const statFor = (itemId: number | null): number | null => {
+  /** Flat SP the given slot assignment adds — the server's per-loadout ceiling of 400 included. */
+  const gearSp = (slots: Record<EquipmentSlot, number | null>): number =>
+    Math.min(
+      400,
+      SLOT_ORDER.reduce((sum, slot) => sum + (slots[slot] == null ? 0 : (find(slots[slot]!)?.spBonus ?? 0)), 0),
+    );
+  const statFor = (itemId: number | null, slots = state.slots): number | null => {
     const item = itemId == null ? undefined : find(itemId);
-    return state.buddy && item ? Math.round(state.buddy.currentSp * item.multiplier) : null;
+    return state.buddy && item ? Math.round((state.buddy.currentSp + gearSp(slots)) * item.multiplier) : null;
   };
+  /** All three stats for a slot assignment, as the server derives them from effective SP. */
+  const statsFor = (slots: Record<EquipmentSlot, number | null>) => ({
+    attack: statFor(slots.attack, slots),
+    defense: statFor(slots.defense, slots),
+    maxHp: statFor(slots.health, slots),
+  });
   const locked = () => apiError(422, 'FEATURE_LOCKED', "You haven't unlocked that yet.");
   const notOwned = () =>
     apiError(404, 'EQUIPMENT_NOT_OWNED', "That equipment isn't in your gear bag.");
@@ -200,7 +214,11 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
     const missing = SLOT_ORDER.some((slot) => state.slots[slot] == null);
     return {
       unlocked: true,
-      buddy: state.buddy,
+      buddy: state.buddy && {
+        ...state.buddy,
+        equipmentSp: gearSp(state.slots),
+        effectiveSp: state.buddy.currentSp + gearSp(state.slots),
+      },
       stats: {
         attack: statFor(state.slots.attack),
         defense: statFor(state.slots.defense),
@@ -337,9 +355,16 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
       const item = find(Number(params.equipmentId));
       if (!item) return notOwned();
       const currentId = state.slots[item.slot];
-      const current = statFor(currentId);
-      const withItem = statFor(item.id);
+      const before = statsFor(state.slots);
+      const after = statsFor({ ...state.slots, [item.slot]: item.id });
+      const current = before[STAT[item.slot]];
+      const withItem = after[STAT[item.slot]];
       const equippedItem = currentId == null ? undefined : find(currentId);
+      const change = (stat: keyof typeof before) => ({
+        current: before[stat],
+        withItem: after[stat],
+        delta: before[stat] != null && after[stat] != null ? after[stat]! - before[stat]! : null,
+      });
       return data({
         item: view(item),
         identicalCopies: 1,
@@ -350,6 +375,7 @@ export function createEquipmentBackend(opts: EquipmentBackendOptions = {}) {
           delta: current != null && withItem != null ? withItem - current : null,
           equippedItem: equippedItem ? view(equippedItem) : null,
           hasBuddy: state.buddy != null,
+          changes: { attack: change('attack'), defense: change('defense'), maxHp: change('maxHp') },
         },
       });
     }),

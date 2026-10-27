@@ -38,6 +38,7 @@ import {
   type EquipmentOnboardingStep,
 } from '../modules/onboarding/vocabulary';
 import { resolveArtworkAttachment } from './assets/resolveArtworkAttachment';
+import { gearSpSuffix } from './combatSpFormat';
 import { buildEquipmentHome, type BuddyArtwork } from './equipmentPresenter';
 import { COMBAT_TRIALS_CTA_TEXT, COMBAT_TRIALS_CTA_TITLE, combatTrialsButton } from './combatTrialPresenter';
 import type { SessionPayload } from './ephemeralSession';
@@ -73,9 +74,13 @@ export function onboardingCustomId(action: 'open' | 'adv' | 'done' | 'view', fro
     : buildCustomId('onb', action, EQUIPMENT_ONBOARDING_FLOW);
 }
 
-/** The explanation line for one slot, e.g. `280 × 0.45 = 126 ATK`. Null stat renders as `—`. */
-export function explainLine(currentSp: number, item: CombatSlotItem, slot: EquipmentSlot, value: number | null): string {
-  return `${currentSp} × ${(item.multiplierBp / 10_000).toFixed(2)} = ${value ?? '—'} ${SLOT_STAT[slot].label}`;
+/**
+ * The explanation line for one slot, e.g. `280 × 0.45 = 126 ATK`. Null stat
+ * renders as `—`. `sp` is the SP the stat was derived from — the effective
+ * (combat) SP, which is Current SP unless equipped gear adds flat SP.
+ */
+export function explainLine(sp: number, item: CombatSlotItem, slot: EquipmentSlot, value: number | null): string {
+  return `${sp} × ${(item.multiplierBp / 10_000).toFixed(2)} = ${value ?? '—'} ${SLOT_STAT[slot].label}`;
 }
 
 function quote(npc: NpcContent | null, line: string): string {
@@ -165,7 +170,7 @@ function addLoadoutFields(embed: EmbedBuilder, stats: CombatStats): void {
   embed.addFields({
     name: 'Buddy',
     value: stats.buddy
-      ? `**${stats.buddy.name}** · Current SP **${stats.buddy.currentSp}**`
+      ? `**${stats.buddy.name}** · Current SP **${stats.buddy.currentSp}**${gearSpSuffix(stats.sp, { bold: true })}`
       : 'No Buddy — choose one from your Collection to see your stats.',
   });
   for (const slot of STARTER_SLOTS) {
@@ -245,13 +250,13 @@ export function buildOnboardingView(
       const art = artwork(ctx, 'onboarding_explain', npc, step.artworkPath);
       const embed = baseEmbed(step.title, npc, art).setDescription(speech(npc, step));
       const buddy = stats.buddy!;
-      embed.addFields({ name: buddy.name, value: `Current SP: **${buddy.currentSp}**` });
+      embed.addFields({ name: buddy.name, value: `Current SP: **${buddy.currentSp}**${gearSpSuffix(stats.sp, { bold: true })}` });
       for (const slot of STARTER_SLOTS) {
         const item = stats.loadout.slots[slot];
         if (!item) continue;
         embed.addFields({
           name: `${SLOT_EMOJI[slot]} ${item.name}`,
-          value: explainLine(buddy.currentSp, item, slot, stats.stats[SLOT_STAT[slot].key]),
+          value: explainLine(stats.sp?.effective ?? buddy.currentSp, item, slot, stats.stats[SLOT_STAT[slot].key]),
         });
       }
       if (step.sayAfter) embed.addFields({ name: '​', value: quote(npc, step.sayAfter) });

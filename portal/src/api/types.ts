@@ -766,9 +766,13 @@ export interface CombatBonus {
     | 'crit_damage'
     | 'double_attack'
     | 'armor_penetration'
-    | 'lifesteal';
+    | 'lifesteal'
+    | 'flat_sp';
   label: string;
-  percent: number;
+  /** The rolled percentage; null for `flat_sp`. */
+  percent: number | null;
+  /** Whole SP for `flat_sp`; null (or absent from older servers) otherwise. */
+  sp?: number | null;
   text: string;
 }
 
@@ -803,8 +807,12 @@ export interface EquipmentItem {
   range: { min: number; max: number };
   /** Display only, 0–100, computed by the API. */
   rollQuality: number;
-  /** This copy's rolled secondary bonuses: none, one or two. */
+  /** This copy's rolled secondary bonuses: none to three. */
   combatBonuses: CombatBonus[];
+  /** Primary flat SP this copy rolled; 0 for none (absent from older servers). */
+  primarySp?: number;
+  /** All flat SP this copy adds to combat SP (primary plus a `flat_sp` bonus). */
+  spBonus?: number;
   equipped: boolean;
   favorite: boolean;
   locked: boolean;
@@ -831,7 +839,19 @@ export type EquipmentOverview =
   | { unlocked: false }
   | {
       unlocked: true;
-      buddy: { waifuId: number; name: string; level: number; currentSp: number } | null;
+      /**
+       * `currentSp` is the Buddy's natural SP. `equipmentSp` is the flat SP the
+       * equipped gear adds for combat, and `effectiveSp` the SP ATK, DEF and HP
+       * are derived from (both absent from older servers).
+       */
+      buddy: {
+        waifuId: number;
+        name: string;
+        level: number;
+        currentSp: number;
+        equipmentSp?: number;
+        effectiveSp?: number;
+      } | null;
       stats: EquipmentStats;
       /** Cumulative combat bonuses of everything equipped; empty when none. */
       combatModifiers: CombatModifierRow[];
@@ -844,6 +864,12 @@ export interface EquipmentPage {
   nextCursor: string | null;
 }
 
+export interface EquipmentStatChange {
+  current: number | null;
+  withItem: number | null;
+  delta: number | null;
+}
+
 export interface EquipmentComparison {
   stat: EquipmentStat;
   current: number | null;
@@ -851,6 +877,11 @@ export interface EquipmentComparison {
   delta: number | null;
   equippedItem: EquipmentItem | null;
   hasBuddy: boolean;
+  /**
+   * Every stat now and with this copy. Flat SP moves all three, so other stats
+   * can change too (absent from older servers).
+   */
+  changes?: Record<EquipmentStat, EquipmentStatChange>;
 }
 
 export interface EquipmentDetail {

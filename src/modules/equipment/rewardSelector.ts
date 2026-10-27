@@ -35,7 +35,6 @@
 import { z } from 'zod';
 import { EquipmentRewardConfigError, type EquipmentIssue } from '../../shared/errors';
 import type { Rng } from '../../shared/random';
-import { EQUIPMENT_AFFIX_RARITIES } from './affixCatalogue';
 import {
   EQUIPMENT_KEY_MAX_LENGTH,
   EQUIPMENT_KEY_PATTERN,
@@ -43,8 +42,14 @@ import {
   type EquipmentSlot,
 } from './vocabulary';
 
-/** Rarities a reward may hand out at random — exactly the rarities with affix pools. */
-export const EQUIPMENT_REWARD_RARITIES = EQUIPMENT_AFFIX_RARITIES;
+/**
+ * Rarities a random reward may hand out — and what a selector without
+ * `rarity` means. Its own list, deliberately not derived from the rarities a
+ * random roll supports: SSR/UR/LR becoming rollable must never widen an
+ * existing boss, expedition, dungeon, World Encounter or Workshop reward (see
+ * the capability lists in `vocabulary.ts`).
+ */
+export const EQUIPMENT_REWARD_RARITIES = ['N', 'R', 'SR'] as const;
 export type EquipmentRewardRarity = (typeof EQUIPMENT_REWARD_RARITIES)[number];
 
 /** Longest explicit whitelist one selector may name. */

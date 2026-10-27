@@ -78,15 +78,35 @@ export const EQUIPMENT_EVENT_KINDS = [
 export type EquipmentEventKind = (typeof EQUIPMENT_EVENT_KINDS)[number];
 
 /**
- * Rarities an equipment definition may be *authored* with in V1.
+ * Rarity capabilities (Equipment 3.0). Four separate questions, four separate
+ * lists — none derived from another, so widening one can never widen the
+ * rest by accident:
  *
- * The database CHECK admits the full Waifumon ladder (`RARITIES`, N…EX) so
- * releasing LR/EX gear later is a validation change rather than a migration;
- * the design deliberately withholds those two tiers until the system matures,
- * and this list is where that decision lives.
+ *  - {@link EQUIPMENT_AUTHORING_RARITIES} — what a definition may be authored as.
+ *  - {@link EQUIPMENT_RANDOM_ROLL_RARITIES} — what `rollEquipmentInstance` can
+ *    generate today (the rarities with affix pools and bonus rules).
+ *  - `EQUIPMENT_REWARD_RARITIES` (`rewardSelector.ts`) — what a random reward
+ *    selector may hand out, and what one without `rarity` defaults to.
+ *  - `WORKSHOP_RECIPE_RARITIES` (`workshopConfig.ts`) — what Patch can salvage
+ *    and fabricate.
+ *
+ * `tests/unit/equipmentRarityCapabilities.test.ts` pins all four.
  */
-export const EQUIPMENT_AUTHORING_RARITIES = ['N', 'R', 'SR', 'SSR', 'UR'] as const;
+
+/**
+ * Rarities an equipment definition may be *authored* with. The database CHECK
+ * admits the full Waifumon ladder (`RARITIES`, N…EX); EX stays withheld.
+ * Authoring an SSR/UR/LR definition does not make it obtainable: random rolls
+ * and every reward selector still refuse it.
+ */
+export const EQUIPMENT_AUTHORING_RARITIES = ['N', 'R', 'SR', 'SSR', 'UR', 'LR'] as const;
 export type EquipmentRarity = (typeof EQUIPMENT_AUTHORING_RARITIES)[number];
+
+/**
+ * Rarities a random roll can generate. SSR and above fail closed (no affix
+ * pool, no bonus rule) until the Equipment 3.0 high-rarity engine ships.
+ */
+export const EQUIPMENT_RANDOM_ROLL_RARITIES = ['N', 'R', 'SR'] as const;
 
 /**
  * Stable definition keys: lowercase snake_case, the same shape as a world
@@ -110,6 +130,20 @@ export const EQUIPMENT_MULTIPLIER_BP_MAX: Readonly<Record<EquipmentSlot, number>
   defense: 20_000,
   health: 80_000,
 });
+
+/**
+ * Flat SP safety ceilings (Equipment 3.0), in whole SP. Integrity rails, not
+ * balance targets — no shipped gear carries flat SP.
+ *
+ *  - Per copy: the copy's primary `rolled_properties.flatSp` plus its
+ *    additional `flat_sp` bonus. Enforced before storage (fixed grants) and
+ *    clamped on read for anything that reached the table another way.
+ *  - Per loadout: the sum over the equipped slots. Every copy keeps its stored
+ *    values; only the amount added to effective SP is clamped
+ *    (`equipmentMath.flatSpOf`).
+ */
+export const EQUIPMENT_FLAT_SP_MAX_PER_ITEM = 200;
+export const EQUIPMENT_FLAT_SP_MAX_PER_LOADOUT = 400;
 
 /**
  * The per-slot ceiling as a SQL expression over the row's own `slot` column —

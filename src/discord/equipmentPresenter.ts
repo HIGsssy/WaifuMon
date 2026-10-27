@@ -32,6 +32,7 @@ import {
 import type { CombatModifiers } from '../modules/combat/combatTypes';
 import { combatModifierRows, formatCombatBonus, type CombatBonus } from '../modules/equipment/combatBonuses';
 import type { CombatStats } from '../modules/equipment/equipmentMath';
+import { gearSpSuffix } from './combatSpFormat';
 import type {
   BagView,
   EquipmentSummary,
@@ -268,11 +269,27 @@ function equippedNote(group: { count: number; equippedCount: number }): string {
   return group.equippedCount === group.count ? ' • Equipped' : ` • ${group.equippedCount} of ${group.count} equipped`;
 }
 
+/**
+ * Flat SP moves every stat, so a comparison also lists the stats outside the
+ * item's own slot that would change: `\nAlso: DEF +12 · HP +60`. Empty when
+ * only the slot's own stat moves — every comparison without flat SP.
+ */
+function otherStatChanges(slot: EquipmentSlot, deltas: Record<'attack' | 'defense' | 'maxHp', number | null> | undefined): string {
+  if (!deltas) return '';
+  const own = SLOT_STAT_KEY[slot];
+  const parts = (['attack', 'defense', 'maxHp'] as const)
+    .filter((key) => key !== own && deltas[key] != null && deltas[key] !== 0)
+    .map((key) => `${STAT_SHORT[key]} ${formatDelta(deltas[key]!)}`);
+  return parts.length > 0 ? `\nAlso: ${parts.join(' · ')}` : '';
+}
+
+const STAT_SHORT: Readonly<Record<'attack' | 'defense' | 'maxHp', string>> = { attack: 'ATK', defense: 'DEF', maxHp: 'HP' };
+
 function buddyField(stats: CombatStats): { name: string; value: string } {
   if (!stats.buddy) return { name: 'Buddy', value: NO_BUDDY_LINE };
   return {
     name: 'Buddy',
-    value: `**${stats.buddy.name}** · Lv. ${stats.buddy.level}\nCurrent SP: **${stats.buddy.currentSp}**`,
+    value: `**${stats.buddy.name}** · Lv. ${stats.buddy.level}\nCurrent SP: **${stats.buddy.currentSp}**${gearSpSuffix(stats.sp, { bold: true })}`,
   };
 }
 
@@ -541,7 +558,7 @@ export function buildItemDetail(view: ItemView, ctx: EquipmentContext, status?: 
   if (bonuses.length > 0) embed.addFields({ name: 'Combat Bonuses', value: bonuses.join('\n') });
   embed.addFields({
     name: 'Current Buddy',
-    value: stats.buddy ? `${stats.buddy.name} — ${stats.buddy.currentSp} SP` : NO_BUDDY_LINE,
+    value: stats.buddy ? `${stats.buddy.name} — ${stats.buddy.currentSp} SP${gearSpSuffix(stats.sp)}` : NO_BUDDY_LINE,
   });
   if (stats.buddy) {
     embed.addFields(
@@ -552,7 +569,8 @@ export function buildItemDetail(view: ItemView, ctx: EquipmentContext, status?: 
             value:
               `Current ${stat}: ${view.current ?? 'unavailable'}\n` +
               `With this item: ${preview.value ?? '—'}\n` +
-              `Difference: ${preview.delta != null ? formatDelta(preview.delta) : '—'}`,
+              `Difference: ${preview.delta != null ? formatDelta(preview.delta) : '—'}` +
+              otherStatChanges(instance.slot, preview.deltas),
           },
     );
   }

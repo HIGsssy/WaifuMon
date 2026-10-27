@@ -70,8 +70,12 @@ describe('EquipmentDefinitionInputSchema', () => {
     expect(issuesOf(valid({ slot: 'relic' })).some((i) => i.path === 'slot')).toBe(true);
   });
 
-  it.each(['LR', 'EX', 'mythic'])('refuses rarity %s in V1', (rarity) => {
+  it.each(['EX', 'mythic'])('refuses rarity %s', (rarity) => {
     expect(issuesOf(valid({ rarity })).some((i) => i.path === 'rarity')).toBe(true);
+  });
+
+  it.each(['N', 'R', 'SR', 'SSR', 'UR', 'LR'])('accepts rarity %s (Equipment 3.0 authoring)', (rarity) => {
+    expect(validateEquipmentDefinition(valid({ rarity })).ok).toBe(true);
   });
 
   describe('multiplier range', () => {

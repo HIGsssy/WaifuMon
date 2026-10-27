@@ -363,7 +363,13 @@ describe('removed, foreign and wrong-slot gear', () => {
     const preview = await combat.previewSlot(playerId, 'attack', [belt, foreign, removed, 987_654_321]);
     // Wrong slot, someone else's, removed and missing all read exactly the same.
     expect(preview.candidates).toEqual(
-      [belt, foreign, removed, 987_654_321].map((equipmentId) => ({ equipmentId, available: false, value: null, delta: null })),
+      [belt, foreign, removed, 987_654_321].map((equipmentId) => ({
+        equipmentId,
+        available: false,
+        value: null,
+        delta: null,
+        stats: null, deltas: { attack: null, defense: null, maxHp: null },
+      })),
     );
     expect(await t.db.select().from(playerLoadoutSlots).where(eq(playerLoadoutSlots.playerId, playerId))).toEqual(before);
     const outcome = await mgmt.equip(playerId, belt, (await slots(playerId)).defense!);

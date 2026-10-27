@@ -41,6 +41,7 @@ import type { CombatEvent, CombatModifiers, CombatResultKind } from '../modules/
 import type { CombatTrialDefinition, CombatTrialReward } from '../modules/combat/trialDefinitions';
 import { combatModifierRows } from '../modules/equipment/combatBonuses';
 import { EQUIPMENT_SLOTS } from '../modules/equipment/vocabulary';
+import { gearSpSuffix } from './combatSpFormat';
 import type { SessionPayload } from './ephemeralSession';
 import { EMPTY_SLOT, SLOT_EMOJI } from './equipmentPresenter';
 import { buildCustomId } from './types';
@@ -313,7 +314,7 @@ export function buildTrialDetail(
     const gear = EQUIPMENT_SLOTS.map((slot) => `${SLOT_EMOJI[slot]} ${stats.loadout.slots[slot]?.name ?? EMPTY_SLOT}`);
     embed.addFields({
       name: `Your Buddy — ${truncate(stats.buddy.name, 200)}`,
-      value: [`Current SP **${stats.buddy.currentSp}**`, statsLine(stats.stats), modifiersLine(stats.combatModifiers), ...gear]
+      value: [`Current SP **${stats.buddy.currentSp}**${gearSpSuffix(stats.sp, { bold: true })}`, statsLine(stats.stats), modifiersLine(stats.combatModifiers), ...gear]
         .filter((l): l is string => l != null)
         .join('\n'),
       inline: true,

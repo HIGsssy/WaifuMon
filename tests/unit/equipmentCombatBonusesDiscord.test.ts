@@ -93,6 +93,7 @@ const group = (id: number, d: EquipmentDefinitionView, combatBonuses: CombatBonu
   definition: d,
   rolledMultiplierBp: d.multiplierMinBp,
   affixKey: null,
+  rolledProperties: {},
   combatBonuses,
   displayName: d.name,
   count: 1,

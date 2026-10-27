@@ -178,9 +178,11 @@ export interface EquipmentImportPlan {
  * Plan applying `pkg` to a target. Pure: the caller reads the target state and
  * the import service recomputes this inside its transaction before applying.
  *
- * The one refusal beyond validation is a **slot change on a referenced
- * definition**: owned instances copied the slot at grant time, and changing it
- * underneath them would break the loadout foreign key's premise.
+ * The refusals beyond validation are a **slot or rarity change on a
+ * referenced definition** (removed copies count): owned instances copied the
+ * slot at grant time, and changing it underneath them would break the loadout
+ * foreign key's premise; they were rolled, named and valued as their rarity,
+ * and reward snapshots promised them as it.
  */
 export function planEquipmentImport(
   pkg: EquipmentPackage,
@@ -204,6 +206,14 @@ export function planEquipmentImport(
         message:
           `"${definition.key}" is owned by players (${existing.instanceCount} instance(s)); ` +
           `its slot cannot change from ${existing.input.slot} to ${definition.slot}`,
+      });
+    }
+    if (changedFields.includes('rarity') && existing.instanceCount > 0) {
+      issues.push({
+        path: `definitions[${i}].rarity`,
+        message:
+          `"${definition.key}" is owned by players (${existing.instanceCount} instance(s)); ` +
+          `its rarity cannot change from ${existing.input.rarity} to ${definition.rarity}`,
       });
     }
     const action: EquipmentImportAction = changedFields.length > 0 ? 'update' : 'unchanged';

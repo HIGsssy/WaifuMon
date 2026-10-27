@@ -5,7 +5,7 @@
  *   Equipment instance
  *   ├── rolled primary multiplier
  *   ├── affix identity            — flavour only, one key, unchanged
- *   └── 0–2 combat bonuses        — this module
+ *   └── 0–3 combat bonuses        — this module (N/R/SR roll at most 2)
  *
  * **An affix is not a bonus.** The affix catalogue stays a list of flavour
  * suffixes; nothing here reads an affix and no affix names a stat. The two
@@ -58,8 +58,7 @@ import {
   clampCombatModifiers,
 } from '../combat/combatMath';
 import type { CombatModifiers } from '../combat/combatTypes';
-import { EQUIPMENT_AFFIX_RARITIES } from './affixCatalogue';
-import { EQUIPMENT_SLOTS, type EquipmentSlot } from './vocabulary';
+import { EQUIPMENT_FLAT_SP_MAX_PER_ITEM, EQUIPMENT_SLOTS, type EquipmentSlot } from './vocabulary';
 
 // ── vocabulary ────────────────────────────────────────────────────────────
 
@@ -81,6 +80,27 @@ export function isCombatBonusStat(value: unknown): value is CombatBonusStat {
   return typeof value === 'string' && (COMBAT_BONUS_STATS as readonly string[]).includes(value);
 }
 
+/**
+ * Flat SP as an *additional* bonus (Equipment 3.0): `{ stat: 'flat_sp',
+ * valueBp: <whole SP> }`. Stored in the same list as the percentage families
+ * and subject to the same shape, distinctness and count rules — but it is not
+ * a `CombatModifiers` family: it raises effective SP before ATK / DEF / HP are
+ * derived (`equipmentMath.flatSpOf`), and `aggregateCombatBonuses` skips it.
+ * For this family `valueBp` holds whole SP points, not basis points.
+ *
+ * Not in the catalogue schema: nothing rolls it randomly yet (that is the
+ * high-rarity engine's job). Today only a fixed grant can store it.
+ */
+export const FLAT_SP_BONUS_STAT = 'flat_sp' as const;
+
+/** Every family an instance may store, in canonical order — `flat_sp` last, so existing orders never move. */
+export const EQUIPMENT_BONUS_STATS = [...COMBAT_BONUS_STATS, FLAT_SP_BONUS_STAT] as const;
+export type EquipmentBonusStat = (typeof EQUIPMENT_BONUS_STATS)[number];
+
+export function isEquipmentBonusStat(value: unknown): value is EquipmentBonusStat {
+  return typeof value === 'string' && (EQUIPMENT_BONUS_STATS as readonly string[]).includes(value);
+}
+
 /** Which combatant modifier each family feeds. */
 export const COMBAT_BONUS_MODIFIER: Readonly<Record<CombatBonusStat, keyof CombatModifiers>> = Object.freeze({
   crit_chance_bp: 'critChanceBp',
@@ -90,13 +110,14 @@ export const COMBAT_BONUS_MODIFIER: Readonly<Record<CombatBonusStat, keyof Comba
   lifesteal_bp: 'lifestealBp',
 });
 
-/** How a family reads on one item ("+4.25% Crit Chance"). */
-export const COMBAT_BONUS_LABELS: Readonly<Record<CombatBonusStat, string>> = Object.freeze({
+/** How a family reads on one item ("+4.25% Crit Chance", "+11 SP"). */
+export const COMBAT_BONUS_LABELS: Readonly<Record<EquipmentBonusStat, string>> = Object.freeze({
   crit_chance_bp: 'Crit Chance',
   crit_damage_bonus_bp: 'Crit Damage',
   double_attack_chance_bp: 'Double Attack',
   armor_penetration_bp: 'Armor Pen',
   lifesteal_bp: 'Lifesteal',
+  flat_sp: 'SP',
 });
 
 /** How a loadout total reads ("Crit: 9.75%"). */
@@ -108,35 +129,52 @@ export const COMBAT_MODIFIER_LABELS: Readonly<Record<keyof CombatModifiers, stri
   lifestealBp: 'Lifesteal',
 });
 
-/** Most bonuses one instance may carry, however it was created. */
-export const MAX_COMBAT_BONUSES_PER_ITEM = 2;
+/**
+ * Most bonuses one instance may store, however it was created (Equipment 3.0;
+ * mirrored by `player_equipment_combat_bonuses_check`, migration 0070).
+ */
+export const MAX_COMBAT_BONUSES_PER_ITEM = 3;
 
 /**
- * The largest value one stored bonus may hold: its family's combat cap. A
- * single item can never be worth more than the whole loadout is allowed.
+ * Most bonuses a shipped N/R/SR rarity rule may grant. The per-item ceiling
+ * rose to three for future high-rarity gear; the legacy rules did not.
  */
-export function maxCombatBonusValueBp(stat: CombatBonusStat): number {
+export const MAX_LEGACY_RULE_BONUS_COUNT = 2;
+
+/**
+ * The largest value one stored bonus may hold: its family's combat cap — a
+ * single item can never be worth more than the whole loadout is allowed — or,
+ * for `flat_sp`, the per-copy flat SP ceiling.
+ */
+export function maxCombatBonusValueBp(stat: EquipmentBonusStat): number {
+  if (stat === FLAT_SP_BONUS_STAT) return EQUIPMENT_FLAT_SP_MAX_PER_ITEM;
   return COMBAT_MODIFIER_CAPS[COMBAT_BONUS_MODIFIER[stat]];
 }
 
-/** One rolled bonus, as stored on an instance. Integer basis points: 425 = 4.25%. */
+/**
+ * One rolled bonus, as stored on an instance. Integer basis points (425 =
+ * 4.25%) — except `flat_sp`, whose value is whole SP points.
+ */
 export interface CombatBonus {
-  stat: CombatBonusStat;
+  stat: EquipmentBonusStat;
   valueBp: number;
 }
 
-const statRank = (stat: CombatBonusStat) => COMBAT_BONUS_STATS.indexOf(stat);
+const statRank = (stat: EquipmentBonusStat) => EQUIPMENT_BONUS_STATS.indexOf(stat);
 
 /**
  * Canonical order (the order of {@link COMBAT_BONUS_STATS}). Bonus order
  * carries no meaning, so every write stores this one: two copies with the
  * same bonuses are then byte-identical JSON and group as identical gear.
  */
-export function sortCombatBonuses(bonuses: readonly CombatBonus[]): CombatBonus[] {
+export function sortCombatBonuses<T extends CombatBonus>(bonuses: readonly T[]): T[] {
   return [...bonuses]
-    .map((b) => ({ stat: b.stat, valueBp: b.valueBp }))
+    .map((b) => ({ stat: b.stat, valueBp: b.valueBp }) as T)
     .sort((a, b) => statRank(a.stat) - statRank(b.stat));
 }
+
+/** A bonus the catalogue rolled: always one of the five combat-modifier families, never `flat_sp`. */
+export type RolledCombatBonus = CombatBonus & { stat: CombatBonusStat };
 
 /**
  * Everything wrong with a bonus list an instance would store: at most
@@ -145,7 +183,8 @@ export function sortCombatBonuses(bonuses: readonly CombatBonus[]): CombatBonus[
  *
  * Deliberately **not** checked against the rarity ranges: a fixed, admin or
  * restore grant states exactly what a copy carries (and SSR+ gear has no
- * ranges yet), so only the shape and the safety ceiling are enforced.
+ * ranges yet), so only the shape and the safety ceiling are enforced. The
+ * per-copy flat SP total (with the primary `flatSp`) is `validateFixedRoll`'s.
  */
 export function combatBonusListIssues(value: unknown, path = 'combatBonuses'): EquipmentIssue[] {
   if (!Array.isArray(value)) return [{ path, message: 'must be an array of { stat, valueBp }' }];
@@ -163,8 +202,8 @@ export function combatBonusListIssues(value: unknown, path = 'combatBonuses'): E
     const e = entry as Record<string, unknown>;
     const unknown = Object.keys(e).filter((k) => k !== 'stat' && k !== 'valueBp');
     if (unknown.length > 0) issues.push({ path: at, message: `unknown field(s): ${unknown.join(', ')}` });
-    if (!isCombatBonusStat(e.stat)) {
-      issues.push({ path: `${at}.stat`, message: `must be one of ${COMBAT_BONUS_STATS.join(', ')}, got ${JSON.stringify(e.stat)}` });
+    if (!isEquipmentBonusStat(e.stat)) {
+      issues.push({ path: `${at}.stat`, message: `must be one of ${EQUIPMENT_BONUS_STATS.join(', ')}, got ${JSON.stringify(e.stat)}` });
       return;
     }
     if (seen.has(e.stat)) issues.push({ path: `${at}.stat`, message: `duplicate combat bonus "${e.stat}" on one item` });
@@ -192,7 +231,7 @@ export function readStoredCombatBonuses(value: unknown): CombatBonus[] {
   for (const entry of value) {
     if (entry == null || typeof entry !== 'object') continue;
     const { stat, valueBp } = entry as Record<string, unknown>;
-    if (!isCombatBonusStat(stat) || out.some((b) => b.stat === stat)) continue;
+    if (!isEquipmentBonusStat(stat) || out.some((b) => b.stat === stat)) continue;
     if (typeof valueBp !== 'number' || !Number.isSafeInteger(valueBp) || valueBp < 1) continue;
     out.push({ stat, valueBp });
   }
@@ -206,8 +245,12 @@ export const EQUIPMENT_COMBAT_BONUS_FILE = 'equipment/combatBonuses.json';
 export const EQUIPMENT_COMBAT_BONUS_FILE_FORMAT = 'waifumon-equipment-combat-bonuses' as const;
 export const EQUIPMENT_COMBAT_BONUS_FILE_VERSION = 1 as const;
 
-/** Rarities random gear can roll bonuses at — exactly those with affix pools. SSR+ has no rules yet. */
-export const COMBAT_BONUS_RARITIES = EQUIPMENT_AFFIX_RARITIES;
+/**
+ * Rarities the shipped catalogue carries rules for. SSR+ has none yet and
+ * rolls no bonus. Its own list rather than the affix rarities, so the two
+ * catalogues can grow independently.
+ */
+export const COMBAT_BONUS_RARITIES = ['N', 'R', 'SR'] as const;
 export type CombatBonusRarity = (typeof COMBAT_BONUS_RARITIES)[number];
 
 export function isCombatBonusRarity(value: unknown): value is CombatBonusRarity {
@@ -223,8 +266,8 @@ const RarityRuleSchema = z
   .object({
     /** Chance a random copy of this rarity gets its bonuses at all. 10000 = always. */
     bonusChanceBp: z.number().int().min(0).max(BASIS_POINTS),
-    /** How many bonuses it then gets — distinct families. */
-    bonusCount: z.number().int().min(0).max(MAX_COMBAT_BONUSES_PER_ITEM),
+    /** How many bonuses it then gets — distinct families. Legacy rules stay at most two. */
+    bonusCount: z.number().int().min(0).max(MAX_LEGACY_RULE_BONUS_COUNT),
   })
   .strict();
 export type CombatBonusRarityRule = z.infer<typeof RarityRuleSchema>;
@@ -434,7 +477,7 @@ export class CombatBonusCatalogueMissingError extends Error {
 export function rollCombatBonuses(
   definition: { slot: string; rarity: string },
   opts: { rng: Rng; catalogue: CombatBonusConfig | null },
-): CombatBonus[] {
+): RolledCombatBonus[] {
   const { rng, catalogue } = opts;
   if (catalogue === COMBAT_BONUSES_DISABLED) return [];
   // A rarity above the bonus tiers (SSR and up) has no rule at all, so it
@@ -478,8 +521,10 @@ export interface CombatBonusAggregate {
 /**
  * **The** aggregation: every equipped item's bonuses, added per family, then
  * clamped to the combat safety caps. An empty slot, an item with no bonuses
- * and a pre-system item all contribute nothing. Pure — no total is ever
- * stored as player data; snapshots store this function's result.
+ * and a pre-system item all contribute nothing. `flat_sp` is not a combat
+ * modifier and is skipped (`isCombatBonusStat` is false for it) — it enters
+ * the stats once, as SP, in `equipmentMath.assembleCombatStats`. Pure — no
+ * total is ever stored as player data; snapshots store this function's result.
  */
 export function aggregateCombatBonuses(
   items: Iterable<{ combatBonuses?: readonly CombatBonus[] | null | undefined } | null | undefined>,
@@ -513,9 +558,15 @@ export function formatBonusPercent(bp: number): string {
   return `${whole}.${digits}%`;
 }
 
-/** One item bonus as a line: `+4.25% Crit Chance`. */
+/** One item bonus as a line: `+4.25% Crit Chance`, or `+11 SP` for flat SP. */
 export function formatCombatBonus(bonus: CombatBonus): string {
+  if (bonus.stat === FLAT_SP_BONUS_STAT) return `+${bonus.valueBp} ${COMBAT_BONUS_LABELS.flat_sp}`;
   return `+${formatBonusPercent(bonus.valueBp)} ${COMBAT_BONUS_LABELS[bonus.stat] ?? bonus.stat}`;
+}
+
+/** A stored bonus list's additional flat SP: the `flat_sp` entry's value, or 0. */
+export function additionalFlatSpOf(bonuses: readonly CombatBonus[] | null | undefined): number {
+  return bonuses?.find((b) => b.stat === FLAT_SP_BONUS_STAT)?.valueBp ?? 0;
 }
 
 /** One row of a loadout's totals. */

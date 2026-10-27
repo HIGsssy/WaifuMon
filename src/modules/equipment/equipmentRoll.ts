@@ -4,8 +4,10 @@
  * A definition describes a *range* of multipliers (`min`…`max` in `step`s of
  * basis points); each owned instance stores the one value it rolled
  * (`player_equipment.rolled_multiplier_bp`), optionally a flavour affix
- * (`affix_key`), and 0–2 mechanical combat bonuses (`combat_bonuses`, see
- * `combatBonuses.ts`). The instance's values are the only ones combat reads.
+ * (`affix_key`), 0–3 mechanical combat bonuses (`combat_bonuses`, see
+ * `combatBonuses.ts`) and — Equipment 3.0 — optionally a primary flat SP bonus
+ * (`rolled_properties.flatSp`). The instance's values are the only ones combat
+ * reads.
  *
  * A random roll, in draw order: multiplier → affix → combat bonuses (the
  * rarity's bonus chance, the distinct families, each magnitude).
@@ -21,13 +23,20 @@ import { EquipmentAffixPoolEmptyError, type EquipmentIssue } from '../../shared/
 import type { Rng } from '../../shared/random';
 import { affixPoolOf, isEquipmentAffixPool, type EquipmentAffixCatalogue } from './affixCatalogue';
 import {
+  additionalFlatSpOf,
   combatBonusListIssues,
   rollCombatBonuses,
   sortCombatBonuses,
   type CombatBonus,
   type CombatBonusConfig,
 } from './combatBonuses';
-import { EQUIPMENT_MULTIPLIER_BP_MAX, isEquipmentSlot, type EquipmentSlot } from './vocabulary';
+import { PRIMARY_FLAT_SP_PROPERTY } from './equipmentMath';
+import {
+  EQUIPMENT_FLAT_SP_MAX_PER_ITEM,
+  EQUIPMENT_MULTIPLIER_BP_MAX,
+  isEquipmentSlot,
+  type EquipmentSlot,
+} from './vocabulary';
 
 /** A definition's configured multiplier range, in basis points. */
 export interface MultiplierRange {
@@ -40,8 +49,23 @@ export interface MultiplierRange {
 export interface EquipmentRoll {
   rolledMultiplierBp: number;
   affixKey: string | null;
-  /** 0–2 mechanical bonuses, canonical order. Empty for a copy with none. */
+  /** 0–3 mechanical bonuses, canonical order. Empty for a copy with none. */
   combatBonuses: CombatBonus[];
+  /**
+   * Primary flat SP, whole points; absent or 0 for none. Stored as
+   * `rolled_properties.flatSp` (`rolledPropertiesOf`). Random rolls never set
+   * it and draw nothing for it — no rarity rule grants primary SP yet.
+   */
+  flatSp?: number;
+}
+
+/**
+ * The `rolled_properties` a roll stores: `{ flatSp }` when it has primary flat
+ * SP, otherwise `{}` — exactly what every pre-3.0 copy holds, so ordinary
+ * N/R/SR rows are unchanged and still group with their older twins.
+ */
+export function rolledPropertiesOf(roll: Pick<EquipmentRoll, 'flatSp'>): Record<string, unknown> {
+  return roll.flatSp != null && roll.flatSp > 0 ? { [PRIMARY_FLAT_SP_PROPERTY]: roll.flatSp } : {};
 }
 
 const isInt = (v: unknown): v is number => typeof v === 'number' && Number.isInteger(v);
@@ -143,6 +167,11 @@ export function rollEquipmentInstance(
  * and safety ceiling checked by `combatBonusListIssues`, never the rarity
  * ranges), so a restore reproduces a copy whatever the ranges are today.
  *
+ * `flatSp` (primary flat SP) is optional too — omitted or 0 means none. It
+ * must be a whole number of SP, and together with a dictated `flat_sp` bonus
+ * stay within {@link EQUIPMENT_FLAT_SP_MAX_PER_ITEM}: the per-copy ceiling is
+ * enforced before storage, never by clamping.
+ *
  * Checks the runtime shape too: this is the gate a client-influenced value
  * would have to pass, so a string, float or extra field is refused rather
  * than coerced.
@@ -153,11 +182,12 @@ export function validateFixedRoll(
   affixes: EquipmentAffixCatalogue,
 ): EquipmentIssue[] {
   if (roll == null || typeof roll !== 'object' || Array.isArray(roll)) {
-    return [{ path: 'roll', message: 'must be an object with rolledMultiplierBp, affixKey and optional combatBonuses' }];
+    return [{ path: 'roll', message: 'must be an object with rolledMultiplierBp, affixKey and optional combatBonuses and flatSp' }];
   }
   const r = roll as Record<string, unknown>;
   const issues: EquipmentIssue[] = [];
-  const unknown = Object.keys(r).filter((k) => k !== 'rolledMultiplierBp' && k !== 'affixKey' && k !== 'combatBonuses');
+  const known = ['rolledMultiplierBp', 'affixKey', 'combatBonuses', 'flatSp'];
+  const unknown = Object.keys(r).filter((k) => !known.includes(k));
   if (unknown.length > 0) issues.push({ path: 'roll', message: `unknown field(s): ${unknown.join(', ')}` });
   if (!isMultiplierInRange(definition, r.rolledMultiplierBp as number)) {
     issues.push({
@@ -179,7 +209,23 @@ export function validateFixedRoll(
       });
     }
   }
-  if (r.combatBonuses !== undefined) issues.push(...combatBonusListIssues(r.combatBonuses, 'roll.combatBonuses'));
+  const bonusIssues = r.combatBonuses === undefined ? [] : combatBonusListIssues(r.combatBonuses, 'roll.combatBonuses');
+  issues.push(...bonusIssues);
+  const flatSp = r.flatSp ?? 0;
+  if (!isInt(flatSp) || flatSp < 0 || flatSp > EQUIPMENT_FLAT_SP_MAX_PER_ITEM) {
+    issues.push({
+      path: 'roll.flatSp',
+      message: `must be whole SP from 0 to ${EQUIPMENT_FLAT_SP_MAX_PER_ITEM}, got ${JSON.stringify(r.flatSp)}`,
+    });
+  } else if (bonusIssues.length === 0) {
+    const total = flatSp + additionalFlatSpOf(r.combatBonuses as CombatBonus[] | undefined);
+    if (total > EQUIPMENT_FLAT_SP_MAX_PER_ITEM) {
+      issues.push({
+        path: 'roll.flatSp',
+        message: `primary and additional flat SP total ${total}; one copy may carry at most ${EQUIPMENT_FLAT_SP_MAX_PER_ITEM}`,
+      });
+    }
+  }
   return issues;
 }
 

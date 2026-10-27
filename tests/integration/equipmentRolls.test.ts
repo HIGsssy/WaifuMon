@@ -481,7 +481,13 @@ describe('ownership', () => {
       EquipmentNotOwnedError,
     );
     const preview = await combat.previewSlot(intruder, 'attack', [theirs]);
-    expect(preview.candidates[0]).toEqual({ equipmentId: theirs, available: false, value: null, delta: null });
+    expect(preview.candidates[0]).toEqual({
+      equipmentId: theirs,
+      available: false,
+      value: null,
+      delta: null,
+      stats: null, deltas: { attack: null, defense: null, maxHp: null },
+    });
   });
 });
 

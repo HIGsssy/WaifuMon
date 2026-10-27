@@ -31,6 +31,7 @@ import {
   type CombatBuddy,
   type CombatSlotItem,
   type CombatStats,
+  type CombatStatValues,
 } from './equipmentMath';
 import {
   readActiveLoadoutRow,
@@ -72,6 +73,26 @@ export interface SlotCandidatePreview {
   value: number | null;
   /** `value - current`; null whenever either side is null. */
   delta: number | null;
+  /**
+   * All three stats with this item equipped (null when unavailable). Flat SP
+   * on either copy moves every stat, not only the slot's own, so a
+   * comparison must be able to show all three. Always set by `previewSlot`;
+   * optional only so hand-built previews predating it stay valid.
+   */
+  stats?: CombatStatValues | null;
+  /** Per stat, `stats - current stats`; null whenever either side is null. Always set by `previewSlot`. */
+  deltas?: CombatStatValues;
+}
+
+const NO_DELTAS: CombatStatValues = { attack: null, defense: null, maxHp: null };
+
+function statDeltas(after: CombatStatValues, before: CombatStatValues): CombatStatValues {
+  const delta = (a: number | null, b: number | null) => (a != null && b != null ? a - b : null);
+  return {
+    attack: delta(after.attack, before.attack),
+    defense: delta(after.defense, before.defense),
+    maxHp: delta(after.maxHp, before.maxHp),
+  };
 }
 
 export interface SlotPreview {
@@ -205,7 +226,7 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
       for (const equipmentId of candidateIds) {
         const owned = await readOwnedInstance(db, playerId, equipmentId);
         if (!owned || owned.instance.slot !== slot) {
-          candidates.push({ equipmentId, available: false, value: null, delta: null });
+          candidates.push({ equipmentId, available: false, value: null, delta: null, stats: null, deltas: NO_DELTAS });
           continue;
         }
         const preview = assembleCombatStats({
@@ -219,6 +240,8 @@ export function createCombatStatsService(deps: CombatStatsServiceDeps): CombatSt
           available: true,
           value,
           delta: value != null && current != null ? value - current : null,
+          stats: { ...preview.stats },
+          deltas: statDeltas(preview.stats, stats.stats),
         });
       }
       return { stats, slot, current, candidates };

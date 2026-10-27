@@ -404,14 +404,19 @@ describe('what an instance may store', () => {
   const ok = (value: unknown) => expect(combatBonusListIssues(value)).toEqual([]);
   const bad = (value: unknown, fragment: string) => expect(combatBonusListIssues(value).map((i) => `${i.path} ${i.message}`).join('\n')).toContain(fragment);
 
-  it('accepts none, one or two distinct bonuses in whole basis points', () => {
+  it('accepts none to three distinct bonuses in whole basis points (Equipment 3.0)', () => {
     ok([]);
     ok([{ stat: 'crit_chance_bp', valueBp: 425 }]);
     ok([
       { stat: 'crit_chance_bp', valueBp: 625 },
       { stat: 'double_attack_chance_bp', valueBp: 400 },
     ]);
-    expect(MAX_COMBAT_BONUSES_PER_ITEM).toBe(2);
+    ok([
+      { stat: 'crit_chance_bp', valueBp: 100 },
+      { stat: 'lifesteal_bp', valueBp: 100 },
+      { stat: 'armor_penetration_bp', valueBp: 100 },
+    ]);
+    expect(MAX_COMBAT_BONUSES_PER_ITEM).toBe(3);
   });
 
   it('accepts values outside the rarity ranges — a fixed grant states what a copy carries', () => {
@@ -419,14 +424,15 @@ describe('what an instance may store', () => {
     ok([{ stat: 'crit_chance_bp', valueBp: COMBAT_MODIFIER_CAPS.critChanceBp }]);
   });
 
-  it('refuses a third bonus, a repeated family, an unknown family and bad values', () => {
+  it('refuses a fourth bonus, a repeated family, an unknown family and bad values', () => {
     bad(
       [
         { stat: 'crit_chance_bp', valueBp: 100 },
         { stat: 'lifesteal_bp', valueBp: 100 },
         { stat: 'armor_penetration_bp', valueBp: 100 },
+        { stat: 'double_attack_chance_bp', valueBp: 100 },
       ],
-      'at most 2 combat bonuses per item, got 3',
+      'at most 3 combat bonuses per item, got 4',
     );
     bad(
       [
@@ -572,7 +578,8 @@ describe('aggregateCombatBonuses', () => {
       },
     });
     expect(stats.formulaVersion).toBe(EQUIPMENT_FORMULA_VERSION);
-    expect(EQUIPMENT_FORMULA_VERSION).toBe(2);
+    // Formula 3 (effective SP) is formula 2 exactly when nothing carries flat SP.
+    expect(EQUIPMENT_FORMULA_VERSION).toBe(3);
     expect(stats.stats).toEqual({ attack: 160, defense: 140, maxHp: 520 });
     expect(stats.combatModifiers).toEqual({ ...ZERO_COMBAT_MODIFIERS, critChanceBp: 975, lifestealBp: 275 });
     expect(JSON.parse(JSON.stringify(stats))).toEqual(stats);

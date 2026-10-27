@@ -30,7 +30,17 @@ export interface DungeonFighter {
   speciesSlug: string;
   name: string;
   level: number;
+  /**
+   * Natural Current SP at the start — what event skill checks read. Never
+   * includes gear flat SP.
+   */
   currentSp: number;
+  /**
+   * Flat SP the gear added at the start, and the combat SP ATK / DEF / HP
+   * were derived from (formula 3). Display only; absent on older runs.
+   */
+  equipmentSp?: number;
+  effectiveSp?: number;
   attack: number;
   defense: number;
   maxHp: number;
@@ -116,6 +126,8 @@ export function fighterFromCombatStats(stats: CombatStats): DungeonFighter {
     name: stats.buddy.name,
     level: stats.buddy.level,
     currentSp: stats.buddy.currentSp,
+    equipmentSp: stats.sp?.equipmentBonus ?? 0,
+    effectiveSp: stats.sp?.effective ?? stats.buddy.currentSp,
     attack,
     defense,
     maxHp,

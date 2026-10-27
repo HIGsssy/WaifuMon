@@ -601,3 +601,63 @@ describe('secondary combat bonuses', () => {
     expect(within(comparison).queryByTestId('bonus-comparison')).toBeNull();
   });
 });
+
+describe('flat SP (Equipment 3.0)', () => {
+  /**
+   * The ring carries +30 flat SP. Nyx's natural 420 SP becomes 450 combat SP,
+   * which the server derives every stat from — so an SP item in the attack
+   * slot also moves DEF.
+   */
+  function spSetup() {
+    const items = gear();
+    const relic = gearItem({
+      name: 'Relic Blade',
+      slot: 'attack',
+      rarity: 'SSR',
+      multiplier: 0.5,
+      range: { min: 0.5, max: 0.5 },
+      primarySp: 30,
+      spBonus: 30,
+      combatBonuses: [{ stat: 'flat_sp', label: 'SP', percent: null, sp: 30, text: '+30 SP' }],
+    });
+    const backend = createEquipmentBackend({
+      items: [...Object.values(items), relic],
+      equipped: { attack: items.ring.id, defense: items.plate.id },
+    });
+    server.use(...backend.handlers);
+    const user = userEvent.setup();
+    renderRoutes({ routes, initialEntries: ['/equipment'] });
+    return { ...backend, items, relic, user };
+  }
+
+  it('shows no combat-SP line while the gear adds no SP', async () => {
+    setup();
+    expect(await screen.findByText(/Level 30 · 420 SP/)).toBeInTheDocument();
+    expect(screen.queryByTestId('combat-sp')).toBeNull();
+  });
+
+  it('a candidate with flat SP shows the change to the other stats too', async () => {
+    const { user } = spSetup();
+    const dialog = await openFromBag(user, /Relic Blade/);
+    const comparison = within(dialog).getByRole('region', { name: 'Comparison' });
+    // ATK 420 × 0.5 = 210 → 450 × 0.5 = 225; DEF 420 × 0.4 = 168 → 450 × 0.4 = 180.
+    expect(within(comparison).getByText('Change').nextSibling).toHaveTextContent('+15');
+    expect(within(comparison).getByText('DEF change').nextSibling).toHaveTextContent('+12');
+    // The empty health slot has no stat to change.
+    expect(within(comparison).queryByText('HP change')).toBeNull();
+    // The flat SP bonus reads as whole SP, in the detail and on the candidate side.
+    expect(within(dialog).getAllByText('+30 SP').length).toBeGreaterThan(0);
+  });
+
+  it('once equipped, shows natural SP, the gear SP and the combat SP', async () => {
+    const { user } = spSetup();
+    const dialog = await openFromBag(user, /Relic Blade/);
+    await user.click(within(dialog).getByRole('button', { name: /^Equip/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId('combat-sp')).toHaveTextContent('Gear +30 SP → 450 combat SP'),
+    );
+    expect(screen.getByText(/Level 30 · 420 SP/)).toBeInTheDocument();
+    expect(stat('attack')).toHaveTextContent('225');
+    expect(stat('defense')).toHaveTextContent('180');
+  });
+});

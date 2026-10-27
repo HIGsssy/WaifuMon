@@ -2747,17 +2747,22 @@ export const playerEquipment = pgTable(
     affixKey: text('affix_key'),
     /**
      * The mechanical combat bonuses this instance rolled (migration 0056):
-     * `[{ stat, valueBp }]`, at most two, distinct families, in canonical
-     * order. Integer basis points (425 = 4.25%). Authoritative and never
-     * recomputed, like the multiplier. `[]` is a copy with none — every row
-     * that predates the column, every onboarding starter. A collection, not a
-     * pair of scalar columns, because SR gear carries two.
+     * `[{ stat, valueBp }]`, at most three (migration 0070; N/R/SR roll at most
+     * two), distinct families, in canonical order. Integer basis points (425 =
+     * 4.25%) — `flat_sp` holds whole SP. Authoritative and never recomputed,
+     * like the multiplier. `[]` is a copy with none — every row that predates
+     * the column, every onboarding starter. A collection, not a pair of
+     * scalar columns, because SR gear carries two.
      */
     combatBonuses: jsonb('combat_bonuses')
       .$type<{ stat: string; valueBp: number }[]>()
       .notNull()
       .default([]),
-    /** Empty in V1; reserved for future rolled properties beyond the above. */
+    /**
+     * Rolled properties beyond the above. Equipment 3.0: `{ "flatSp": n }` is
+     * the copy's primary flat SP (whole points, `equipmentMath`); `{}` — every
+     * pre-3.0 copy — is none. Authoritative and never recomputed.
+     */
     rolledProperties: jsonb('rolled_properties')
       .$type<Record<string, unknown>>()
       .notNull()
@@ -2808,7 +2813,7 @@ export const playerEquipment = pgTable(
     ),
     check(
       'player_equipment_combat_bonuses_check',
-      sql`jsonb_typeof(${t.combatBonuses}) = 'array' and jsonb_array_length(${t.combatBonuses}) <= 2`,
+      sql`jsonb_typeof(${t.combatBonuses}) = 'array' and jsonb_array_length(${t.combatBonuses}) <= 3`,
     ),
     // A removal always says why.
     check(

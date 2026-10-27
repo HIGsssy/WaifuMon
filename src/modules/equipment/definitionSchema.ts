@@ -49,7 +49,11 @@ export const EquipmentDefinitionInputSchema = z
     name: z.string().trim().min(1).max(80),
     description: z.string().max(1000).default(''),
     slot: z.enum(EQUIPMENT_SLOTS),
-    /** N–UR only in V1; LR and EX are withheld until the system matures. */
+    /**
+     * N…LR (EX is withheld). Authoring a rarity does not make it obtainable:
+     * random rolls and reward selectors keep their own rarity lists. Frozen
+     * once any copy exists (`assertReferencedFieldsUnchanged`).
+     */
     rarity: z.enum(EQUIPMENT_AUTHORING_RARITIES),
     /**
      * The range a new instance's multiplier is rolled from — one of

@@ -390,7 +390,8 @@ describe('fixed grants dictate their bonuses', () => {
   });
 
   it.each([
-    ['three bonuses', [{ stat: 'crit_chance_bp', valueBp: 1 }, { stat: 'lifesteal_bp', valueBp: 1 }, { stat: 'armor_penetration_bp', valueBp: 1 }]],
+    // Equipment 3.0: an instance may store three; a fourth is still refused.
+    ['four bonuses', [{ stat: 'crit_chance_bp', valueBp: 1 }, { stat: 'lifesteal_bp', valueBp: 1 }, { stat: 'armor_penetration_bp', valueBp: 1 }, { stat: 'double_attack_chance_bp', valueBp: 1 }]],
     ['a repeated family', [{ stat: 'crit_chance_bp', valueBp: 1 }, { stat: 'crit_chance_bp', valueBp: 2 }]],
     ['an unknown family', [{ stat: 'dodge_bp', valueBp: 100 }]],
     ['a fractional value', [{ stat: 'crit_chance_bp', valueBp: 4.25 }]],
@@ -401,11 +402,11 @@ describe('fixed grants dictate their bonuses', () => {
     expect((await svc.equipment.listEquipment(p)).items).toEqual([]);
   });
 
-  it('the database refuses a third bonus and a non-array even if code let one through', async () => {
+  it('the database refuses a fourth bonus and a non-array even if code let one through', async () => {
     const p = await setup();
     const id = await fixed(p, DEFS.rail);
-    const three = JSON.stringify([1, 2, 3].map((n) => ({ stat: 'crit_chance_bp', valueBp: n })));
-    await expectPgError(t.db.execute(sql`update player_equipment set combat_bonuses = ${three}::jsonb where id = ${id}`), '23514');
+    const four = JSON.stringify([1, 2, 3, 4].map((n) => ({ stat: 'crit_chance_bp', valueBp: n })));
+    await expectPgError(t.db.execute(sql`update player_equipment set combat_bonuses = ${four}::jsonb where id = ${id}`), '23514');
     await expectPgError(t.db.execute(sql`update player_equipment set combat_bonuses = '{}'::jsonb where id = ${id}`), '23514');
   });
 });

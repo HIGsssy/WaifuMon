@@ -78,6 +78,7 @@ import { formatCombatBonus, type CombatBonus } from '../modules/equipment/combat
 import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../modules/equipment/vocabulary';
 import { formatProgressionAmount } from '../modules/progressionCurrency/progressionCurrencyService';
 import { blockerLine, modifiersLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
+import { gearSpSuffix } from './combatSpFormat';
 import type { SessionPayload } from './ephemeralSession';
 import { formatChancePercent } from './rollFormat';
 import { EMPTY_SLOT, SLOT_EMOJI, formatMultiplier } from './equipmentPresenter';
@@ -554,7 +555,7 @@ export function buildDungeonDetail(view: DungeonDetailView, opts: DungeonScreenO
     embed.addFields({
       name: `Your Buddy — ${truncate(stats.buddy.name, 200)}`,
       value: [
-        `Current SP **${stats.buddy.currentSp}**`,
+        `Current SP **${stats.buddy.currentSp}**${gearSpSuffix(stats.sp, { bold: true })}`,
         `ATK ${stats.stats.attack ?? EMPTY_SLOT} · DEF ${stats.stats.defense ?? EMPTY_SLOT} · HP ${stats.stats.maxHp ?? EMPTY_SLOT}`,
         modifiersLine(stats.combatModifiers),
         ...gear,

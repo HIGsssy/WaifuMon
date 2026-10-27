@@ -41,6 +41,7 @@ import {
   slotChangeBody,
   slotChangeSchema,
   type CombatBonusFamilyId,
+  type CombatModifierFamilyId,
 } from '../../schemas/equipment';
 import type { EquipmentInstanceView } from '../../../modules/equipment/equipmentQueries';
 import type { EquipmentSort } from '../../../modules/equipment/equipmentService';
@@ -50,11 +51,12 @@ import {
   COMBAT_BONUS_MODIFIER,
   COMBAT_BONUS_STATS,
   combatModifierRows,
+  FLAT_SP_BONUS_STAT,
   formatCombatBonus,
   type CombatBonus,
-  type CombatBonusStat,
+  type EquipmentBonusStat,
 } from '../../../modules/equipment/combatBonuses';
-import { BASIS_POINTS, SLOT_STAT } from '../../../modules/equipment/equipmentMath';
+import { BASIS_POINTS, itemFlatSpOf, SLOT_STAT, type CombatStatValues } from '../../../modules/equipment/equipmentMath';
 import { rollQualityPercent } from '../../../modules/equipment/equipmentRoll';
 import { EQUIPMENT_SOURCE_LABELS, type EquipmentSourceType } from '../../../modules/equipment/vocabulary';
 import type { SlotChangeOutcome } from '../../../modules/equipment/equipmentManagementService';
@@ -81,16 +83,17 @@ const lockedResponse = {
 
 const toMultiplier = (bp: number) => bp / BASIS_POINTS;
 
-const BONUS_FAMILY_ID: Readonly<Record<CombatBonusStat, CombatBonusFamilyId>> = {
+const BONUS_FAMILY_ID: Readonly<Record<EquipmentBonusStat, CombatBonusFamilyId>> = {
   crit_chance_bp: 'crit_chance',
   crit_damage_bonus_bp: 'crit_damage',
   double_attack_chance_bp: 'double_attack',
   armor_penetration_bp: 'armor_penetration',
   lifesteal_bp: 'lifesteal',
+  flat_sp: 'flat_sp',
 };
 const MODIFIER_FAMILY_ID = Object.fromEntries(
   COMBAT_BONUS_STATS.map((stat) => [COMBAT_BONUS_MODIFIER[stat], BONUS_FAMILY_ID[stat]]),
-) as Readonly<Record<keyof CombatModifiers, CombatBonusFamilyId>>;
+) as Readonly<Record<keyof CombatModifiers, CombatModifierFamilyId>>;
 
 /** A loadout's cumulative totals as the Portal shows them. Zero rows are already omitted. */
 export function toCombatModifierResources(modifiers: CombatModifiers) {
@@ -99,12 +102,26 @@ export function toCombatModifierResources(modifiers: CombatModifiers) {
 
 /** A copy's rolled bonuses as the Portal shows them: percentages and ready text, never basis points. */
 export function toCombatBonusResources(bonuses: readonly CombatBonus[]) {
-  return bonuses.map((bonus) => ({
-    stat: BONUS_FAMILY_ID[bonus.stat],
-    label: COMBAT_BONUS_LABELS[bonus.stat],
-    percent: bonus.valueBp / 100,
-    text: formatCombatBonus(bonus),
-  }));
+  return bonuses.map((bonus) => {
+    const flat = bonus.stat === FLAT_SP_BONUS_STAT;
+    return {
+      stat: BONUS_FAMILY_ID[bonus.stat],
+      label: COMBAT_BONUS_LABELS[bonus.stat],
+      percent: flat ? null : bonus.valueBp / 100,
+      sp: flat ? bonus.valueBp : null,
+      text: formatCombatBonus(bonus),
+    };
+  });
+}
+
+/** Each stat now and with the copy, for a comparison. */
+function statChanges(current: CombatStatValues, withItem: CombatStatValues | null | undefined, deltas: CombatStatValues | undefined) {
+  const change = (stat: keyof CombatStatValues) => ({
+    current: current[stat],
+    withItem: withItem?.[stat] ?? null,
+    delta: deltas?.[stat] ?? null,
+  });
+  return { attack: change('attack'), defense: change('defense'), maxHp: change('maxHp') };
 }
 
 /**
@@ -125,6 +142,8 @@ export function toEquipmentItemResource(view: EquipmentInstanceView, workshop: W
     range: { min: toMultiplier(def.multiplierMinBp), max: toMultiplier(def.multiplierMaxBp) },
     rollQuality: rollQualityPercent(def, view.rolledMultiplierBp),
     combatBonuses: toCombatBonusResources(view.combatBonuses),
+    primarySp: itemFlatSpOf(view).primary,
+    spBonus: itemFlatSpOf(view).contribution,
     equipped: view.equipped,
     favorite: view.isFavorite,
     locked: view.isLocked,
@@ -278,6 +297,8 @@ export const equipmentRoutes =
                 name: stats.buddy.name,
                 level: stats.buddy.level,
                 currentSp: stats.buddy.currentSp,
+                equipmentSp: stats.sp?.equipmentBonus ?? 0,
+                effectiveSp: stats.sp?.effective ?? stats.buddy.currentSp,
               }
             : null,
           stats: { ...stats.stats },
@@ -363,6 +384,7 @@ export const equipmentRoutes =
             delta: view.preview.delta,
             equippedItem: view.slotEquipped ? toEquipmentItemResource(view.slotEquipped, workshopConfig()) : null,
             hasBuddy: view.stats.buddy != null,
+            changes: statChanges(view.stats.stats, view.preview.stats, view.preview.deltas),
           },
         });
       },
