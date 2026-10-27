@@ -1063,6 +1063,71 @@ export class EquipmentRarityLockedError extends AppError {
 }
 
 /**
+ * Managed equipment configuration (Equipment 3.0): the roll rules or an affix
+ * library. `subject` is `roll rules` or `affix library "<key>"`.
+ */
+export type EquipmentConfigSubject = string;
+
+/** A write named a draft revision that is no longer current. Nothing was changed. */
+export class EquipmentConfigStaleError extends AppError {
+  constructor(
+    readonly subject: EquipmentConfigSubject,
+    readonly expectedRevision: number,
+    readonly currentRevision: number,
+  ) {
+    super(
+      'EQUIPMENT_CONFIG_STALE',
+      `${subject}: expected draft revision ${expectedRevision}, but it is ${currentRevision}`,
+      'Someone else changed this configuration first. Review the current version and try again.',
+    );
+  }
+}
+
+/** A configuration that failed validation. `issues` carry field paths; nothing was changed. */
+export class EquipmentConfigInvalidError extends AppError {
+  readonly issues: EquipmentIssue[];
+  constructor(
+    readonly subject: EquipmentConfigSubject,
+    issues: readonly EquipmentIssue[],
+  ) {
+    const summary = issues.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+    super('EQUIPMENT_CONFIG_INVALID', `${subject} is invalid: ${summary}`, summary || 'That configuration is not valid.');
+    this.issues = [...issues];
+  }
+}
+
+/** The named configuration, library or revision does not exist. */
+export class EquipmentConfigNotFoundError extends AppError {
+  constructor(readonly subject: EquipmentConfigSubject) {
+    super('EQUIPMENT_CONFIG_NOT_FOUND', `${subject} not found`, 'That equipment configuration does not exist.');
+  }
+}
+
+/** A well-formed request the configuration's state refuses (exists already, nothing to publish, in use). */
+export class EquipmentConfigConflictError extends AppError {
+  constructor(
+    readonly subject: EquipmentConfigSubject,
+    reason: string,
+  ) {
+    super('EQUIPMENT_CONFIG_CONFLICT', `${subject}: ${reason}`, reason);
+  }
+}
+
+/**
+ * A random grant found no published roll rules — the startup bootstrap has not
+ * run on this database. Fail-closed: no gear is rolled from a guess.
+ */
+export class EquipmentRulesUnavailableError extends AppError {
+  constructor() {
+    super(
+      'EQUIPMENT_RULES_UNAVAILABLE',
+      'Equipment roll rules have not been initialised on this database',
+      'Equipment rewards are temporarily unavailable.',
+    );
+  }
+}
+
+/**
  * The instance does not exist, belongs to someone else, or has been removed.
  * Deliberately one error for all three, so a guessed id learns nothing.
  */

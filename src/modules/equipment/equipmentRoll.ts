@@ -22,6 +22,7 @@
 import { EquipmentAffixPoolEmptyError, type EquipmentIssue } from '../../shared/errors';
 import type { Rng } from '../../shared/random';
 import { affixPoolOf, isEquipmentAffixPool, type EquipmentAffixCatalogue } from './affixCatalogue';
+import { readAffixSuffixSnapshot } from './affixLibraries';
 import {
   additionalFlatSpOf,
   combatBonusListIssues,
@@ -242,6 +243,11 @@ export const UNKNOWN_AFFIX_LABEL = '[Unknown Affix]';
  * (the suffix is complete text — nothing is prepended), or the base name when
  * unaffixed. A retired affix still renders.
  *
+ * A copy rolled from a managed affix library (Equipment 3.0) carries its
+ * suffix as rendered at grant in `rolled_properties.affixSuffix`; that
+ * snapshot wins, so later library edits never rename owned gear. Every other
+ * copy resolves its key through the shipped catalogue exactly as before.
+ *
  * An affix key the catalogue no longer knows (deleted rather than retired) is
  * a content error: the name carries a visible `[Unknown Affix]` marker so the
  * copy is never silently mistaken for an unaffixed one, and the miss is
@@ -252,7 +258,10 @@ export function equipmentDisplayName(
   baseName: string,
   affixKey: string | null,
   affixes: EquipmentAffixCatalogue,
+  rolledProperties?: unknown,
 ): string {
+  const snapshot = readAffixSuffixSnapshot(rolledProperties);
+  if (snapshot != null) return `${baseName} ${snapshot}`;
   if (affixKey == null) return baseName;
   const affix = affixes.resolveOwned(affixKey);
   return `${baseName} ${affix ? affix.suffix : UNKNOWN_AFFIX_LABEL}`;

@@ -19,6 +19,12 @@
  * draw count and draw order are part of the contract, not only the outcome.
  * The seed for roll `n` (1…200) of the definition at catalogue index `i` is
  * `(i + 1) * 1000 + n`.
+ *
+ * Equipment 3.0 (E3-B): live grants no longer read the shipped catalogue —
+ * they read the database-authoritative rules' frozen `legacy` block through
+ * `legacyCombatBonusCatalogue`. The second suite runs all 6,000 rolls through
+ * exactly that path (shipped file → bootstrap document → adapter) and holds
+ * it to the same fixture.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -29,6 +35,8 @@ import {
   EquipmentCombatBonusFileSchema,
 } from '../../src/modules/equipment/combatBonuses';
 import { rollEquipmentInstance } from '../../src/modules/equipment/equipmentRoll';
+import { bootstrapRollRules, legacyCombatBonusCatalogue, RollRulesSchema } from '../../src/modules/equipment/rollRules';
+import type { CombatBonusCatalogue } from '../../src/modules/equipment/combatBonuses';
 import { loadEquipmentSeedCatalogue } from '../../src/modules/equipment/seed';
 import { seededRng, type Rng } from '../../src/shared/random';
 import { CONTENT_DIR } from '../helpers/fixtures';
@@ -60,13 +68,20 @@ function recordingRng(seed: number): { rng: Rng; draws: string[] } {
   };
 }
 
-function computeGolden(): Record<string, string[]> {
+function shippedCatalogue(): CombatBonusCatalogue {
+  return combatBonusCatalogueFromFile(EquipmentCombatBonusFileSchema.parse(readJson('equipment', 'combatBonuses.json')));
+}
+
+/** The catalogue a live grant reads: shipped file → bootstrapped rules document (as stored, JSON round-trip) → legacy adapter. */
+function publishedLegacyCatalogue(): CombatBonusCatalogue {
+  const stored = JSON.parse(JSON.stringify(bootstrapRollRules(EquipmentCombatBonusFileSchema.parse(readJson('equipment', 'combatBonuses.json')))));
+  return legacyCombatBonusCatalogue(RollRulesSchema.parse(stored));
+}
+
+function computeGolden(combatBonuses: CombatBonusCatalogue = shippedCatalogue()): Record<string, string[]> {
   const definitions = loadEquipmentSeedCatalogue(CONTENT_DIR);
   const affixes = buildAffixCatalogue(
     EquipmentAffixFileSchema.parse(readJson('equipment', 'affixes.json')).affixes,
-  );
-  const combatBonuses = combatBonusCatalogueFromFile(
-    EquipmentCombatBonusFileSchema.parse(readJson('equipment', 'combatBonuses.json')),
   );
   const out: Record<string, string[]> = {};
   definitions.forEach((definition, i) => {
@@ -98,6 +113,19 @@ describe('N/R/SR random rolls are byte-identical to the pre-3.0 engine', () => {
   });
 
   it.each(Object.keys(expected))('%s: every roll and every draw is unchanged', (key) => {
+    expect(actual[key]).toEqual(expected[key]);
+  });
+});
+
+describe('N/R/SR rolls through the database-authoritative rules (E3-B) are byte-identical too', () => {
+  const expected = JSON.parse(fs.readFileSync(FIXTURE, 'utf8')) as Record<string, string[]>;
+  const actual = computeGolden(publishedLegacyCatalogue());
+
+  it('the adapter reproduces the shipped catalogue exactly', () => {
+    expect(publishedLegacyCatalogue()).toEqual(shippedCatalogue());
+  });
+
+  it.each(Object.keys(expected))('%s: every roll and every draw is unchanged via the published legacy block', (key) => {
     expect(actual[key]).toEqual(expected[key]);
   });
 });

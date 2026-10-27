@@ -82,6 +82,7 @@ import {
   type EquipmentRoll,
 } from './equipmentRoll';
 import { readPrimaryFlatSp } from './equipmentMath';
+import type { EquipmentRollRulesService, GrantRollRules } from './equipmentRollRulesService';
 import {
   readActiveLoadoutRow,
   readActiveLoadoutView,
@@ -300,6 +301,8 @@ export interface GrantKeyRecord {
   rolledMultiplierBp: number;
   affixKey: string | null;
   combatBonuses: CombatBonus[];
+  /** Stored rolled properties (primary flat SP, a managed affix's suffix snapshot). Always set when read. */
+  rolledProperties?: Record<string, unknown>;
   removed: boolean;
 }
 
@@ -454,6 +457,16 @@ export interface EquipmentServiceDeps {
    * rather than silently producing bonus-free R/SR gear.
    */
   getCombatBonuses?(): CombatBonusConfig | null;
+  /**
+   * The database-authoritative roll rules (Equipment 3.0). When given — as in
+   * production — every random grant reads the **published** revision inside
+   * its own transaction and rolls N/R/SR from its frozen legacy block; the
+   * revision is recorded on the grant event. Takes precedence over
+   * `getCombatBonuses`, which then serves only tests that build the service
+   * without a database configuration. A database that was never bootstrapped
+   * fails the grant closed (`EquipmentRulesUnavailableError`).
+   */
+  rollRules?: Pick<EquipmentRollRulesService, 'forGrant'>;
   /** The RNG random grants roll with. Injected by tests; `Math.random` otherwise. */
   rng?: Rng;
 }
@@ -721,6 +734,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
     spec: EquipmentRollSpec | undefined,
     quantity: number,
     rollSeed: number | undefined,
+    published: GrantRollRules | null,
   ): EquipmentRoll[] {
     const affixes = deps.getAffixes();
     const kind: unknown = spec?.kind ?? 'random';
@@ -731,7 +745,10 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
       // roll itself — never an unaffixed item, never another pool.
       const issues = multiplierRangeIssues(definition.slot, definition);
       if (issues.length > 0) throw new EquipmentValidationError(issues);
-      const combatBonuses = deps.getCombatBonuses?.() ?? null;
+      // The published rules' frozen legacy catalogue when the database owns
+      // them; the injected getter otherwise (tests). Either way the roll
+      // itself is the unchanged `rollEquipmentInstance`.
+      const combatBonuses = published ? published.combatBonuses : (deps.getCombatBonuses?.() ?? null);
       const rollRng = rollSeed === undefined ? rng : seededRng(rollSeed);
       try {
         return Array.from({ length: quantity }, () =>
@@ -803,7 +820,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
         affixKey: r.affixKey,
         combatBonuses: readStoredCombatBonuses(r.combatBonuses),
         rolledProperties: r.rolledProperties,
-        displayName: equipmentDisplayName(r.definition.name, r.affixKey, affixes),
+        displayName: equipmentDisplayName(r.definition.name, r.affixKey, affixes, r.rolledProperties),
         count: r.count,
         equippedCount: r.equippedCount,
         favoriteCount: r.favoriteCount,
@@ -921,7 +938,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
             rolledMultiplierBp: row.instance.rolledMultiplierBp,
             affixKey: row.instance.affixKey,
             combatBonuses: readStoredCombatBonuses(row.instance.combatBonuses),
-            displayName: equipmentDisplayName(row.definition.name, row.instance.affixKey, affixes),
+            displayName: equipmentDisplayName(row.definition.name, row.instance.affixKey, affixes, row.instance.rolledProperties),
             components,
           });
         }
@@ -964,9 +981,14 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
 
       const copyKeys = grantKey === null ? null : Array.from({ length: quantity }, (_, i) => `${grantKey}:${i}`);
 
+      // One published rule revision for the whole grant, read inside its
+      // transaction (`FOR SHARE`: a publish waits for this grant to finish).
+      const random = (input.roll?.kind ?? 'random') === 'random';
+      const published = random && deps.rollRules ? await deps.rollRules.forGrant(tx) : null;
+
       let rolls: EquipmentRoll[];
       try {
-        rolls = rollCopies(definition, input.roll, quantity, input.rollSeed);
+        rolls = rollCopies(definition, input.roll, quantity, input.rollSeed, published);
       } catch (err) {
         // A retry must return what the grant created the first time, even if
         // the definition's range has since moved and the dictated roll no
@@ -1046,6 +1068,9 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
             combatBonuses: row.combatBonuses,
             rolledProperties: row.rolledProperties,
             rollKind: input.roll?.kind ?? 'random',
+            // The published roll-rule revision this grant read; null for a
+            // fixed roll or a service built without managed rules.
+            rollRulesRevision: published?.revision ?? null,
             sourceType: input.source.type,
             sourceKey: input.source.key ?? null,
             grantKey: row.grantKey,
@@ -1373,6 +1398,7 @@ export function createEquipmentService(deps: EquipmentServiceDeps): EquipmentSer
           rolledMultiplierBp: instance.rolledMultiplierBp,
           affixKey: instance.affixKey,
           combatBonuses: readStoredCombatBonuses(instance.combatBonuses),
+          rolledProperties: instance.rolledProperties,
           removed: instance.removedAt != null,
         });
       }

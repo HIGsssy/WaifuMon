@@ -51,6 +51,8 @@ import type { EncounterPromotionService } from '../modules/worldEncounters/encou
 import type { GuildRoleService } from '../modules/portalAuth/guildRoleService';
 import type { EquipmentService } from '../modules/equipment/equipmentService';
 import type { EquipmentDefinitionService } from '../modules/equipment/equipmentDefinitionService';
+import type { EquipmentRollRulesService } from '../modules/equipment/equipmentRollRulesService';
+import type { EquipmentAffixLibraryService } from '../modules/equipment/equipmentAffixLibraryService';
 import type { CombatStatsService } from '../modules/equipment/combatStatsService';
 import type { EquipmentPromotionService } from '../modules/equipment/equipmentImportService';
 import type { EquipmentOnboardingService } from '../modules/onboarding/equipmentOnboardingService';
@@ -242,6 +244,13 @@ export interface AppServices {
   equipmentDefinitions?: EquipmentDefinitionService | undefined;
   combatStats?: CombatStatsService | undefined;
   equipmentPromotion?: EquipmentPromotionService | undefined;
+  /**
+   * Equipment 3.0 managed configuration (E3-B): the database-authoritative
+   * roll rules and the managed affix libraries. Backend only — no route or
+   * Discord handler reaches them yet (Portal Admin is E3-D/E3-E).
+   */
+  equipmentRollRules?: EquipmentRollRulesService | undefined;
+  equipmentAffixLibraries?: EquipmentAffixLibraryService | undefined;
   featureUnlocks?: FeatureUnlockService | undefined;
   /** Equipment onboarding (Patch) and the read-only Equipment overview. */
   equipmentOnboarding?: EquipmentOnboardingService | undefined;

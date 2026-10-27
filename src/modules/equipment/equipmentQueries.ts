@@ -105,7 +105,7 @@ export function toInstanceView(
     definition: toDefinitionView(definition),
     rolledMultiplierBp: instance.rolledMultiplierBp,
     affixKey: instance.affixKey,
-    displayName: equipmentDisplayName(definition.name, instance.affixKey, affixes),
+    displayName: equipmentDisplayName(definition.name, instance.affixKey, affixes, instance.rolledProperties),
     combatBonuses: readStoredCombatBonuses(instance.combatBonuses),
     rolledProperties: instance.rolledProperties,
     isFavorite: instance.isFavorite,
@@ -126,7 +126,7 @@ export function toCombatSlotItem(
   return {
     equipmentId: instance.id,
     definitionKey: definition.key,
-    name: equipmentDisplayName(definition.name, instance.affixKey, affixes),
+    name: equipmentDisplayName(definition.name, instance.affixKey, affixes, instance.rolledProperties),
     definitionName: definition.name,
     affixKey: instance.affixKey,
     rarity: definition.rarity,
@@ -153,7 +153,8 @@ export async function readUnknownAffixKeys(
   const rows = await tx
     .select({ affixKey: playerEquipment.affixKey, instances: sql<number>`count(*)::int` })
     .from(playerEquipment)
-    .where(isNotNull(playerEquipment.affixKey))
+    // A copy with a snapshotted suffix (managed library) renders from it, not the catalogue.
+    .where(and(isNotNull(playerEquipment.affixKey), sql`not (${playerEquipment.rolledProperties} ? 'affixSuffix')`))
     .groupBy(playerEquipment.affixKey)
     .orderBy(asc(playerEquipment.affixKey));
   return rows

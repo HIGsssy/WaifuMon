@@ -34,6 +34,7 @@ import {
   pgTable,
   primaryKey,
   real,
+  smallint,
   text,
   timestamp,
   unique,
@@ -3057,6 +3058,195 @@ export type PlayerLoadoutSlotRow = typeof playerLoadoutSlots.$inferSelect;
 export type EquipmentEventRow = typeof equipmentEvents.$inferSelect;
 export type EquipmentImportLogRow = typeof equipmentImportLog.$inferSelect;
 export type PlayerFeatureUnlockRow = typeof playerFeatureUnlocks.$inferSelect;
+
+// ── Equipment 3.0 managed rules and affix libraries (migration 0071) ────────
+
+export const EQUIPMENT_CONFIG_REVISION_SOURCES = ['bootstrap', 'editor', 'import', 'rollback'] as const;
+export type EquipmentConfigRevisionSource = (typeof EQUIPMENT_CONFIG_REVISION_SOURCES)[number];
+
+/**
+ * A published equipment roll-rule configuration. **Immutable** — a trigger
+ * refuses any update or delete. A publish or a rollback is always a new
+ * revision. `body` is a validated `waifumon-equipment-roll-config` document
+ * (`modules/equipment/rollRules.ts`).
+ */
+export const equipmentRollConfigRevisions = pgTable(
+  'equipment_roll_config_revisions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    /** 1, 2, 3… */
+    number: integer('number').notNull(),
+    body: jsonb('body').$type<Record<string, unknown>>().notNull(),
+    contentHash: text('content_hash').notNull(),
+    source: text('source').$type<EquipmentConfigRevisionSource>().notNull(),
+    rolledBackFrom: bigint('rolled_back_from', { mode: 'number' }),
+    /** The draft revision that was published. */
+    draftRevision: integer('draft_revision').notNull(),
+    publishedBy: text('published_by'),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('equipment_roll_config_revisions_number_check', sql`${t.number} >= 1`),
+    check('equipment_roll_config_revisions_hash_check', sql`${t.contentHash} ~ '^sha256:[a-f0-9]{64}$'`),
+    check(
+      'equipment_roll_config_revisions_source_check',
+      sql`${t.source} in ('bootstrap','editor','import','rollback')`,
+    ),
+    check('equipment_roll_config_revisions_body_check', sql`jsonb_typeof(${t.body}) = 'object'`),
+    foreignKey({
+      name: 'equipment_roll_config_revisions_rolled_back_from_fk',
+      columns: [t.rolledBackFrom],
+      foreignColumns: [t.id],
+    }),
+    uniqueIndex('equipment_roll_config_revisions_number_uq').on(t.number),
+  ],
+);
+
+export type EquipmentRollConfigRevisionRow = typeof equipmentRollConfigRevisions.$inferSelect;
+
+/**
+ * The one equipment roll-rule configuration (`id = 1`): the working draft and
+ * the pointer to the published revision every live grant reads. Created once,
+ * at startup, from the shipped `combatBonuses.json`; never overwritten.
+ */
+export const equipmentRollConfig = pgTable(
+  'equipment_roll_config',
+  {
+    id: smallint('id').primaryKey(),
+    draftBody: jsonb('draft_body').$type<Record<string, unknown>>().notNull(),
+    draftRevision: integer('draft_revision').notNull().default(1),
+    draftHash: text('draft_hash').notNull(),
+    publishedRevisionId: bigint('published_revision_id', { mode: 'number' })
+      .notNull()
+      .references(() => equipmentRollConfigRevisions.id),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check('equipment_roll_config_singleton_check', sql`${t.id} = 1`),
+    check('equipment_roll_config_draft_revision_check', sql`${t.draftRevision} >= 1`),
+    check('equipment_roll_config_draft_hash_check', sql`${t.draftHash} ~ '^sha256:[a-f0-9]{64}$'`),
+    check('equipment_roll_config_draft_body_check', sql`jsonb_typeof(${t.draftBody}) = 'object'`),
+  ],
+);
+
+export type EquipmentRollConfigRow = typeof equipmentRollConfig.$inferSelect;
+
+/**
+ * A managed affix library (SSR/UR/LR flavour suffixes): its draft entries and
+ * the pointer to its published revision. Keys are stable and never reuse the
+ * `legacy_*` names the shipped N/R/SR catalogue is shown under.
+ */
+export const equipmentAffixLibraries = pgTable(
+  'equipment_affix_libraries',
+  {
+    key: text('key').primaryKey(),
+    name: text('name').notNull(),
+    description: text('description').notNull().default(''),
+    draftEntries: jsonb('draft_entries').$type<Record<string, unknown>[]>().notNull().default([]),
+    draftRevision: integer('draft_revision').notNull().default(1),
+    draftHash: text('draft_hash').notNull(),
+    publishedRevisionId: bigint('published_revision_id', { mode: 'number' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    createdBy: text('created_by'),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedBy: text('updated_by'),
+  },
+  (t) => [
+    check(
+      'equipment_affix_libraries_key_check',
+      sql`${t.key} ~ '^[a-z0-9]+(?:_[a-z0-9]+)*$' and char_length(${t.key}) <= 64 and ${t.key} !~ '^legacy(_|$)'`,
+    ),
+    check('equipment_affix_libraries_name_check', sql`btrim(${t.name}) <> '' and char_length(${t.name}) <= 80`),
+    check('equipment_affix_libraries_draft_revision_check', sql`${t.draftRevision} >= 1`),
+    check('equipment_affix_libraries_draft_hash_check', sql`${t.draftHash} ~ '^sha256:[a-f0-9]{64}$'`),
+    check('equipment_affix_libraries_draft_entries_check', sql`jsonb_typeof(${t.draftEntries}) = 'array'`),
+  ],
+);
+
+export type EquipmentAffixLibraryRow = typeof equipmentAffixLibraries.$inferSelect;
+
+/** A published affix library. **Immutable** (trigger), like rule revisions. */
+export const equipmentAffixLibraryRevisions = pgTable(
+  'equipment_affix_library_revisions',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    libraryKey: text('library_key')
+      .notNull()
+      .references(() => equipmentAffixLibraries.key),
+    /** 1, 2, 3… per library. */
+    number: integer('number').notNull(),
+    name: text('name').notNull(),
+    description: text('description').notNull(),
+    entries: jsonb('entries').$type<Record<string, unknown>[]>().notNull(),
+    contentHash: text('content_hash').notNull(),
+    source: text('source').$type<Exclude<EquipmentConfigRevisionSource, 'bootstrap'>>().notNull(),
+    rolledBackFrom: bigint('rolled_back_from', { mode: 'number' }),
+    draftRevision: integer('draft_revision').notNull(),
+    publishedBy: text('published_by'),
+    publishedAt: timestamp('published_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('equipment_affix_library_revisions_number_check', sql`${t.number} >= 1`),
+    check('equipment_affix_library_revisions_hash_check', sql`${t.contentHash} ~ '^sha256:[a-f0-9]{64}$'`),
+    check(
+      'equipment_affix_library_revisions_source_check',
+      sql`${t.source} in ('editor','import','rollback')`,
+    ),
+    check('equipment_affix_library_revisions_entries_check', sql`jsonb_typeof(${t.entries}) = 'array'`),
+    foreignKey({
+      name: 'equipment_affix_library_revisions_rolled_back_from_fk',
+      columns: [t.rolledBackFrom],
+      foreignColumns: [t.id],
+    }),
+    uniqueIndex('equipment_affix_library_revisions_number_uq').on(t.libraryKey, t.number),
+  ],
+);
+
+export type EquipmentAffixLibraryRevisionRow = typeof equipmentAffixLibraryRevisions.$inferSelect;
+
+export const EQUIPMENT_ADMIN_SUBJECT_KINDS = ['roll_rules', 'affix_library'] as const;
+export type EquipmentAdminSubjectKind = (typeof EQUIPMENT_ADMIN_SUBJECT_KINDS)[number];
+export const EQUIPMENT_ADMIN_EVENT_ACTIONS = [
+  'bootstrapped',
+  'drift_detected',
+  'created',
+  'updated',
+  'draft_saved',
+  'draft_imported',
+  'published',
+  'rolled_back',
+] as const;
+export type EquipmentAdminEventAction = (typeof EQUIPMENT_ADMIN_EVENT_ACTIONS)[number];
+
+/**
+ * Append-only audit trail for managed equipment rules and affix libraries
+ * (migration 0071). No FK on the subject: the trail outlives anything.
+ */
+export const equipmentAdminEvents = pgTable(
+  'equipment_admin_events',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    subjectKind: text('subject_kind').$type<EquipmentAdminSubjectKind>().notNull(),
+    subjectKey: text('subject_key').notNull(),
+    action: text('action').$type<EquipmentAdminEventAction>().notNull(),
+    actor: text('actor'),
+    details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check('equipment_admin_events_subject_kind_check', sql`${t.subjectKind} in ('roll_rules','affix_library')`),
+    check(
+      'equipment_admin_events_action_check',
+      sql`${t.action} in ('bootstrapped','drift_detected','created','updated','draft_saved','draft_imported','published','rolled_back')`,
+    ),
+    check('equipment_admin_events_details_check', sql`jsonb_typeof(${t.details}) = 'object'`),
+    index('equipment_admin_events_subject_idx').on(t.subjectKind, t.subjectKey, t.id.desc()),
+  ],
+);
+
+export type EquipmentAdminEventRow = typeof equipmentAdminEvents.$inferSelect;
 
 /**
  * Live boss and expedition reward tables.

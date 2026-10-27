@@ -87,6 +87,12 @@ import { createProgressionCurrencyService } from './modules/progressionCurrency/
 import { buildAffixCatalogue } from './modules/equipment/affixCatalogue';
 import { readUnknownAffixKeys } from './modules/equipment/equipmentQueries';
 import { createEquipmentDefinitionService } from './modules/equipment/equipmentDefinitionService';
+import {
+  bootstrapEquipmentRollRules,
+  createEquipmentRollRulesService,
+  loadShippedCombatBonusFile,
+} from './modules/equipment/equipmentRollRulesService';
+import { createEquipmentAffixLibraryService } from './modules/equipment/equipmentAffixLibraryService';
 import { createCombatStatsService } from './modules/equipment/combatStatsService';
 import { createEquipmentManagementService } from './modules/equipment/equipmentManagementService';
 import { createEquipmentWorkshopService } from './modules/equipment/equipmentWorkshopService';
@@ -382,11 +388,15 @@ async function main(): Promise<void> {
     }
     return affixCatalogue;
   };
-  // Rarity-driven secondary combat bonuses for random gear, followed live.
-  // The catalogue is required at content load (fail-closed), so the snapshot
-  // always carries it; the `?? null` is only a type guard.
-  const getCombatBonuses = () => contentSnapshot.equipmentCombatBonuses ?? null;
-  const equipment = createEquipmentService({ db, featureUnlocks, getAffixes, getCombatBonuses });
+  // Equipment roll rules are database-authoritative (Equipment 3.0): every
+  // random grant reads the *published* revision inside its own transaction.
+  // Bootstrapped once from the shipped combatBonuses.json below, before the
+  // bot logs in; the shipped file is never read by gameplay again (a changed
+  // file is reported as drift, not applied). The N/R/SR rules inside are
+  // frozen, so every N/R/SR roll is exactly what the shipped catalogue gave.
+  const equipmentRollRules = createEquipmentRollRulesService({ db });
+  const equipmentAffixLibraries = createEquipmentAffixLibraryService({ db, getLegacyAffixes: getAffixes });
+  const equipment = createEquipmentService({ db, featureUnlocks, getAffixes, rollRules: equipmentRollRules });
   // The one path World Encounters, bosses and expeditions hand out random gear
   // through: they choose *whether* and *which kind*; it picks the base
   // definition and `grantEquipment` rolls the instance.
@@ -481,6 +491,29 @@ async function main(): Promise<void> {
       combatTrialEnemyReferences(() => contentSnapshot.combatTrials),
     ],
   });
+  /**
+   * Bootstrap the equipment roll rules once, or report shipped drift. Never
+   * throws: on failure random equipment grants fail closed
+   * (`EQUIPMENT_RULES_UNAVAILABLE`) until a restart succeeds.
+   */
+  const bootstrapRollRules = async (phase: 'startup' | 'reload'): Promise<void> => {
+    try {
+      const result = await bootstrapEquipmentRollRules(db, loadShippedCombatBonusFile(config.contentDir));
+      if (result.status === 'bootstrapped') {
+        logger.info({ tag: 'equipment/rules', phase, revision: result.publishedRevision }, 'equipment roll rules initialised from shipped content');
+      } else if (result.status === 'absent') {
+        logger.warn({ tag: 'equipment/rules', phase }, 'no equipment roll rules and no shipped combatBonuses.json — random equipment grants are unavailable');
+      }
+      if (result.drift) {
+        logger.warn(
+          { tag: 'equipment/rules-drift', phase, publishedRevision: result.publishedRevision },
+          'content/equipment/combatBonuses.json differs from the published N/R/SR equipment rules — the database is authoritative; the shipped change was NOT applied',
+        );
+      }
+    } catch (err) {
+      logger.error({ err, tag: 'equipment/rules', phase }, 'equipment roll rules bootstrap failed — random equipment grants will fail closed');
+    }
+  };
   /** Seed shipped enemies and say what happened. Never throws: a failed seed leaves the rows as they were. */
   const seedEnemyCatalogue = async (): Promise<void> => {
     try {
@@ -904,6 +937,8 @@ async function main(): Promise<void> {
       equipmentDefinitions,
       combatStats,
       equipmentPromotion,
+      equipmentRollRules,
+      equipmentAffixLibraries,
       featureUnlocks,
       equipmentOnboarding,
       equipmentManagement,
@@ -948,6 +983,11 @@ async function main(): Promise<void> {
   } catch (err) {
     logger.warn({ err }, 'world encounter seed failed — feature will run with whatever is in the DB');
   }
+
+  // Equipment roll rules: created once from the shipped catalogue, never
+  // overwritten. Runs before anything can grant gear; if it fails, random
+  // grants fail closed rather than rolling from a guess.
+  await bootstrapRollRules('startup');
 
   // Equipment definitions follow the same rule: insert any seeded key that is
   // missing and never touch one that exists. The database owns live
@@ -1236,6 +1276,8 @@ async function main(): Promise<void> {
         await seedEnemyCatalogue();
         // A boss newly added to the reloaded file is inserted; existing rows stay as they are.
         await bootstrapBosses();
+        // Never overwrites published equipment rules; reports a changed shipped file as drift.
+        await bootstrapRollRules('reload');
         return result;
       },
     }),

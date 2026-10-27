@@ -498,6 +498,13 @@
       "when": 1821823200000,
       "tag": "0070_equipment_three_bonuses",
       "breakpoints": true
+    },
+    {
+      "idx": 71,
+      "version": "7",
+      "when": 1821909600000,
+      "tag": "0071_equipment_managed_rules",
+      "breakpoints": true
     }
   ]
 }

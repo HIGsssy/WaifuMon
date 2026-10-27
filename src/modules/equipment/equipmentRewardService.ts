@@ -256,7 +256,7 @@ export function createEquipmentRewardService(deps: EquipmentRewardServiceDeps): 
       equipmentId: record.equipmentId,
       definitionKey: record.definition.key,
       name: record.definition.name,
-      displayName: equipmentDisplayName(record.definition.name, record.affixKey, deps.getAffixes()),
+      displayName: equipmentDisplayName(record.definition.name, record.affixKey, deps.getAffixes(), record.rolledProperties),
       slot: record.definition.slot,
       rarity: record.definition.rarity,
       rolledMultiplierBp: record.rolledMultiplierBp,
