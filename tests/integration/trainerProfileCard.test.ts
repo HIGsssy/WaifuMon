@@ -248,6 +248,28 @@ describe('the buddy is visible', () => {
     expect(path.basename(String(posted().files![0]!.attachment))).toBe('standard.webp');
   });
 
+  it('wears and names a seasonal owned skin', async () => {
+    // `halloween_spider` is `owned` like `standard`, so "owned" can no longer
+    // mean "default": the profile must still name the look she was put in.
+    await grantBuddy({ variant: 'halloween_spider', level: 3 });
+
+    await handleCareStart(ctx, careInteraction(), prov);
+
+    const payload = posted();
+    expect(path.basename(String(payload.files![0]!.attachment))).toBe('halloween_spider.webp');
+    const buddy = payload.embeds[0]!.data.fields!.find((f) => f.name === '⭐ Buddy')!;
+    expect(buddy.value).toContain('🎀 Halloween Spider');
+  });
+
+  it('does not name the default look', async () => {
+    await grantBuddy({ variant: 'standard', level: 3 });
+
+    await handleCareStart(ctx, careInteraction(), prov);
+
+    const buddy = posted().embeds[0]!.data.fields!.find((f) => f.name === '⭐ Buddy')!;
+    expect(buddy.value).not.toContain('🎀');
+  });
+
   it('keeps every stat the profile already showed', async () => {
     await grantBuddy({ variant: 'level_10', level: 12 });
 

@@ -1111,6 +1111,65 @@
         }
       }
     },
+    "waifumon/alley_catgirl/halloween_spider": {
+      "source": "waifumon/alley_catgirl/halloween_spider.png",
+      "sourceSha256": "af78e1875945e2baeb1803392954a63ae93537eee29023624dfa78a8d73842db",
+      "sourceBytes": 3105966,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/alley_catgirl/halloween_spider.webp",
+          "bytes": 20918,
+          "sha256": "65700592a537ad03c6e1ec39970306ea1ef3aebc26883bf78861447cbcba3645",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/alley_catgirl/halloween_spider.webp",
+          "bytes": 61344,
+          "sha256": "9fa548ad791417c9b2d4b8827c7bd04ad68a6de99e855fdd8247e15d3681899e",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/alley_catgirl/halloween_spider.webp",
+          "bytes": 178682,
+          "sha256": "a527afde02590f1a4ae2d639693476aeda0bc32931362118930937e623c89484",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/alley_catgirl/halloween_spider.webp",
+          "bytes": 392086,
+          "sha256": "f7ca67f5ece3588a642d48f85c4d20227c98a2005011a1eaee9f5854438e473f",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/alley_catgirl/level_10": {
       "source": "waifumon/alley_catgirl/level_10.png",
       "sourceSha256": "964194d18db196a643945e57cddcea2419ddd78ad6872b33c9752b9b8e9e7496",
@@ -3165,6 +3224,65 @@
           "path": "waifumon/angelic_delinquent/level_50.webp",
           "bytes": 171036,
           "sha256": "7ced09370f1d40f4d1cb68e4db0d977d0011050a3c7138d84a28b6581c4569c4",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/angelic_delinquent/nurse": {
+      "source": "waifumon/angelic_delinquent/nurse.png",
+      "sourceSha256": "dc5108cb34fd7206187e87cce0105a0eb19d669fafd02d5708e0620c1038f7ae",
+      "sourceBytes": 2629840,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/angelic_delinquent/nurse.webp",
+          "bytes": 15430,
+          "sha256": "310f5b0ee83b61a5a870f00a8d991a957f4b667381637444a2310ce3fb4d2a37",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/angelic_delinquent/nurse.webp",
+          "bytes": 45202,
+          "sha256": "7a505ea60a76ef2e790b6a4af2370f317066a14815acb4421a1621e583011e8d",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/angelic_delinquent/nurse.webp",
+          "bytes": 122484,
+          "sha256": "cc353715cb9aed73659864da782d43f28457b706c4bddb024ebef9f7f1508cb9",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/angelic_delinquent/nurse.webp",
+          "bytes": 256270,
+          "sha256": "e282dbc0d0e6a741501f2431c1f06c9e0252bcd83001609cdc3b94869a323006",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",
@@ -8888,6 +9006,65 @@
           "path": "waifumon/border_jackal/standard.webp",
           "bytes": 412876,
           "sha256": "1d8ed5ca7e04c5e93185b212eca50840ec70efce2adcf9c0ae1f5dbc3ea5a17e",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/breacher/halloween_vampire_hunter": {
+      "source": "waifumon/breacher/halloween_vampire_hunter.png",
+      "sourceSha256": "021549eae8d1d678de9876fd8a18d5a76959973488fead8dfcd9946921ace943",
+      "sourceBytes": 2665866,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/breacher/halloween_vampire_hunter.webp",
+          "bytes": 16044,
+          "sha256": "da7a69251d2c61bce7f0d753423d8dbdf187f059905c4e205b9450ce4280c6ad",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/breacher/halloween_vampire_hunter.webp",
+          "bytes": 43054,
+          "sha256": "b23c0f57373057e1a68db7cf41ad85630b7d6be3004eb89e3547c86896bb8871",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/breacher/halloween_vampire_hunter.webp",
+          "bytes": 111414,
+          "sha256": "7d7e7b0d911d62d7e37249379072754eadcdc35da1fb3bba17310ae75481a51d",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/breacher/halloween_vampire_hunter.webp",
+          "bytes": 234604,
+          "sha256": "b2d824cea68ea44108d00c20cf15708a0e81a50f5d443346c9a5ba33fb3813fc",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",
@@ -15979,6 +16156,65 @@
         }
       }
     },
+    "waifumon/cyber_lilith_prime/halloween_magical": {
+      "source": "waifumon/cyber_lilith_prime/halloween_magical.png",
+      "sourceSha256": "0cbf113e05166882cebd08518398089a1d81f7ce0624d2db89c525e16723db0a",
+      "sourceBytes": 3104641,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/cyber_lilith_prime/halloween_magical.webp",
+          "bytes": 24356,
+          "sha256": "0f04a5a8c3717a9153b5ee24432f0dfb4861cdacdaa942625231edb704f32ca5",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/cyber_lilith_prime/halloween_magical.webp",
+          "bytes": 73846,
+          "sha256": "5040820e2e8d987cd7101527b9a1d987df78ef1a609f9954c88badd7373d3797",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/cyber_lilith_prime/halloween_magical.webp",
+          "bytes": 207652,
+          "sha256": "7b0404edc749ead73bde1dd93408b5b70a10ce22433afeb53c03a01941111d33",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/cyber_lilith_prime/halloween_magical.webp",
+          "bytes": 436190,
+          "sha256": "a1e2ac7d9a6da2599afb83133282a700aa34e2fa7fd989400a5eeeccac686083",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/cyber_lilith_prime/level_10": {
       "source": "waifumon/cyber_lilith_prime/level_10.png",
       "sourceSha256": "9aa5eaaf7929394d17eee475e6f89eee0a521f00b2e14c3ddbf68d737d462923",
@@ -17738,6 +17974,65 @@
           "path": "waifumon/cyberpunk_knight/standard.webp",
           "bytes": 361838,
           "sha256": "f0310ac0168ab65ddffaa1c3841e0fb384e26f9f8159dd095258521bb974ec47",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/darkelf_royal/halloween": {
+      "source": "waifumon/darkelf_royal/halloween.png",
+      "sourceSha256": "42399e52588824f38aefea123f5aca7ad9ce76ca72d440002654a6877b82bd8a",
+      "sourceBytes": 2978508,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/darkelf_royal/halloween.webp",
+          "bytes": 21910,
+          "sha256": "e96525641c0a7824cdee05bce5edd61f11002419441c6efabbabb685df48d661",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/darkelf_royal/halloween.webp",
+          "bytes": 61510,
+          "sha256": "572f9959e2fefc75ffb377c6a3bc358340cea4dc91f0067c33003db4051528c8",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/darkelf_royal/halloween.webp",
+          "bytes": 167372,
+          "sha256": "684d92c09622a61a00faa769cd1209550bfa2010f1bc7fdbc2f5d9534db558bb",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/darkelf_royal/halloween.webp",
+          "bytes": 361578,
+          "sha256": "99e9d49f69fe1e53b68b06e2c5e0cf6106250a2c9dcdb0c9311ad9cc4499f57f",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",
@@ -25537,6 +25832,65 @@
         }
       }
     },
+    "waifumon/glacier_bear/halloween": {
+      "source": "waifumon/glacier_bear/halloween.png",
+      "sourceSha256": "b773f7937c8b86016ec0368ab2f07aff1f537f3101e03dffff876447446f8dac",
+      "sourceBytes": 2804583,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/glacier_bear/halloween.webp",
+          "bytes": 20034,
+          "sha256": "49611f11dc766934f2db0c946f3ab77fcd3da1c2a5a29271ad9007914595a80f",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/glacier_bear/halloween.webp",
+          "bytes": 57950,
+          "sha256": "fbf9b927a65fa266d1cf1d77b516dd428151915f0fc523e67535a92a4efeef82",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/glacier_bear/halloween.webp",
+          "bytes": 161126,
+          "sha256": "29e8bc162a8ff18fe1c173a2a4e0fea4c72e583bd63d26e50251d346b29a1be7",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/glacier_bear/halloween.webp",
+          "bytes": 355358,
+          "sha256": "ae38e830d41cd552646dd9fa11f9cfac9746a83b95242d04acc9d54717cbcce8",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/glacier_bear/level_10": {
       "source": "waifumon/glacier_bear/level_10.png",
       "sourceSha256": "0ff3a56d44e1007a4225958d45a93edf2246e696d979454312b729d2cf3c2fe8",
@@ -26942,6 +27296,65 @@
           "path": "waifumon/gravel_harvester/standard.webp",
           "bytes": 225076,
           "sha256": "cc10684ba5bce46b81f3b52bdb697b63032d4233d772036796d3db03d214c8c5",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/gym_oni/halloween": {
+      "source": "waifumon/gym_oni/halloween.png",
+      "sourceSha256": "cf69bca586b14a6a9e5078da6126b3009a0305e9bb431c12e42faf89ab9ed8bc",
+      "sourceBytes": 2777947,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/gym_oni/halloween.webp",
+          "bytes": 16306,
+          "sha256": "297e3a1f662136058f31f3e49460bf3b51ab3a954fc1bddad588398514b6ee0d",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/gym_oni/halloween.webp",
+          "bytes": 46192,
+          "sha256": "141f5006d843ec2676af23987b7054b97b98900c706b2db4fc71783a4f362b7b",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/gym_oni/halloween.webp",
+          "bytes": 128648,
+          "sha256": "e39171bee71cf290d45827b6c4d8b05f8f9e53643109145fd053c147b4625fe6",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/gym_oni/halloween.webp",
+          "bytes": 293754,
+          "sha256": "855a4237c03dea2fb703ba68443120ae6be155d7d461d5c59dec4956e73cb637",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",
@@ -38989,6 +39402,65 @@
         }
       }
     },
+    "waifumon/neko_tatto_artist/halloween_zombie": {
+      "source": "waifumon/neko_tatto_artist/halloween_zombie.png",
+      "sourceSha256": "d8e41188c57f39d21b0abe54d4d2809b1f45941ef8059e5b6e48211a18b53359",
+      "sourceBytes": 3051161,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/neko_tatto_artist/halloween_zombie.webp",
+          "bytes": 21832,
+          "sha256": "971e4b05c48d056b69c04a455d6e4ac8956ff7a70b2418f04896d168de3b5bff",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/neko_tatto_artist/halloween_zombie.webp",
+          "bytes": 64262,
+          "sha256": "ecccc7fdcbf5cb6fdc7524a9b048a088114dd8fdce761602557f36144de0a05c",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/neko_tatto_artist/halloween_zombie.webp",
+          "bytes": 173478,
+          "sha256": "f7a301b83a12ac7cf9e93afa056c7537955d9e0c4d718de43d5c6726ef49e6ca",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/neko_tatto_artist/halloween_zombie.webp",
+          "bytes": 369930,
+          "sha256": "d3a70f10e038b21df870a9800e4002571bf9b4c1c56af33317c1256f639b3fd2",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/neko_tatto_artist/level_10": {
       "source": "waifumon/neko_tatto_artist/level_10.png",
       "sourceSha256": "105f58f1060f770e4ec0d925629212e18baa44ee212dcfff3899ea6c5d8abaf2",
@@ -44288,6 +44760,65 @@
           "path": "waifumon/phantom_violinist/standard.webp",
           "bytes": 421440,
           "sha256": "433c172929a2aa616ced3c0066ac4af8a7243e11b580879dc032971ea174c724",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/pickaxe_goblin/halloween_dwarf": {
+      "source": "waifumon/pickaxe_goblin/halloween_dwarf.png",
+      "sourceSha256": "8a3928e6e614f03f1db832b7081f6623d1a83a44ba4ae3bfdcabd49894932fe7",
+      "sourceBytes": 3042392,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/pickaxe_goblin/halloween_dwarf.webp",
+          "bytes": 23016,
+          "sha256": "a58923eaa2894848a18562ef769a913d51545b9c1acb9f4b26e9e2aec39b6f17",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/pickaxe_goblin/halloween_dwarf.webp",
+          "bytes": 67580,
+          "sha256": "560e882aa646a162971c6bb76966760f11bb00a7870583d783cfedb829d5f6a6",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/pickaxe_goblin/halloween_dwarf.webp",
+          "bytes": 189574,
+          "sha256": "97c76c10841635934c48488ddb4001cae300d0d229ee0e696beb27ccb1aba58b",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/pickaxe_goblin/halloween_dwarf.webp",
+          "bytes": 404248,
+          "sha256": "384e61c680623e0db82c2cc5e4e282cbe0b79aa5b76057fb657e0201e8b44d31",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",
@@ -53857,6 +54388,65 @@
         }
       }
     },
+    "waifumon/supply_runner/flash": {
+      "source": "waifumon/supply_runner/flash.png",
+      "sourceSha256": "ab4edc4ad4cdc35ea968b98f94361deced9ef006c274a7933e8084e225e18abe",
+      "sourceBytes": 2652837,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/supply_runner/flash.webp",
+          "bytes": 15742,
+          "sha256": "b088958db85b3f68e7b82c6219785c423e1f3e6dc0eeee5a6b0f9e3dc84b1113",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/supply_runner/flash.webp",
+          "bytes": 44652,
+          "sha256": "aa8e9088c45638f41f2091af155c4aaeceb05c61b31ab4015836567bbf161ccb",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/supply_runner/flash.webp",
+          "bytes": 120806,
+          "sha256": "4e2f5d72e69d178594df0519572b85a2bc0e4ab9bcfb3e9a52ed59e25cc5af5a",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/supply_runner/flash.webp",
+          "bytes": 276922,
+          "sha256": "abe056ce55d2b8af468c70f3e02d5c6a5c5760eff66faeea8410c57f9ba77366",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/supply_runner/level_10": {
       "source": "waifumon/supply_runner/level_10.png",
       "sourceSha256": "53da112b93b3eadbb612c5f9d873acaec5ded36da930cac4b4daa2484ec7f6f7",
@@ -59875,6 +60465,65 @@
         }
       }
     },
+    "waifumon/warchief_daughter/halloween_nurse": {
+      "source": "waifumon/warchief_daughter/halloween_nurse.png",
+      "sourceSha256": "2ebfa2dce91d3091f08068c0a4356d2482a05943982f0e0af3385a26ef6d7ce8",
+      "sourceBytes": 2820462,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/warchief_daughter/halloween_nurse.webp",
+          "bytes": 21168,
+          "sha256": "e28d51a1a5f289a35d249862e8add2ee6e60bf0f39575ff3dc11f3de02b77348",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/warchief_daughter/halloween_nurse.webp",
+          "bytes": 62984,
+          "sha256": "7ad19eb9c61c939742f92bf8f194c8e96707d0bda100abbea8430f98b48cd63f",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/warchief_daughter/halloween_nurse.webp",
+          "bytes": 178424,
+          "sha256": "1d0569dbb6b155de632c69ccb8d58715050e270674101cbfb5b7592dd1a7c1fc",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/warchief_daughter/halloween_nurse.webp",
+          "bytes": 383598,
+          "sha256": "6ee2b6970382926076d809bb389be17e2ebb3c2b42e353ae1f361fd3a38bfa8b",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/warchief_daughter/level_10": {
       "source": "waifumon/warchief_daughter/level_10.png",
       "sourceSha256": "17db55fae906dbbf79d4dc1da8ab92ce1dd81e6da710f659c719d71f7a3599a9",
@@ -60937,6 +61586,65 @@
         }
       }
     },
+    "waifumon/your_fav_girl/halloween_cosplay": {
+      "source": "waifumon/your_fav_girl/halloween_cosplay.png",
+      "sourceSha256": "61a74e3be5d070ae5ecd4fe842db4cafb3b377d303ca6b54c2cf1cae6870ced7",
+      "sourceBytes": 2824995,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/your_fav_girl/halloween_cosplay.webp",
+          "bytes": 19660,
+          "sha256": "03964357ad5833c1e5d95674aebf785f97c52f73ba74126abfca334ce96ed6ad",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/your_fav_girl/halloween_cosplay.webp",
+          "bytes": 55342,
+          "sha256": "b5c6a3e08c027bae6f1a43eb3ab3ed9e135fafaff7fa7e15c661e77107a9cf64",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/your_fav_girl/halloween_cosplay.webp",
+          "bytes": 150538,
+          "sha256": "5a1569a07a8d662bb7b6a46b84251bc3cf53e1a2a93697538958511d0a0ee813",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/your_fav_girl/halloween_cosplay.webp",
+          "bytes": 319864,
+          "sha256": "0954e6c6763ff23620e42b3b1fc732d292cdc2f01201bc0363630bed32b4d72d",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/your_fav_girl/level_10": {
       "source": "waifumon/your_fav_girl/level_10.png",
       "sourceSha256": "7987e3b90976967192dc419ab147b693b93d442ae20e53bb2659456027b87290",
@@ -61634,6 +62342,65 @@
           "path": "waifumon/yuki_onna_bartender/standard.webp",
           "bytes": 479554,
           "sha256": "cff3cc2fa3ae3765405f5e43d844143050cbeb4b1625eacc14788f5c0f2e29d8",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/yuki_onna_bartender/subzero": {
+      "source": "waifumon/yuki_onna_bartender/subzero.png",
+      "sourceSha256": "a3d24024670cc79ba35e33db78a48b666fbbf72d5dcfb14c8e1dd2734aa03388",
+      "sourceBytes": 3099027,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/yuki_onna_bartender/subzero.webp",
+          "bytes": 18344,
+          "sha256": "9e70853c6901e6d9f35f6c7dcdb4e0d71007a19b87f734e51ed7c5f25ac5e58a",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/yuki_onna_bartender/subzero.webp",
+          "bytes": 55782,
+          "sha256": "ba75e6fb3b6afdab9fe123693e65efc813705b02a7a26317ec55190c55438373",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/yuki_onna_bartender/subzero.webp",
+          "bytes": 173904,
+          "sha256": "62d6c7d215a5c93283f5a5e7c15b94899cc7c2e0ae5a7d764537bcc465bb8cd9",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/yuki_onna_bartender/subzero.webp",
+          "bytes": 397708,
+          "sha256": "e4e82507c0f98475f506129a5444f704d89c52a2f487f5608482c9354bcb3dd1",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",

@@ -530,6 +530,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "subzero",
+        "name": "Sub-Zero",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "subzero",
+          "cosplay",
+          "halloween"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {

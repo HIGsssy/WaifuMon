@@ -799,16 +799,25 @@ export const SpeciesContentSchema = SpeciesBaseSchema.superRefine((s, ctx) => {
     seen.add(appearance.id);
   }
 
-  // Exactly one default: the entry the player wears the moment they own her.
-  // Zero would leave a freshly-captured copy with nothing to render; two would
-  // make "which one is default" a coin flip.
+  // At least one default: the entry the player wears the moment they own her.
+  // Zero would leave a freshly-captured copy with nothing to render. MORE than
+  // one is allowed — a seasonal skin is owned like the base look — but only
+  // because the default is now deterministic rather than first-match: it is the
+  // `standard` entry (see `defaultAppearance`). Requiring `standard` among a
+  // multi-owned set is what keeps "which one is default" from being a coin flip.
   const owned = list.filter((a) => a.unlock.type === 'owned');
-  if (owned.length !== 1) {
+  if (owned.length === 0) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: `"${s.slug}": at least one appearance must have unlock.type "owned" (found 0)`,
+      path: ['appearances'],
+    });
+  } else if (owned.length > 1 && !owned.some((a) => a.id === 'standard')) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message:
-        `"${s.slug}": exactly one appearance must have unlock.type "owned" ` +
-        `(found ${owned.length})`,
+        `"${s.slug}": ${owned.length} appearances are unlock.type "owned" but none is "standard" — ` +
+        'the owned default is resolved as "standard", so it must be one of them',
       path: ['appearances'],
     });
   }

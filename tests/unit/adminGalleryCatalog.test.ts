@@ -457,6 +457,72 @@ describe('gallery species detail', () => {
   });
 });
 
+describe('a seasonal owned skin beside the standard look', () => {
+  /**
+   * `halloween` is `owned` like `standard`, listed first and sorted first, so
+   * only an id-based default keeps `standard` the default everywhere.
+   */
+  function seasonalTree(): GalleryTree {
+    const base = gallerySpecies('spooky_girl');
+    return createGalleryTree({
+      core: [
+        {
+          ...base,
+          appearances: [
+            { id: 'halloween', name: 'Halloween', cosmeticRarity: 'seasonal', sortOrder: 0, unlock: { type: 'owned' } },
+            ...(base.appearances as unknown[]),
+          ],
+        },
+      ],
+    });
+  }
+
+  it('marks only `standard` as the default in the gallery', () => {
+    tree = seasonalTree();
+    fullArt(tree, 'spooky_girl');
+    tree.art('waifumon/spooky_girl/halloween.webp');
+    const detail = buildGallerySpeciesDetail(load(tree), tree.assetsDir, 'spooky_girl')!;
+    expect(detail.appearances.map((a) => [a.id, a.isDefault, a.inRuntime])).toEqual([
+      ['halloween', false, true],
+      ['standard', true, true],
+      ['level_10', false, true],
+      ['level_20', false, true],
+    ]);
+    const listed = buildGalleryCatalog(load(tree), tree.assetsDir).species;
+    expect(listed.find((s) => s.slug === 'spooky_girl')!.issues).toEqual([]);
+  });
+
+  it('drops a seasonal skin with no artwork like any alternative, never as the default', () => {
+    tree = seasonalTree();
+    fullArt(tree, 'spooky_girl');
+    const loaded = load(tree);
+    const girl = loaded.species.find((s) => s.slug === 'spooky_girl');
+    expect(girl?.enabled).toBe(true);
+    expect(ids(girl)).toEqual(['standard', 'level_20', 'level_10']);
+    expect(loaded.authoring?.artworkDiagnostics).toEqual([
+      {
+        code: 'appearance_dropped_artwork_missing',
+        slug: 'spooky_girl',
+        appearanceId: 'halloween',
+        assetId: { kind: 'waifumon', slug: 'spooky_girl', variant: 'halloween' },
+      },
+    ]);
+  });
+
+  it('does not let a seasonal skin stand in for missing default artwork', () => {
+    tree = seasonalTree();
+    tree.art('waifumon/spooky_girl/halloween.webp');
+    const loaded = load(tree);
+    expect(loaded.species.find((s) => s.slug === 'spooky_girl')?.enabled).toBe(false);
+    expect(loaded.authoring?.artworkDiagnostics).toContainEqual({
+      code: 'species_disabled_default_artwork_missing',
+      slug: 'spooky_girl',
+      appearanceId: 'standard',
+      assetId: { kind: 'waifumon', slug: 'spooky_girl', variant: 'standard' },
+    });
+  });
+});
+
 describe('artwork containment', () => {
   function symlinkScenario(): { t: GalleryTree; secret: string } {
     const t = createGalleryTree({ core: [gallerySpecies('sym_girl')] });
