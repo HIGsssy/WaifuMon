@@ -1,4 +1,6 @@
 /** Test-only managed content; legacy entries use the unchanged shipped file. */
+import fs from 'node:fs';
+import path from 'node:path';
 import type {
   AffixEntry,
   LibraryExport,
@@ -8,7 +10,16 @@ import type {
   ManagedLibrary,
 } from '@/api/adminEquipmentAffixes';
 import type { EquipmentSlotName } from '@/api/adminEquipment';
-import shipped from '../../../../../content/equipment/affixes.json';
+
+// Read at test time, not imported: a static import makes `tsc` (and so the
+// Portal image's `npm run build`) need repo `content/`, which is outside the
+// `portal/` build context. Same pattern as lib/__tests__/speciesTags.test.ts.
+const shipped = JSON.parse(
+  fs.readFileSync(
+    path.resolve(__dirname, '..', '..', '..', '..', '..', 'content', 'equipment', 'affixes.json'),
+    'utf8',
+  ),
+) as { affixes: Array<{ key: string; suffix: string; pool: string; enabled: boolean }> };
 
 export function entry(key = 'alpha', suffix = 'of Alpha'): AffixEntry {
   return { key, suffix, slots: ['attack', 'defense', 'health'], enabled: true };

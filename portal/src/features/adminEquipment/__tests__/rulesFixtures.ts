@@ -1,4 +1,6 @@
 /** Illustrative test-only data; no approved production high-rarity balance. */
+import fs from 'node:fs';
+import path from 'node:path';
 import type {
   RollRules,
   RulesBundle,
@@ -6,7 +8,16 @@ import type {
   RollRulesExport,
   LibraryOption,
 } from '@/api/adminEquipmentRules';
-import legacy from '../../../../../content/equipment/combatBonuses.json';
+
+// Read at test time, not imported: a static import makes `tsc` (and so the
+// Portal image's `npm run build`) need repo `content/`, which is outside the
+// `portal/` build context. Same pattern as lib/__tests__/speciesTags.test.ts.
+const legacy = JSON.parse(
+  fs.readFileSync(
+    path.resolve(__dirname, '..', '..', '..', '..', '..', 'content', 'equipment', 'combatBonuses.json'),
+    'utf8',
+  ),
+) as RollRules['legacy'];
 
 export function rulesFixture(): RollRules {
   return {
