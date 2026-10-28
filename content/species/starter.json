@@ -2100,6 +2100,19 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "nurse",
+        "name": "Nurse",
+        "cosmeticRarity": "rare",
+        "sortOrder": 60,
+        "tags": [
+          "nurse",
+          "costume"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -2862,6 +2875,20 @@
         "unlock": {
           "type": "level",
           "atLevel": 50
+        }
+      },
+      {
+        "id": "halloween",
+        "name": "Halloween",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "werewolf",
+          "seasonal"
+        ],
+        "unlock": {
+          "type": "owned"
         }
       }
     ]

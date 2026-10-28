@@ -358,6 +358,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "flash",
+        "name": "Flash",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "flash",
+          "cosplay",
+          "halloween"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -905,6 +919,19 @@
         "unlock": {
           "type": "level",
           "atLevel": 50
+        }
+      },
+      {
+        "id": "halloween",
+        "name": "Halloween",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "seasonal"
+        ],
+        "unlock": {
+          "type": "owned"
         }
       }
     ],

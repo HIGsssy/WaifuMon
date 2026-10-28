@@ -978,5 +978,889 @@
    "effectId": "encounter_check_bonus",
    "value": 18
   }
+ },
+ {
+  "slug": "vent_diver",
+  "name": "Vent Diver",
+  "rarity": "R",
+  "archetype": "diver",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "Short, compact and half-cinder, she dives the flooded hot-spring vents under the tower on one breath and comes up with the heat still in her seams. Every bath in the building is fed from water she has swum through.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Where The Heat Comes From",
+   "ability": {
+    "name": "Charted Vents",
+    "text": "She has walked every passage the tower's heat runs through, and not one of them is on the floor plan."
+   },
+   "flavorQuote": "Down is where the heat is. Keep up or stay cold.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/vent_diver/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Long Breath",
+   "flavorText": "Long Breath: 6% chance a hunt costs you no energy. She has never surfaced early and she has never come back empty-handed.",
+   "effectId": "energy_save_chance",
+   "value": 6
+  }
+ },
+ {
+  "slug": "ridge_wolf_girl",
+  "name": "Ridge Wolf Girl",
+  "rarity": "N",
+  "archetype": "wolf",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "Wolf beastkin who runs the ridgeline above the treeline, hunts the pass road at night and knows every traveller's scent before they reach town. She has been circling this tower for years and nobody has ever seen her come up the road.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Scent On The Pass",
+   "ability": {
+    "name": "Cold Trail",
+    "text": "Nothing comes up the pass road without her knowing it first, and she has never lost a trail she started."
+   },
+   "flavorQuote": "I smelled you at the treeline. You are late.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/ridge_wolf_girl/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Ridge Scent",
+   "flavorText": "Ridge Scent: +10% chance of meeting a WaifuMon whose affinity is primal. She has run this pass for years and she can smell what is coming up it.",
+   "effectId": "encounter_weight",
+   "value": 10,
+   "target": {
+    "type": "affinity",
+    "value": "primal"
+   }
+  }
+ },
+ {
+  "slug": "yukata_attendant",
+  "name": "Yukata Attendant",
+  "rarity": "N",
+  "archetype": "attendant",
+  "race": "human",
+  "baseCaptureRate": null,
+  "description": "Runs the yukata rental and dresses you herself, taking her time, deciding exactly how much of you the town gets to see. She has a yukata folded and ready before you have finished asking.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "Folded And Ready",
+   "ability": {
+    "name": "Fitted To You",
+    "text": "She decides how you leave the changing room, and she is never wrong about the size."
+   },
+   "flavorQuote": "Arms up. I will decide what the town gets to see.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/yukata_attendant/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Warm From The Pile",
+   "flavorText": "Warm From The Pile: +50% care energy gained. She keeps the loaner stack warm and she expects it back folded.",
+   "effectId": "care_energy_gain",
+   "value": 50
+  }
+ },
+ {
+  "slug": "skyline_gondolier",
+  "name": "Skyline Gondolier",
+  "rarity": "R",
+  "archetype": "gondolier",
+  "race": "demon",
+  "baseCaptureRate": null,
+  "description": "Works the cable car strung between the two ridges \u2014 bored, handsy, and she knows exactly which cabins have curtains. Nothing rides up to the top of this tower without passing under her hand.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "switch",
+  "card": {
+   "subtitle": "Rides Both Ways",
+   "ability": {
+    "name": "Both Ways",
+    "text": "She knows what every cabin is carrying before it reaches the top, and she decides what comes back down."
+   },
+   "flavorQuote": "I run this line in both directions. Sit down and enjoy the view.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/skyline_gondolier/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Hauled Up",
+   "flavorText": "Hauled Up: +12% chance to find an item while hunting. Nothing goes up the cable without her knowing exactly what it weighs.",
+   "effectId": "hunt_item_find_chance",
+   "value": 12
+  }
+ },
+ {
+  "slug": "trailhead_marshal",
+  "name": "Trailhead Marshal",
+  "rarity": "R",
+  "archetype": "marshal",
+  "race": "human",
+  "baseCaptureRate": null,
+  "description": "Swings the barrier arm across the pass road at dusk and hauls back anyone who argues about it, personally, before the fog gets them. Nobody comes down off that ridge without her writing them in.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "dominant",
+  "card": {
+   "subtitle": "Pass Is Closed",
+   "ability": {
+    "name": "Logged And Cleared",
+    "text": "She writes you into the book and the road opens. Nobody passes unlogged, and nobody argues twice."
+   },
+   "flavorQuote": "Pass is closed. You can argue with the barrier or with me.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/trailhead_marshal/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Cleared To Pass",
+   "flavorText": "Cleared To Pass: +14% to world encounter checks. She writes you in, the barrier goes up, and whatever is out there has to deal with the fact that you were expected.",
+   "effectId": "encounter_check_bonus",
+   "value": 14
+  }
+ },
+ {
+  "slug": "spring_therapist",
+  "name": "Spring Therapist",
+  "rarity": "SR",
+  "archetype": "therapist",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "The ridge's soak physician. She prescribes long soaks for everything, and her hands find every knot plus a few excuses to keep you in the water. She has never once written a return-to-work date.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "caregiver",
+  "card": {
+   "subtitle": "Prescribed Soak",
+   "ability": {
+    "name": "Nothing Left Knotted",
+    "text": "She works you until the water goes cold and the knots are gone, and she will not be rushed out of the pool."
+   },
+   "flavorQuote": "Ten more minutes. I have not finished with your back.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/spring_therapist/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Prescribed Soak",
+   "flavorText": "Prescribed Soak: 8% chance a hunt costs you no energy. She puts you in the water until the knots let go, and you come out with more than you went in with.",
+   "effectId": "energy_save_chance",
+   "value": 8
+  }
+ },
+ {
+  "slug": "fell_runner",
+  "name": "Fell Runner",
+  "rarity": "SR",
+  "archetype": "satyr",
+  "race": "demi-human",
+  "baseCaptureRate": null,
+  "description": "Sure-footed satyr who finds the nameless wild tarns on the high route \u2014 no trail, no rope, and no patience for tourists. She knows every unnamed spring on the ridge and is not putting one of them on your map.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Water Kept Secret",
+   "ability": {
+    "name": "Sure Footed",
+    "text": "Nothing on the ridge she cannot stand on, and nothing she finds does she hand over."
+   },
+   "flavorQuote": "No trail. No rope. And no, I am not telling you where the water is.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/fell_runner/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Water Found",
+   "flavorText": "Water Found: +15% chance to find an item while hunting. She knows where the high water is, and she takes the route that gets you there without a rope.",
+   "effectId": "hunt_item_find_chance",
+   "value": 15
+  }
+ },
+ {
+  "slug": "fumarole_matron",
+  "name": "Fumarole Matron",
+  "rarity": "SSR",
+  "archetype": "matron",
+  "race": "demon",
+  "baseCaptureRate": null,
+  "description": "Lives in the steam vents on the far ridge, where the water is hottest and oldest \u2014 every spring in the valley is hers, and you drink from her hand.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "primal",
+  "card": {
+   "subtitle": "Every Spring Is Hers",
+   "ability": {
+    "name": "The Water Is Hers",
+    "text": "She decides which spring you are allowed to sit in and how long you are allowed to stay in it."
+   },
+   "flavorQuote": "Drink. Slowly. This water is older than the road you came up.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/fumarole_matron/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Drink From Her Hand",
+   "flavorText": "Drink From Her Hand: +100% care energy gained. The water is hers, it is the hottest in the valley, and she decides how long you sit in it.",
+   "effectId": "care_energy_gain",
+   "value": 100
+  }
+ },
+ {
+  "slug": "spring_bride",
+  "name": "Spring Bride",
+  "rarity": "UR",
+  "archetype": "bride",
+  "race": "human",
+  "baseCaptureRate": null,
+  "description": "The town's oldest story: the first woman over the pass married the hot spring itself to keep it flowing. She is still here, still his, and takes a stranger's hands to remember warm skin.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "submissive",
+  "card": {
+   "subtitle": "Still Married To It",
+   "ability": {
+    "name": "Hand Fasted",
+    "text": "She has been married to the water longer than the town has had a name, and she keeps her vows."
+   },
+   "flavorQuote": "Everyone leaves. The water stayed.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/spring_bride/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Says Yes",
+   "flavorText": "Says Yes: +100% affection gained. She has been saying yes to this valley for longer than anyone can remember, and she does not know how to stop.",
+   "effectId": "affection_gain",
+   "value": 100
+  }
+ },
+ {
+  "slug": "showroom_demo_unit",
+  "name": "Showroom Demo Unit",
+  "rarity": "N",
+  "archetype": "companion",
+  "race": "android",
+  "baseCaptureRate": null,
+  "description": "The floor model at a companion showroom, polished daily and never actually sold. Her firmware is locked to demo mode \u2014 she can smile, demonstrate her features, and be handled by strangers, but the full experience is behind a paywall she will never see.",
+  "tags": [
+   "dungeon_exclusive"
+  ],
+  "contentRating": "explicit",
+  "affinity": "submissive",
+  "card": {
+   "subtitle": "Please Do Touch the Merchandise",
+   "ability": {
+    "name": "Handled Before",
+    "text": "Everyone who has ever come into the showroom has touched her and nobody has ever bought her. She still runs the demonstration perfectly for the one who does."
+   },
+   "flavorQuote": "Go ahead, try the features. Everyone does. Nobody keeps me.",
+   "artist": "Whistler"
+  },
+  "imagePath": "waifumon/showroom_demo_unit/standard.png",
+  "enabled": true,
+  "eventKey": null,
+  "perSpeciesWeight": 1,
+  "appearances": [
+   {
+    "id": "standard",
+    "name": "Standard",
+    "sortOrder": 0,
+    "unlock": {
+     "type": "owned"
+    }
+   },
+   {
+    "id": "level_10",
+    "name": "Level 10",
+    "sortOrder": 10,
+    "unlock": {
+     "type": "level",
+     "atLevel": 10
+    }
+   },
+   {
+    "id": "level_20",
+    "name": "Level 20",
+    "sortOrder": 20,
+    "unlock": {
+     "type": "level",
+     "atLevel": 20
+    }
+   },
+   {
+    "id": "level_30",
+    "name": "Level 30",
+    "sortOrder": 30,
+    "unlock": {
+     "type": "level",
+     "atLevel": 30
+    }
+   },
+   {
+    "id": "level_40",
+    "name": "Level 40",
+    "sortOrder": 40,
+    "unlock": {
+     "type": "level",
+     "atLevel": 40
+    }
+   },
+   {
+    "id": "level_50",
+    "name": "Level 50",
+    "sortOrder": 50,
+    "unlock": {
+     "type": "level",
+     "atLevel": 50
+    }
+   }
+  ],
+  "buddyBonus": {
+   "name": "Floor Model",
+   "flavorText": "Floor Model: +25% buddy XP. She has spent years being demonstrated at and never once been owned, so she is a fast learner now that somebody is actually teaching her.",
+   "effectId": "buddy_xp_gain",
+   "value": 25
+  }
  }
 ]
