@@ -60,8 +60,9 @@ export interface LibraryExport {
   affixes: AffixEntry[];
 }
 export const AFFIX_QUERY_KEY = ['admin', 'equipment', 'affix-libraries'] as const;
-const root = '/admin/equipment/affix-libraries';
+const root = '/v1/admin/equipment/affix-libraries';
 const url = (key: string) => `${root}/${encodeURIComponent(key)}`;
+/** A Portal page route (for `<Link>`), not an API path — hence no `/v1`. */
 export const libraryPath = (key: string) =>
   `/admin/equipment/affix-libraries/${encodeURIComponent(key)}`;
 export const listLibraries = (signal?: AbortSignal) =>

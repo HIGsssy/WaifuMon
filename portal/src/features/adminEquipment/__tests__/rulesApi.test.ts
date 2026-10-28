@@ -23,14 +23,14 @@ describe('E3-E.1 HTTP integration', () => {
     expect(result[0]!.coveredSlots).toEqual(['attack']);
     expect(result[1]!.coveredSlots).toEqual([]);
     expect(get).toHaveBeenCalledTimes(2);
-    expect(get).toHaveBeenLastCalledWith('/admin/equipment/affix-libraries/shared', undefined);
+    expect(get).toHaveBeenLastCalledWith('/v1/admin/equipment/affix-libraries/shared', undefined);
   });
 
   it('sends the existing revision and JSON envelope contracts unchanged', async () => {
     const get = vi.spyOn(client, 'getData').mockResolvedValue(exportFixture());
     const post = vi.spyOn(client, 'postData').mockResolvedValue({});
     const put = vi.spyOn(client, 'putData').mockResolvedValue({});
-    const root = '/admin/equipment/rarity-rules';
+    const root = '/v1/admin/equipment/rarity-rules';
     const rules = rulesFixture();
     const file = exportFixture();
     await api.saveDraft(rules, 8);

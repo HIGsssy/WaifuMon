@@ -16,7 +16,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { ArtworkDirectory, ArtworkSearchResults } from './adminArtwork';
 import { apiClient, getData, postData, putData } from './client';
 
-const base = '/admin/equipment';
+const base = '/v1/admin/equipment';
 export const EQUIPMENT_CATALOGUE_QUERY_KEY = ['admin', 'equipment'] as const;
 
 export const EQUIPMENT_RARITIES = ['N', 'R', 'SR', 'SSR', 'UR', 'LR'] as const;

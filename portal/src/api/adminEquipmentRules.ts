@@ -105,7 +105,7 @@ interface LibraryDetail extends LibrarySummary {
 }
 export type LibraryOption = LibrarySummary & { coveredSlots: string[] };
 export const RULES_QUERY_KEY = ['admin', 'equipment', 'rarity-rules'] as const;
-const root = '/admin/equipment/rarity-rules';
+const root = '/v1/admin/equipment/rarity-rules';
 export const getDraft = (signal?: AbortSignal) =>
   getData<DraftRules>(`${root}/draft`, signal ? { signal } : undefined);
 export const getPublished = (signal?: AbortSignal) =>
@@ -135,14 +135,14 @@ export const importDraft = (file: unknown, expectedDraftRevision: number) =>
 /** Published entries, rather than drafts, determine whether a library covers every slot. */
 export async function getLibraries(signal?: AbortSignal): Promise<LibraryOption[]> {
   const list = await getData<{ managed: LibrarySummary[] }>(
-    '/admin/equipment/affix-libraries',
+    '/v1/admin/equipment/affix-libraries',
     signal ? { signal } : undefined,
   );
   return Promise.all(
     list.managed.map(async (library) => {
       if (library.publishedRevision === null) return { ...library, coveredSlots: [] };
       const detail = await getData<LibraryDetail>(
-        `/admin/equipment/affix-libraries/${encodeURIComponent(library.key)}`,
+        `/v1/admin/equipment/affix-libraries/${encodeURIComponent(library.key)}`,
         signal ? { signal } : undefined,
       );
       return {
