@@ -28666,13 +28666,13 @@
     },
     "waifumon/glacier_bear/halloween": {
       "source": "waifumon/glacier_bear/halloween.png",
-      "sourceSha256": "b773f7937c8b86016ec0368ab2f07aff1f537f3101e03dffff876447446f8dac",
-      "sourceBytes": 2804583,
+      "sourceSha256": "0fafafd39a75a2fd021164a31ede92665213dc06d56ebf42c95f9c95fa840f04",
+      "sourceBytes": 2992834,
       "outputs": {
         "256": {
           "path": ".thumbnails/256/waifumon/glacier_bear/halloween.webp",
-          "bytes": 20034,
-          "sha256": "49611f11dc766934f2db0c946f3ab77fcd3da1c2a5a29271ad9007914595a80f",
+          "bytes": 19232,
+          "sha256": "39c39c74d728dcc6f4c0725e5de5d6130c712e8b8e866d3414615609381a515d",
           "width": 256,
           "height": 374,
           "settingsHash": "50c323be6a245673",
@@ -28684,8 +28684,8 @@
         },
         "512": {
           "path": ".thumbnails/512/waifumon/glacier_bear/halloween.webp",
-          "bytes": 57950,
-          "sha256": "fbf9b927a65fa266d1cf1d77b516dd428151915f0fc523e67535a92a4efeef82",
+          "bytes": 60500,
+          "sha256": "950a476260c48db5cb089eb0d8f62fdb0ad401361131c4d00ecfafa19b9be7e6",
           "width": 512,
           "height": 748,
           "settingsHash": "9283ff5e01c8d06b",
@@ -28697,8 +28697,8 @@
         },
         "1024": {
           "path": ".thumbnails/1024/waifumon/glacier_bear/halloween.webp",
-          "bytes": 161126,
-          "sha256": "29e8bc162a8ff18fe1c173a2a4e0fea4c72e583bd63d26e50251d346b29a1be7",
+          "bytes": 176500,
+          "sha256": "028f998de0cb712eeaae2615e814e669adffe88d1bfbab34efc7f7978b24e940",
           "width": 1024,
           "height": 1497,
           "settingsHash": "9783d60e8cf70c82",
@@ -28710,8 +28710,8 @@
         },
         "full": {
           "path": "waifumon/glacier_bear/halloween.webp",
-          "bytes": 355358,
-          "sha256": "ae38e830d41cd552646dd9fa11f9cfac9746a83b95242d04acc9d54717cbcce8",
+          "bytes": 382182,
+          "sha256": "d90a01937acd4f48c98241d7cf14703cea71b5d4d7dc3fbd224a1c94c44368e9",
           "width": 1248,
           "height": 1824,
           "settingsHash": "20b983e25bf23bc9",
