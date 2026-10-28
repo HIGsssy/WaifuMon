@@ -423,8 +423,12 @@ export function createTrainerProfileService(
       careState,
       collectionProgress,
       equipment,
+      // Compared with the species default by id: a seasonal `owned` skin is a
+      // real choice and is named, only the default look is suppressed.
       buddyAppearanceName:
-        worn && worn.unlock.type !== 'owned' ? worn.name : null,
+        worn && target && worn.id !== services.appearance.currentAppearance(target.species, null).id
+          ? worn.name
+          : null,
       buddyCardUrl: card?.url ?? null,
       maxEnergy: services.progression.computeMaxEnergy(player.level),
       prestigeTitle: services.progression.getPrestigeTitle(player.level),

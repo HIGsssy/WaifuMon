@@ -14,6 +14,7 @@ import {
   defaultAssetId,
   formatUnlockLabel,
   implicitStandardAppearance,
+  ownedDefaultEntry,
   resolveAppearances,
   type AppearanceSpecies,
 } from '../../src/modules/appearance/appearanceContent';
@@ -186,6 +187,37 @@ describe('appearanceForVariant', () => {
       ],
     });
     expect(defaultAppearance(oddOrder).id).toBe('base');
+  });
+
+  describe('several owned entries (a seasonal skin beside the base look)', () => {
+    // Listed first and sorted first, so neither array position nor display
+    // order can be what makes `standard` the default.
+    const seasonal = species({
+      appearances: [
+        appearance({ id: 'halloween', sortOrder: 0, cosmeticRarity: 'seasonal' }),
+        appearance({ id: 'standard', sortOrder: 5 }),
+        appearance({ id: 'level_10', sortOrder: 10, unlock: { type: 'level', atLevel: 10 } }),
+      ],
+    });
+
+    it('resolves `standard` as the default by id, not by order', () => {
+      expect(resolveAppearances(seasonal)[0]!.id).toBe('halloween');
+      expect(defaultAppearance(seasonal).id).toBe('standard');
+      expect(appearanceForVariant(seasonal, null).id).toBe('standard');
+      expect(ownedDefaultEntry(seasonal.appearances!)?.id).toBe('standard');
+    });
+
+    it('keeps the seasonal skin a selectable, always-unlocked alternative', () => {
+      expect(appearanceForVariant(seasonal, 'halloween', { level: 1 }).id).toBe('halloween');
+      expect(isUnlocked({ type: 'owned' }, { level: 1 })).toBe(true);
+    });
+
+    it('still answers the single owned entry whatever its id', () => {
+      expect(ownedDefaultEntry([appearance({ id: 'base' })])?.id).toBe('base');
+      expect(
+        ownedDefaultEntry([appearance({ unlock: { type: 'level', atLevel: 5 } })]),
+      ).toBeUndefined();
+    });
   });
 });
 

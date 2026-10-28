@@ -69,8 +69,10 @@ describe('Thirstlands species artwork, read from shipped content', () => {
       expect(resource).not.toHaveProperty('imagePath');
       expect(JSON.stringify(resource)).not.toContain('expansions/');
       // Level gates are earned, not browsed: a locked appearance must not hand
-      // out the id that would fetch its artwork.
+      // out the id that would fetch its artwork. A seasonal `owned` skin is
+      // unlocked like the base look, so it is not one of them.
       for (const entry of resource.appearances.slice(1)) {
+        if (entry.unlock.type === 'owned') continue;
         expect(entry.assetId).toBeNull();
       }
     },

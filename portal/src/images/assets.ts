@@ -6,16 +6,17 @@
  * mapping stays in one file when a new asset kind or variant convention lands.
  */
 import type { AppearanceCatalogEntry, AssetIdResource, ContentSpecies, OwnedWaifu, Species } from '@/api/types';
-import type { AssetId } from './types';
+import { DEFAULT_VARIANT, type AssetId } from './types';
 
 /**
  * The catalog entry a species renders in when nobody has chosen otherwise —
- * its `unlock.type: "owned"` entry.
+ * its default `unlock.type: "owned"` entry.
  *
- * The API guarantees exactly one exists on every species: a species with no
- * authored catalog carries the implicit `standard` entry, and the content
- * schema rejects an explicit catalog that does not have exactly one `owned`
- * entry. The `?? catalog[0]` is for a client that is talking to an API newer
+ * A species with no authored catalog carries the implicit `standard` entry.
+ * An authored catalog may hold several `owned` entries (a seasonal skin is
+ * owned like the base look); the content schema then requires `standard`
+ * among them, and that is the default — matched by id, never by position.
+ * The `?? catalog[0]` is for a client that is talking to an API newer
  * than itself — a future unlock type it cannot recognise must still render
  * *something* rather than fall through to a guessed filename.
  */
@@ -24,7 +25,8 @@ export function defaultAppearanceOf(
 ): AppearanceCatalogEntry | undefined {
   const catalog = species.appearances;
   if (!catalog || catalog.length === 0) return undefined;
-  return catalog.find((entry) => entry.unlock.type === 'owned') ?? catalog[0];
+  const owned = catalog.filter((entry) => entry.unlock.type === 'owned');
+  return owned.find((entry) => entry.id === DEFAULT_VARIANT) ?? owned[0] ?? catalog[0];
 }
 
 /**

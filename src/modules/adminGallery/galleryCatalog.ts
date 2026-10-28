@@ -27,6 +27,7 @@
  * a client can never supply a path, and none is returned.
  */
 import {
+  defaultAppearance,
   resolveAppearances,
   type ResolvedAppearance,
 } from '../appearance/appearanceContent';
@@ -333,12 +334,14 @@ function buildAppearances(
   const runtimeIds = new Set(runtime ? resolveAppearances(runtime).map((a) => a.id) : []);
   const authoredCatalog = authored.appearances ?? [];
   const implicit = authoredCatalog.length === 0;
+  // One default only: a seasonal `owned` skin is an alternative, not a second default.
+  const defaultId = defaultAppearance(authored).id;
 
   return resolveAppearances(authored).map((resolved: ResolvedAppearance) => {
     const own = authoredCatalog.find((a) => a.id === resolved.id);
     const base = {
       id: resolved.id,
-      isDefault: resolved.unlock.type === 'owned',
+      isDefault: resolved.id === defaultId,
       inRuntime: runtimeIds.has(resolved.id),
       artwork: inspectArtwork(assetsDir, resolved.assetId, withRenditions),
     };

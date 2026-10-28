@@ -130,7 +130,8 @@ describe('SpeciesContentSchema — appearance validation', () => {
       ],
     });
     expect(parsed.success).toBe(false);
-    expect(parsed.success === false && JSON.stringify(parsed.error.issues)).toContain(
+    // Messages read directly: JSON.stringify would escape the quotes around "standard".
+    expect(parsed.success === false && parsed.error.issues.map((i) => i.message).join('\n')).toContain(
       'but none is "standard"',
     );
   });

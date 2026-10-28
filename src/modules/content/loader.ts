@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { ZodError, ZodType, ZodTypeDef } from 'zod';
-import { defaultAssetId } from '../appearance/appearanceContent';
+import { defaultAssetId, ownedDefaultEntry } from '../appearance/appearanceContent';
 import {
   assetPathWithin,
   locateLegacyArtwork,
@@ -142,7 +142,8 @@ export function preflightSpeciesAssets(
     // content error and fails the load loudly, as it always has.
     resolveAssetPath(assetsDir, s.imagePath);
 
-    const owned = s.appearances?.find((appearance) => appearance.unlock.type === 'owned');
+    // Resolved by id (`standard` among several `owned`), never by array order.
+    const owned = s.appearances ? ownedDefaultEntry(s.appearances) : undefined;
     const defaultAsset = owned
       ? (owned.assetId ?? defaultAssetId(s.slug, owned.id))
       : defaultAssetId(s.slug, DEFAULT_APPEARANCE_ID);
@@ -176,9 +177,10 @@ export function preflightSpeciesAssets(
         kept.push(appearance);
         continue;
       }
-      if (appearance.unlock.type === 'owned') {
-        // The default entry has no fallback to degrade to. Rather than disable
-        // a species that has a perfectly good `imagePath`, keep the entry and
+      if (appearance === owned) {
+        // The default entry has no fallback to degrade to. Any other `owned`
+        // entry (a seasonal skin) is an alternative and is dropped like one.
+        // Rather than disable a species that has a perfectly good `imagePath`, keep the entry and
         // let the consumer's resolver fall back (Discord → species card,
         // Portal → silhouette). Loud, because it is an authoring mistake.
         logger.warn(
