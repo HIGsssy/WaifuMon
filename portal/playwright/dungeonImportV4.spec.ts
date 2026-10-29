@@ -31,6 +31,8 @@ for (const incomplete of [false, true])
             expectedRevision: null,
             currentContentHash: null,
             changedFields: [],
+            enabled: null,
+            publishedRevision: null,
           },
           enemies: [],
           lootTables: [],

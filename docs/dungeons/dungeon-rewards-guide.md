@@ -217,10 +217,10 @@ An incomplete import remains blocked from publication until dependencies work.
 
 Apply the reviewed plan. If it becomes stale, preview again and review the new
 state. An uncertain response keeps the exact request for retry; keep that page
-open until the receipt is confirmed. V2 imports create or replace **disabled,
-unpublished drafts**. Replacement keeps historical revisions and active runs
-but clears the current published pointer. Publish and enable explicitly after
-review. V1 replacement retains its earlier enabled/published behaviour.
+open until the receipt is confirmed. V2 imports create **disabled, unpublished
+drafts**. Replacement changes only the draft and keeps the enabled flag, the
+current published revision, historical revisions and active runs, as for every
+package version. Publish explicitly after review.
 
 Package hashes verify gameplay identities and table bodies, not authenticity
 or every display label. Use a trusted export source and review names and

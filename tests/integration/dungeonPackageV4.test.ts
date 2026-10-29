@@ -460,9 +460,9 @@ describe('v4 atomic imports, conflicts and isolation', () => {
     expect((await w.content.applyImport(duplicate, 'admin')).replayed).toBe(true);
     expect(await w.content.importHistory(p.dungeon.key)).toHaveLength(2);
   });
-  it('replacement disables publication without mutating the historical revision or its active run', async () => {
+  it('replacement keeps the published revision live without mutating the historical revision or its active run', async () => {
     const d = definition();
-    await w.publish(d);
+    const { revision } = await w.publish(d);
     const { playerId } = await w.player();
     const item = await getItemBySlug(w.t.db, 'basic_charm');
     await w.app.inventory.addItem(w.t.db, playerId, item.id, 1);
@@ -475,11 +475,12 @@ describe('v4 atomic imports, conflicts and isolation', () => {
     expect(after.dungeon_revisions).toEqual(before.dungeon_revisions);
     expect(after.dungeon_runs).toEqual(before.dungeon_runs);
     expect(await w.content.get(d.key)).toMatchObject({
-      enabled: false,
-      published: null,
+      enabled: true,
+      open: true,
+      published: { revisionId: revision.revisionId },
       draft: replacement,
     });
-    // The unpublished replacement does not stop the original pinned run.
+    // The unpublished replacement draft does not reach the original pinned run.
     const resumed = await w.restartedRuns().run(playerId, started.id);
     expect(resumed.core.action?.encounter).toEqual(started.core.action?.encounter);
     const selected = (await w.act(playerId, resumed, { type: 'select_item', item: item.slug })).run;

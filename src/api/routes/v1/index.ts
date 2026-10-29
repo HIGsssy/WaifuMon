@@ -48,6 +48,7 @@ import { adminRewardTableRoutes } from './admin/rewardTables';
 import { adminDungeonRoutes } from './admin/dungeons';
 import { adminArtworkAssetRoutes } from './admin/artworkAssets';
 import { adminEnemyRoutes } from './admin/enemies';
+import { adminEnemyPackageRoutes } from './admin/enemyPackages';
 import { adminEquipmentRoutes } from './admin/equipment';
 import { adminEquipmentManagedRoutes } from './admin/equipmentManaged';
 import { adminRegionPoolRoutes } from './admin/regionPools';
@@ -158,6 +159,7 @@ export const v1Routes =
     // Skipped when the artwork asset service is not wired.
     await app.register(adminArtworkAssetRoutes(ctx));
     await app.register(adminEnemyRoutes(ctx));
+    await app.register(adminEnemyPackageRoutes(ctx));
 
     // Admin: the Equipment Catalogue. Skipped when the catalogue service is not wired.
     await app.register(adminEquipmentRoutes(ctx));

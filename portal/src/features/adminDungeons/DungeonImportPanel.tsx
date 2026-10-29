@@ -13,6 +13,7 @@ import {
   decisionsComplete,
   INCOMPLETE_REWARD_CODES,
   INCOMPLETE_ENCOUNTER_CODES,
+  draftLifecycleNotes,
   draftOperation,
   importBlockers,
   IMPORT_BODY_LIMIT,
@@ -318,15 +319,26 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                 · Proposed operation: {draftOperation(plan)}
               </p>
               <p>Existing target draft revision: {plan.target.expectedRevision ?? 'None'}</p>
+              {plan.target.status !== 'new' && (
+                <p>
+                  Current state: {plan.target.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                  {plan.target.publishedRevision != null
+                    ? `Published revision ${plan.target.publishedRevision}`
+                    : 'Unpublished'}
+                </p>
+              )}
               {plan.target.changedFields.length > 0 && (
                 <p>Changed draft fields: {plan.target.changedFields.join(', ')}</p>
               )}
+              <ul aria-label="Publication after import">
+                {draftLifecycleNotes(plan).map((note) => (
+                  <li key={note}>{note}</li>
+                ))}
+              </ul>
               {draftOperation(plan) === 'replace' && (
                 <p className="text-danger">
-                  Replacement overwrites existing draft changes.{' '}
-                  {plan.lootTables &&
-                    'This import also disables the dungeon and clears its current publication. '}
-                  Stored revisions and active runs remain untouched.
+                  Replacement overwrites existing draft changes. Stored revisions and active runs
+                  remain untouched.
                 </p>
               )}
               <label className="block">
@@ -393,8 +405,7 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                     {plan.eventDependencies.poolCount === 1 ? 'event pool' : 'event pools'}
                   </p>
                   <p>
-                    This import creates a disabled, unpublished draft. Review its dependencies
-                    before publishing.
+                    This import changes only the draft. Review its dependencies before publishing.
                   </p>
                   <h4 className="font-medium">Required inventory items</h4>
                   <p>These items must already exist here. Import does not create global items.</p>
@@ -426,9 +437,9 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
                     {plan.encounterDependencies.poolCount} species pools
                   </p>
                   <p>
-                    This import creates a disabled, unpublished draft. Species, capture items and
-                    central access policies are never imported. Destination policy controls
-                    publication and acquisition.
+                    This import changes only the draft: its species access terms grant nothing
+                    until it is published. Species, capture items and central access policies are
+                    never imported. Destination policy controls publication and acquisition.
                   </p>
                   <h4 className="font-medium">Required species</h4>
                   {plan.encounterDependencies.requiredSpecies.length === 0 && (
@@ -631,6 +642,14 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
               ? 'Import unchanged.'
               : `Import successful: draft ${result.result}.`}{' '}
             Draft revision {result.draftRevision}. No publication performed.
+            {result.publishedRevision != null
+              ? ` Published revision ${result.publishedRevision} remains live.`
+              : ''}
+            {result.enabled === undefined
+              ? ''
+              : result.enabled
+                ? ' The dungeon is enabled.'
+                : ' The dungeon is disabled.'}
             {result.replayed ? ' Original receipt confirmed by retry.' : ''}
           </p>
           {!!result.createdLootTables?.length && (

@@ -254,15 +254,16 @@ describe('v3 published portability', () => {
       expect(reexported.rewardSnapshot!.equipmentPools).toEqual(published.rewardSnapshot!.equipmentPools);
       expect(readDungeonPackage(reexported).ok).toBe(true);
       expect(await state()).toEqual(sourceBefore); expect(await playerState()).toEqual(sourcePlayers); expect(await playerState(other)).toEqual(targetPlayers);
-      // Replacing a published target disables/unpublishes only its mutable row.
+      // Replacing a published target changes only its draft; the live revision and enabled flag stay.
       await other.content.setEnabled(imported.key, true, 'operator');
       const targetPlayer = await other.player();
       await other.runs.start(targetPlayer.playerId, imported.key);
       const playersDuringRun = await playerState(other);
       const revisions = (await state(other)).revisions; const runs = (await state(other)).runs;
       expect(runs.some(run => run.status === 'active')).toBe(true);
+      const live = (await other.content.get(imported.key))!.published!;
       await other.content.applyImport(await review(published, {}, false, other), 'importer');
-      expect(await other.content.get(imported.key)).toMatchObject({ enabled: false, published: null });
+      expect(await other.content.get(imported.key)).toMatchObject({ enabled: true, open: true, published: { revisionId: live.revisionId }, draft: published.dungeon });
       expect((await state(other)).revisions).toEqual(revisions); expect((await state(other)).runs).toEqual(runs);
       expect(await playerState(other)).toEqual(playersDuringRun);
     } finally { await other.cleanup(); }

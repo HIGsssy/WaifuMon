@@ -1063,6 +1063,12 @@ describe('OpenAPI registration', () => {
       // `validate` writes nothing but carries a body; it needs `enemies.read`.
       'DELETE /api/v1/admin/enemies/{key}',
       'POST /api/v1/admin/enemies',
+      // Enemy packages with artwork (CP-3). `export/package` writes nothing but
+      // takes a selection body (`enemies.read` + `artwork.read`); `preview`
+      // writes nothing (`enemies.write`); `apply` needs `artwork.write` too.
+      'POST /api/v1/admin/enemies/export/package',
+      'POST /api/v1/admin/enemies/import/apply',
+      'POST /api/v1/admin/enemies/import/preview',
       'POST /api/v1/admin/enemies/validate',
       'POST /api/v1/admin/enemies/{key}/duplicate',
       'PUT /api/v1/admin/enemies/{key}',

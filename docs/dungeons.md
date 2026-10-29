@@ -482,9 +482,10 @@ named by key; their source definitions cannot be compared.
 V3 also lists the inventory items required by reachable event choices. It checks
 their availability on the target without creating global item definitions or
 transferring player inventory. Missing or disabled required items need explicit
-acceptance as an incomplete import. All new imports begin disabled and unpublished;
-v2/v3 replacement imports also disable and unpublish the existing dungeon. Review,
-publish and enable before accepting new runs. Existing active runs keep their revision.
+acceptance as an incomplete import. All new imports begin disabled and unpublished.
+A replacement import changes only the existing dungeon's draft: its enabled flag and
+published revision stay as they were, so players, active runs and its published
+species policy keep using that revision until the draft is published (CP-4A).
 
 Apply takes `{ package, requestId, expectedPlanHash, expectedRevision, decisions }`.
 `requestId` is a fresh UUID for one reviewed apply request; keep the whole request
@@ -533,8 +534,10 @@ Application locks the request, dungeon and referenced enemy identities,
 locks existing target/dependency rows, and re-plans. Any reviewed state change
 returns `409 DUNGEON_IMPORT_STALE`. Enemy creation, the draft, import history
 and the `imported` authoring event commit together. New dungeons start disabled
-and unpublished; **v1** replacements preserve enabled state and the published pointer.
-Published revisions and active runs are never written. An identical import
+and unpublished; replacements of every package version preserve enabled state and
+the published pointer, which the plan reports as `target.enabled` and
+`target.publishedRevision` and pins in its hash (a publish, rollback, enable or
+disable after review is stale). Published revisions and active runs are never written. An identical import
 does not bump the draft revision. Exact retries return the original receipt
 (`replayed: true`), even after later edits; reuse of a request ID for a different
 package, plan, decisions or administrator returns
@@ -591,10 +594,10 @@ missing-key and equipment-insertion races. Table creation/history, enemies,
 draft, audit and receipt commit together. Existing tables are never overwritten;
 exact retries return the original receipt.
 
-**V2 create and replacement leave the target disabled and unpublished.**
-Replacement preserves historical revisions and active runs but clears the
-current publication pointer. Review, publish and enable explicitly. Active
-runs stay pinned. This differs intentionally from v1 replacement.
+**V2 create leaves the target disabled and unpublished; replacement changes only
+the draft.** Like v1, v3 and v4, replacement keeps the enabled flag, the current
+publication, historical revisions and active runs. Publish explicitly to put the
+imported draft live; publication revalidates it here.
 
 ## Admin API
 

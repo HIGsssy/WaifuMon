@@ -384,6 +384,15 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ENEMY_KEY_TAKEN: 409,
   /** Admin: deleting an enemy that content references or Git ships — disable it instead. */
   ENEMY_IN_USE: 409,
+  /** Content Portability CP-3: an uploaded enemy package is malformed or unsafe (`details.issues`). */
+  ENEMY_PACKAGE_INVALID: 400,
+  ENEMY_EXPORT_KEYS_NOT_FOUND: 404,
+  /** Empty selection, over capacity, or artwork that cannot travel (`details.reason`, `details.issues`). */
+  ENEMY_EXPORT_REFUSED: 422,
+  ENEMY_IMPORT_REJECTED: 400,
+  ENEMY_IMPORT_STALE: 409,
+  ENEMY_IMPORT_DECISIONS_REQUIRED: 409,
+  ENEMY_IMPORT_REQUEST_CONFLICT: 409,
   /** One active dungeon run per player; this player already has one. */
   DUNGEON_RUN_ACTIVE: 409,
   /** Every Delve run of the current game day has been started. */

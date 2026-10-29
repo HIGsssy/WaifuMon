@@ -50,7 +50,7 @@ function planOf(
     dungeonKey: 'tunnels',
     contentHash: hash,
     planHash: decision ? rewrittenHash : hash,
-    target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [] },
+    target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [], enabled: null, publishedRevision: null },
     enemies: [],
     lootTables: [table(decision)],
     equipmentChanges: [],

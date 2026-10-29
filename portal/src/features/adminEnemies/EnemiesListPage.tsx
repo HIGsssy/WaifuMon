@@ -20,6 +20,8 @@ import {
   ENEMIES_QUERY_KEY,
   duplicateEnemy,
   exportEnemies,
+  exportEnemyPackage,
+  type EnemyExportSelection,
   invalidateEnemyQueries,
   listEnemies,
   setEnemyEnabled,
@@ -44,7 +46,10 @@ import { enemyPath, hasSprite, keyError, matchesSearch, statLine } from './enemy
 import { DisableEnemyDialog, EnemyIssues, EnemyOriginBadge } from './enemyParts';
 
 function downloadJson(filename: string, data: unknown): void {
-  const blob = new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' });
+  downloadBlob(filename, new Blob([`${JSON.stringify(data, null, 2)}\n`], { type: 'application/json' }));
+}
+
+function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
@@ -59,6 +64,8 @@ type UsageFilter = 'all' | 'used' | 'unused';
 export function EnemiesListPage() {
   const queryClient = useQueryClient();
   const canWrite = useHasPermission('enemies.write');
+  // A package carries the enemies' artwork, so it needs artwork access too.
+  const canExportPackage = useHasPermission('artwork.read');
   const query = useQuery({
     queryKey: [...ENEMIES_QUERY_KEY, 'list'],
     queryFn: ({ signal }) => listEnemies(signal),
@@ -72,6 +79,8 @@ export function EnemiesListPage() {
   const [duplicating, setDuplicating] = useState<EnemySummary | null>(null);
   /** The enemy the admin is being asked about disabling. */
   const [disabling, setDisabling] = useState<EnemySummary | null>(null);
+  /** Enemies picked for a package export, by key. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const tags = [...new Set(enemies.flatMap((e) => e.tags))].sort();
   const shown = enemies.filter(
@@ -95,6 +104,17 @@ export function EnemiesListPage() {
     },
   });
   const localArtwork = exporting.data?.environmentLocal.managedArtwork ?? [];
+  const packaging = useMutation({
+    mutationFn: (selection: EnemyExportSelection) => exportEnemyPackage(selection),
+    onSuccess: ({ blob, filename }) => downloadBlob(filename, blob),
+  });
+  const toggleSelected = (key: string) =>
+    setSelected((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
 
   return (
     <div className="space-y-4">
@@ -110,6 +130,31 @@ export function EnemiesListPage() {
             >
               Export
             </Button>
+            {canExportPackage && (
+              <>
+                <Button
+                  variant="outline"
+                  disabled={packaging.isPending}
+                  onClick={() => packaging.mutate({ scope: 'all' })}
+                >
+                  Export all with artwork
+                </Button>
+                {selected.size > 0 && (
+                  <Button
+                    variant="outline"
+                    disabled={packaging.isPending}
+                    onClick={() => packaging.mutate({ scope: 'selected', keys: [...selected].sort() })}
+                  >
+                    Export {selected.size} selected with artwork
+                  </Button>
+                )}
+              </>
+            )}
+            {canWrite && (
+              <Button asChild variant="outline">
+                <Link to="/admin/enemies/import">Import package</Link>
+              </Button>
+            )}
             {canWrite && (
               <Button asChild variant="accent">
                 <Link to="/admin/enemies/new">New Enemy</Link>
@@ -121,6 +166,32 @@ export function EnemiesListPage() {
 
       {exporting.isError && (
         <ErrorState variant="inline" title="Could not export" error={exporting.error} />
+      )}
+      {packaging.isPending && (
+        <p className="text-sm text-ink-muted" role="status">
+          Packaging enemies and their artwork…
+        </p>
+      )}
+      {packaging.isError && (
+        <Card className="space-y-1 p-4 text-sm" role="alert" data-testid="enemy-package-error">
+          <ErrorState variant="inline" title="Could not export with artwork" error={packaging.error} />
+          {isPortalApiError(packaging.error) &&
+            Array.isArray((packaging.error.details as { issues?: unknown } | undefined)?.issues) && (
+              <ul className="list-disc pl-5 text-xs text-danger">
+                {((packaging.error.details as { issues: { path: string; message: string }[] }).issues).map((i, n) => (
+                  <li key={n}>
+                    <span className="font-mono">{i.path}</span>: {i.message}
+                  </li>
+                ))}
+              </ul>
+            )}
+        </Card>
+      )}
+      {packaging.data && (
+        <Card className="p-4 text-sm" role="status" data-testid="enemy-package-notice">
+          Downloaded <span className="font-mono">{packaging.data.filename}</span>, with the artwork each enemy
+          needs. Import it on the other server from <span className="font-medium">Import package</span>.
+        </Card>
       )}
       {exporting.data && (
         <Card className="space-y-1 p-4 text-sm" role="status" data-testid="enemy-export-notice">
@@ -236,6 +307,15 @@ export function EnemiesListPage() {
               className="flex flex-wrap items-start gap-3 px-4 py-3"
               data-testid="enemy-row"
             >
+              {canExportPackage && (
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  aria-label={`Select ${e.name}`}
+                  checked={selected.has(e.key)}
+                  onChange={() => toggleSelected(e.key)}
+                />
+              )}
               <ArtThumb
                 image={{ assetId: e.visual.artworkAssetId, artworkPath: e.visual.artworkPath }}
                 label={`${e.name} artwork`}

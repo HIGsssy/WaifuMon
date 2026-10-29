@@ -1,5 +1,9 @@
 import { sharedPoolKeys } from '../sharedPools/sharedPoolDefinition';
-/** Draft-only imports. Review is read-only; application re-plans under locks and records a receipt in the same transaction. */
+/**
+ * Draft-only imports. Review is read-only; application re-plans under locks and records a receipt in the same transaction.
+ * A new target is created disabled and unpublished. An existing target keeps its enabled flag and published revision:
+ * players, active runs and the published species policy stay on that revision until someone publishes the draft.
+ */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,6 +16,7 @@ import {
   dungeonContentEvents,
   dungeonDefinitions,
   dungeonImportHistory,
+  dungeonRevisions,
   equipmentDefinitions,
   dungeonLootTables,
   dungeonLootTableEvents,
@@ -62,6 +67,10 @@ export const DungeonImportPlanSchema = z.object({
       expectedRevision: z.number().int().positive().nullable(),
       currentContentHash: z.string().nullable(),
       changedFields: z.array(z.string()),
+      /** The target's current state, which import preserves. Null for a new target (created disabled). */
+      enabled: z.boolean().nullable(),
+      /** The revision players are on now; it stays live after import. Null when unpublished or new. */
+      publishedRevision: z.number().int().positive().nullable(),
     })
     .nullable(),
   enemies: z.array(
@@ -105,6 +114,9 @@ export const DungeonImportResultSchema = z.object({
   tableKeyChanges: z.record(z.string()).optional(),
   sourceSchemaVersion: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
   rewardSnapshotHash: hashSchema.nullable().optional(),
+  /** The target's state after import (unchanged by it). Absent on receipts recorded before CP-4A. */
+  enabled: z.boolean().optional(),
+  publishedRevision: z.number().int().positive().nullable().optional(),
 });
 export const DungeonImportHistorySchema = z.object({
   imports: z.array(
@@ -226,7 +238,7 @@ export function readImportPackage(raw: unknown): ReadDungeonPackageResult {
       for (const child of Object.values(current.value)) pending.push({ value: child, depth: current.depth + 1 });
   }
   const read = readDungeonPackage(value);
-  // Explicit dispatch: v2 and v3 use catalogue review and disabled/unpublished import semantics.
+  // Explicit dispatch: v2+ use catalogue review; every version shares the draft-only lifecycle.
   if (!read.package) return read;
   switch (read.package.schemaVersion) {
     case 1:
@@ -532,19 +544,23 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       pkg.editor.layout,
       pkg.dungeon.rooms.map((r) => r.id),
     );
+    // Only the draft and its layout are compared: import never touches enabled or the published pointer.
     const fields = targetRow
       ? [
           ...changedFields(targetRow.draft, definition),
-          ...(pkg.schemaVersion !== 1 && targetRow.enabled ? ['enabled'] : []),
-          ...(pkg.schemaVersion !== 1 && targetRow.publishedRevisionId !== null ? ['publication'] : []),
           ...(canonicalJson(targetRow.layout) === canonicalJson(layout) ? [] : ['editor.layout']),
         ]
+      : [];
+    const [published] = targetRow?.publishedRevisionId != null
+      ? await tx.select({ number: dungeonRevisions.number }).from(dungeonRevisions).where(eq(dungeonRevisions.id, targetRow.publishedRevisionId))
       : [];
     const target: NonNullable<DungeonImportPlan['target']> = {
       status: targetRow ? (fields.length ? 'different' : 'identical') : 'new',
       expectedRevision: targetRow?.draftRevision ?? null,
       currentContentHash: targetRow?.draftHash ?? null,
       changedFields: fields,
+      enabled: targetRow?.enabled ?? null,
+      publishedRevision: published?.number ?? null,
     };
     const shippedPaths = new Set(dependency.artwork.flatMap((a) => (a.kind === 'shipped' ? [a.path] : [])));
     for (const enemy of pkg.bundled.enemies)
@@ -573,6 +589,8 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         rewardItems: [...(context.items ?? [])],
         resultingContentHash: dungeonContentHash(definition),
       } : {}),
+      // Publication and enabled state are pinned because the review promises to preserve them:
+      // a publish, rollback, enable or disable after review makes the plan stale.
       target: targetRow
         ? {
             revision: targetRow.draftRevision,
@@ -837,7 +855,6 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
                 layout: layout as unknown as Record<string, unknown>,
                 draftHash: dungeonContentHash(definition),
                 draftRevision,
-                ...(pkg.schemaVersion !== 1 ? { enabled: false, publishedRevisionId: null } : {}),
                 updatedAt: new Date(),
                 updatedBy: actor,
               })
@@ -851,6 +868,8 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
             issues,
             publishable: !issues.some((i) => i.severity === 'error'),
             replayed: false,
+            enabled: target.enabled ?? false,
+            publishedRevision: target.publishedRevision,
             ...(pkg.schemaVersion !== 1 && loot ? {
               contentHash: dungeonContentHash(definition), createdLootTables,
               reusedLootTables: loot.tablePlans.filter(t => t.decision?.action === 'use_existing').map(t => t.targetKey),
@@ -883,6 +902,8 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
               result,
               draftRevision,
               createdEnemies,
+              enabled: out.enabled,
+              publishedRevision: out.publishedRevision,
               ...(pkg.schemaVersion !== 1 ? { sourceSchemaVersion: pkg.schemaVersion, source: pkg.source, sourceContentHash: pkg.contentHash,
                 contentHash: dungeonContentHash(definition), rewardSnapshotHash: pkg.rewardSnapshot?.hash ?? null,
                 createdLootTables, tableKeyChanges: loot ? Object.fromEntries(loot.rewrites) : {} } : {}),

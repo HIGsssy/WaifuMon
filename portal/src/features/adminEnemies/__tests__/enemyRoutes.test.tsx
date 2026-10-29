@@ -95,6 +95,18 @@ describe('enemy routes', () => {
     expect(screen.queryByTestId('enemy-create')).not.toBeInTheDocument();
   });
 
+  it('keeps `import` for the package import page, gated on `enemies.write`', async () => {
+    renderAt('/admin/enemies/import', ['enemies.read', 'enemies.write']);
+    expect(await screen.findByRole('heading', { name: 'Import enemies' })).toBeInTheDocument();
+    expect(api.getEnemy).not.toHaveBeenCalled();
+  });
+
+  it('shows the not-found page for package import without `enemies.write`', async () => {
+    renderAt('/admin/enemies/import', ['enemies.read']);
+    expect(await screen.findByRole('heading', { name: /not found/i })).toBeInTheDocument();
+    expect(api.getEnemy).not.toHaveBeenCalled();
+  });
+
   it('does not open the Enemies pages to a dungeon-only admin', async () => {
     renderAt('/admin/enemies', ['dungeons.read', 'dungeons.write']);
     expect(await screen.findByRole('heading', { name: /not found/i })).toBeInTheDocument();

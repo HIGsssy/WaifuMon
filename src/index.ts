@@ -74,6 +74,7 @@ import { createBossArtworkService } from './modules/bosses/bossArtworkService';
 import { createLocalArtworkStorage } from './modules/artworkAssets/artworkStorage';
 import { combatTrialEnemyReferences, dungeonEnemyReferences } from './modules/enemies/enemyReferences';
 import { createEnemyCatalogueService } from './modules/enemies/enemyService';
+import { createEnemyPackageService } from './modules/enemies/enemyPackageService';
 import {
   mergeLegacyEnemyArtwork,
   reportCombatEnemySeed,
@@ -510,6 +511,21 @@ async function main(): Promise<void> {
       combatTrialEnemyReferences(() => contentSnapshot.combatTrials),
     ],
   });
+  // Enemy packages with artwork (Content Portability CP-3). An import that
+  // died between writing artwork files and committing left a `staged` journal
+  // row; startup removes those files (best effort — it never blocks boot).
+  const enemyPackages = createEnemyPackageService({
+    db,
+    enemies: enemyCatalogue,
+    assets: artworkAssets,
+    storage: artworkStorage,
+    assetsDir: config.assetsDir,
+    environment: config.deploymentEnv ?? 'unspecified',
+    logger,
+  });
+  await enemyPackages.recoverInterruptedImports().catch((err: unknown) =>
+    logger.warn({ err, tag: 'enemy-package/recovery' }, 'could not recover interrupted enemy imports'),
+  );
   /**
    * Bootstrap the equipment roll rules once, or report shipped drift. Never
    * throws: on failure random equipment grants fail closed
@@ -973,6 +989,7 @@ async function main(): Promise<void> {
       progressionCurrency,
       artworkAssets,
       enemies: enemyCatalogue,
+      enemyPackages,
       // Region Pools. `huntTables` is the very object the hunt was built with:
       // the hunt reads tables.json once, so the odds must too.
       regionPools: createRegionPoolService({

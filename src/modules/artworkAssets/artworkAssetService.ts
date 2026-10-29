@@ -52,7 +52,7 @@ import {
 import type { DungeonArtworkRef, DungeonDefinition } from '../dungeons/content/dungeonDefinition';
 import { readDungeonContentDocuments } from '../dungeons/dungeonContentService';
 import { artworkStorageKey, type ArtworkStorage } from './artworkStorage';
-import { displayNameFromFilename, inspectImage, sanitizeOriginalFilename } from './imageInspection';
+import { displayNameFromFilename, inspectImage, sanitizeOriginalFilename, type InspectedImage } from './imageInspection';
 import type { SceneLayer } from './sceneComposition';
 
 export const ARTWORK_ASSET_NAME_MAX_LENGTH = 100;
@@ -224,6 +224,63 @@ export function dungeonDocumentArtworkFields(
   return fields;
 }
 
+/**
+ * Insert the row (and its `upload` event) for bytes already written to
+ * storage under `storageKey`, in the caller's transaction. The one way an
+ * asset comes into being: {@link ArtworkAssetService.upload} and package
+ * imports both end here. `image` must come from `inspectImage` on those bytes.
+ */
+export async function insertManagedAssetRow(
+  tx: DbOrTx,
+  input: {
+    id: string;
+    category: ArtworkAssetCategory;
+    storageKey: string;
+    image: InspectedImage;
+    originalFilename: string;
+    name?: string | undefined;
+    /** Extra audit detail, e.g. which import created it. */
+    details?: Record<string, unknown> | undefined;
+  },
+  actor: string | null,
+): Promise<ArtworkAsset> {
+  const { id, category, storageKey, image, originalFilename } = input;
+  const [row] = await tx
+    .insert(artworkAssets)
+    .values({
+      id,
+      category,
+      name: cleanName(input.name, displayNameFromFilename(originalFilename)),
+      originalFilename,
+      mimeType: image.mimeType,
+      width: image.width,
+      height: image.height,
+      hasAlpha: image.hasAlpha,
+      fileSize: image.fileSize,
+      storageKey,
+      contentHash: image.contentHash,
+      uploadedBy: actor,
+      updatedBy: actor,
+    })
+    .returning();
+  await tx.insert(artworkAssetEvents).values({
+    assetId: id,
+    action: 'upload',
+    actor,
+    oldHash: null,
+    newHash: image.contentHash,
+    details: {
+      category,
+      mimeType: image.mimeType,
+      width: image.width,
+      height: image.height,
+      fileSize: image.fileSize,
+      ...(input.details ?? {}),
+    },
+  });
+  return toAsset(row!);
+}
+
 export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): ArtworkAssetService {
   const { db, storage } = deps;
 
@@ -348,31 +405,9 @@ export function createArtworkAssetService(deps: ArtworkAssetServiceDeps): Artwor
       const storageKey = artworkStorageKey({ category, assetId: id, contentHash: image.contentHash, extension: image.extension });
       await storage.put(storageKey, bytes);
       try {
-        return await db.transaction(async (tx) => {
-          const [row] = await tx
-            .insert(artworkAssets)
-            .values({
-              id,
-              category,
-              name: cleanName(name, displayNameFromFilename(originalFilename)),
-              originalFilename,
-              mimeType: image.mimeType,
-              width: image.width,
-              height: image.height,
-              hasAlpha: image.hasAlpha,
-              fileSize: image.fileSize,
-              storageKey,
-              contentHash: image.contentHash,
-              uploadedBy: actor,
-              updatedBy: actor,
-            })
-            .returning();
-          await record(tx, id, 'upload', actor, {
-            newHash: image.contentHash,
-            details: { category, mimeType: image.mimeType, width: image.width, height: image.height, fileSize: image.fileSize },
-          });
-          return toAsset(row!);
-        });
+        return await db.transaction((tx) =>
+          insertManagedAssetRow(tx, { id, category, storageKey, image, originalFilename, name }, actor),
+        );
       } catch (err) {
         await removeStored(storageKey);
         throw err;

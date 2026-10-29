@@ -15,7 +15,7 @@ import type { QueryClient } from '@tanstack/react-query';
 
 import type { SpritePlacement } from './adminArtworkAssets';
 import { DUNGEONS_QUERY_KEY } from './adminDungeons';
-import { deleteData, getData, postData, putData } from './client';
+import { deleteData, getData, postData, postDownload, putData } from './client';
 
 export type EnemyOrigin = 'shipped' | 'edited' | 'custom';
 
@@ -235,4 +235,129 @@ export function deleteEnemy(key: string, expectedRevision: number): Promise<{ ok
 
 export function exportEnemies(): Promise<EnemyExport> {
   return getData(`${base}/export`);
+}
+
+// ── Enemy packages with artwork (Content Portability CP-3) ───────────────────
+// Maps to `src/api/routes/v1/admin/enemyPackages.ts`.
+
+export type EnemyExportSelection = { scope: 'all' } | { scope: 'selected'; keys: string[] };
+export type EnemyImportOutcome = 'create' | 'update' | 'conflict' | 'unchanged' | 'invalid';
+export type EnemyArtworkSlot = 'artwork' | 'sprite';
+
+/** Where a slot's image will come from on this server. */
+export type EnemySlotDestination =
+  | { kind: 'none' }
+  | { kind: 'shipped_file'; path: string }
+  | { kind: 'reuse'; asset: string; assetId: string }
+  | { kind: 'create'; asset: string };
+
+export interface EnemySlotPlan {
+  source: 'none' | 'managed' | 'shipped';
+  destination: EnemySlotDestination;
+  notes: string[];
+}
+
+export interface EnemyImportEntry {
+  key: string;
+  name: string;
+  outcome: EnemyImportOutcome;
+  changedFields: string[];
+  activation: {
+    packageEnabled: boolean;
+    enabled: boolean;
+    reason: 'new_enemies_start_disabled' | 'existing_status_kept';
+  } | null;
+  references: { kind: string; key: string; name: string | null; usage: string }[];
+  issues: { path: string; message: string }[];
+  artwork: EnemySlotPlan;
+  sprite: EnemySlotPlan;
+}
+
+export interface EnemyImportAsset {
+  id: string;
+  file: string;
+  category: string;
+  sha256: string;
+  bytes: number;
+  mimeType: string;
+  width: number;
+  height: number;
+  name: string;
+  action: 'reuse' | 'create' | 'not_needed';
+  reuse: string[];
+  usedBy: { key: string; slot: EnemyArtworkSlot }[];
+}
+
+export interface EnemyImportPreview {
+  package: {
+    format: string;
+    version: number;
+    exportedAt: string;
+    scope: 'all' | 'selected';
+    sourceEnvironment: string;
+    packageHash: string;
+    warnings: { key: string; slot: EnemyArtworkSlot; message: string }[];
+  };
+  entries: EnemyImportEntry[];
+  assets: EnemyImportAsset[];
+  counts: Record<EnemyImportOutcome, number>;
+  /** Keys needing an update/keep decision, in the order `decisions` answers them. */
+  decisionKeys: string[];
+  ok: boolean;
+  planHash: string;
+}
+
+export interface EnemyImportResult {
+  importId: number;
+  requestId: string;
+  replayed: boolean;
+  created: string[];
+  updated: string[];
+  skipped: string[];
+  unchanged: string[];
+  assets: {
+    created: { asset: string; assetId: string; category: string }[];
+    reused: { asset: string; assetId: string }[];
+  };
+}
+
+/** Packages carry images, so give them longer than an ordinary call. */
+const PACKAGE_TIMEOUT_MS = 5 * 60_000;
+const ZIP_HEADERS = { 'Content-Type': 'application/zip' };
+
+/**
+ * The enemies, with their artwork, as a `.zip`. Refusals (unknown keys, an
+ * empty selection, artwork that cannot travel) arrive as `PortalApiError`s.
+ */
+export async function exportEnemyPackage(
+  selection: EnemyExportSelection,
+): Promise<{ blob: Blob; filename: string }> {
+  const { blob, filename } = await postDownload(`${base}/export/package`, selection, {
+    timeout: PACKAGE_TIMEOUT_MS,
+  });
+  return { blob, filename: filename ?? 'enemies.zip' };
+}
+
+/** Plan an uploaded package against this server. Writes nothing. */
+export function previewEnemyPackage(file: Blob): Promise<EnemyImportPreview> {
+  return postData<EnemyImportPreview>(`${base}/import/preview`, file, {
+    headers: ZIP_HEADERS,
+    timeout: PACKAGE_TIMEOUT_MS,
+  });
+}
+
+/**
+ * Apply exactly the previewed plan. `decisions` is one `u` (update) or `s`
+ * (keep current) per `decisionKeys` entry. Reusing `requestId` for a retry
+ * returns the first attempt's result instead of importing twice.
+ */
+export function applyEnemyPackage(
+  file: Blob,
+  request: { expectedPlanHash: string; requestId: string; decisions: string },
+): Promise<EnemyImportResult> {
+  return postData<EnemyImportResult>(`${base}/import/apply`, file, {
+    headers: ZIP_HEADERS,
+    timeout: PACKAGE_TIMEOUT_MS,
+    params: request,
+  });
 }

@@ -2315,6 +2315,114 @@ export class EnemyInUseError extends AppError {
   }
 }
 
+// ── Enemy Catalogue packages (Content Portability CP-3) ──────────────────────
+
+/** One problem with an enemy package or its import, by path. */
+export interface EnemyPackageIssue {
+  path: string;
+  message: string;
+}
+
+const enemyPackageIssues = (issues: unknown): EnemyPackageIssue[] =>
+  Array.isArray(issues) ? issues.filter((i): i is EnemyPackageIssue => i !== null && typeof i === 'object') : [];
+
+/** An uploaded enemy package is malformed, unsafe or inconsistent. Nothing was read into the catalogue. */
+export class EnemyPackageInvalidError extends AppError {
+  readonly issues: EnemyPackageIssue[];
+  constructor(issues: readonly EnemyPackageIssue[]) {
+    const list = enemyPackageIssues(issues);
+    const summary = list.map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+    super('ENEMY_PACKAGE_INVALID', `Invalid enemy package: ${summary || 'unknown problem'}`, summary || 'That enemy package is not valid.');
+    this.issues = list;
+  }
+}
+
+/** A selected enemy export named keys no enemy has. Nothing was exported. */
+export class EnemyExportKeysNotFoundError extends AppError {
+  readonly missingKeys: string[];
+  constructor(missingKeys: readonly string[]) {
+    const keys = Array.isArray(missingKeys) ? missingKeys.map(String) : [];
+    super(
+      'ENEMY_EXPORT_KEYS_NOT_FOUND',
+      `Enemy export named unknown key(s): ${keys.join(', ')}`,
+      `No enemy has the key${keys.length === 1 ? '' : 's'} ${keys.join(', ')}. Nothing was exported.`,
+    );
+    this.missingKeys = keys;
+  }
+}
+
+/**
+ * Why an enemy package export was refused rather than written:
+ *  - `empty` — the selection named nothing (never widened to everything);
+ *  - `too_large` — more enemies or bytes than an import accepts;
+ *  - `artwork_unavailable` — artwork an enemy needs cannot be read here;
+ *  - `unsupported_artwork` — artwork an enemy needs is in a format managed artwork does not accept.
+ */
+export type EnemyExportRefusal = 'empty' | 'too_large' | 'artwork_unavailable' | 'unsupported_artwork';
+
+export class EnemyExportRefusedError extends AppError {
+  readonly reason: EnemyExportRefusal;
+  readonly issues: EnemyPackageIssue[];
+  constructor(reason: EnemyExportRefusal, userMessage: string, issues: readonly EnemyPackageIssue[] = []) {
+    const message = String(userMessage);
+    super('ENEMY_EXPORT_REFUSED', `Enemy export refused (${String(reason)}): ${message}`, message);
+    this.reason = reason;
+    this.issues = enemyPackageIssues(issues);
+  }
+}
+
+/** The package's plan has invalid entries; nothing was applied. */
+export class EnemyImportRejectedError extends AppError {
+  readonly issues: EnemyPackageIssue[];
+  constructor(issues: readonly EnemyPackageIssue[]) {
+    const list = enemyPackageIssues(issues);
+    const summary = list.map((i) => `${i.path}: ${i.message}`).join('; ');
+    super('ENEMY_IMPORT_REJECTED', `Enemy package refused: ${summary}`, summary || 'That enemy package cannot be imported here.');
+    this.issues = list;
+  }
+}
+
+/** The catalogue or its artwork changed since the preview; nothing was applied. */
+export class EnemyImportStaleError extends AppError {
+  constructor() {
+    super(
+      'ENEMY_IMPORT_STALE',
+      'The Enemy Catalogue or its artwork changed since this import was previewed',
+      'The Enemy Catalogue changed since you previewed this package. Nothing was imported — preview it again.',
+    );
+  }
+}
+
+/** A changed existing enemy has no explicit update/skip decision; nothing was applied. */
+export class EnemyImportDecisionsRequiredError extends AppError {
+  readonly keys: string[];
+  constructor(keys: readonly string[]) {
+    const list = Array.isArray(keys) ? keys.map(String) : [];
+    super(
+      'ENEMY_IMPORT_DECISIONS_REQUIRED',
+      `Enemy import needs an update/skip decision for: ${list.join(', ')}`,
+      'Choose whether to update or keep each existing enemy the package changes.',
+    );
+    this.keys = list;
+  }
+}
+
+/** An import request id was reused for a different package, plan or decision, or is still running. */
+export class EnemyImportRequestConflictError extends AppError {
+  readonly inProgress: boolean;
+  constructor(inProgress: boolean) {
+    const running = inProgress === true;
+    super(
+      'ENEMY_IMPORT_REQUEST_CONFLICT',
+      running ? 'That enemy import request is still running' : 'That enemy import request id belongs to a different request',
+      running
+        ? 'This import is already running. Wait a moment, then try again to see its result.'
+        : 'This import request does not match the one first sent with that id. Preview the package again.',
+    );
+    this.inProgress = running;
+  }
+}
+
 // ── Boss Management (Portal Admin) ───────────────────────────────────────────
 
 /** One problem with a boss definition. `path` is the field, e.g. `schedule.weekly[0].windows`. */

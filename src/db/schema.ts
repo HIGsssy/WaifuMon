@@ -4146,6 +4146,38 @@ export const combatEnemies = pgTable(
 export type CombatEnemyRow = typeof combatEnemies.$inferSelect;
 
 /**
+ * Enemy Catalogue package imports (migration 0075, Content Portability CP-3):
+ * the receipt an apply request replays, and the journal of artwork files it
+ * staged — committed before any file is written, so a crash mid-import leaves
+ * a record of what to clean up (`enemyPackageService.recoverInterruptedImports`).
+ */
+export const ENEMY_PACKAGE_IMPORT_STATUSES = ['staged', 'applied', 'failed', 'abandoned'] as const;
+export type EnemyPackageImportStatus = (typeof ENEMY_PACKAGE_IMPORT_STATUSES)[number];
+
+export const enemyPackageImports = pgTable(
+  'enemy_package_imports',
+  {
+    id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    requestId: uuid('request_id').notNull().unique(),
+    requestHash: text('request_hash').notNull(),
+    packageHash: text('package_hash').notNull(),
+    planHash: text('plan_hash').notNull(),
+    status: text('status').$type<EnemyPackageImportStatus>().notNull(),
+    stagedStorageKeys: text('staged_storage_keys').array().notNull().default(sql`'{}'`),
+    actor: text('actor'),
+    result: jsonb('result').$type<Record<string, unknown>>(),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    finishedAt: timestamp('finished_at', { withTimezone: true }),
+  },
+  (t) => [
+    check('enemy_package_imports_status_check', sql`${t.status} in ('staged','applied','failed','abandoned')`),
+    check('enemy_package_imports_result_check', sql`(${t.status} = 'applied') = (${t.result} is not null)`),
+  ],
+);
+export type EnemyPackageImportRow = typeof enemyPackageImports.$inferSelect;
+
+/**
  * Boss definitions (migration 0057). Authoritative: the scheduler draws from
  * this table. `content/bosses.json` is bootstrap data — a boss whose key has
  * no row is inserted at startup, and a row is never updated from the file.

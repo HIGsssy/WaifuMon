@@ -21,7 +21,7 @@ const planOf = (patch: Partial<api.DungeonImportPlan> = {}): api.DungeonImportPl
   dungeonKey: 'tunnels',
   contentHash: hash,
   planHash: hash,
-  target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [] },
+  target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [], enabled: null, publishedRevision: null },
   enemies: [],
   issues: [],
   publishable: true,
@@ -272,6 +272,8 @@ describe('Dungeon package import core workflow', () => {
           expectedRevision: 4,
           currentContentHash: 'old',
           changedFields: ['rooms'],
+          enabled: false,
+          publishedRevision: null,
         },
       }),
     );
@@ -297,6 +299,8 @@ describe('Dungeon package import core workflow', () => {
           expectedRevision: 4,
           currentContentHash: hash,
           changedFields: [],
+          enabled: true,
+          publishedRevision: 2,
         },
       }),
     );

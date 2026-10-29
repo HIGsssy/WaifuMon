@@ -241,6 +241,11 @@ const EnemiesListPage = lazy(() =>
     default: m.EnemiesListPage,
   })),
 );
+const EnemyImportPage = lazy(() =>
+  import('@/features/adminEnemies/EnemyImportPage').then((m) => ({
+    default: m.EnemyImportPage,
+  })),
+);
 const EnemyCreatePage = lazy(() =>
   import('@/features/adminEnemies/EnemyCreatePage').then((m) => ({
     default: m.EnemyCreatePage,
@@ -627,6 +632,15 @@ export const routes: RouteObject[] = [
             element: (
               <RequirePortalPermission permission="enemies.write">
                 <EnemyCreatePage />
+              </RequirePortalPermission>
+            ),
+          },
+          // A package import (CP-3); declared before `:key`, and `import` is a reserved enemy key.
+          {
+            path: 'admin/enemies/import',
+            element: (
+              <RequirePortalPermission permission="enemies.write">
+                <EnemyImportPage />
               </RequirePortalPermission>
             ),
           },

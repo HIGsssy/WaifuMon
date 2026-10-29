@@ -21,7 +21,7 @@ test('upload, review an enemy conflict, import a draft and open it', async ({ pa
     packageHash: hash,
     contentHash: hash,
     planHash: hash,
-    target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [] },
+    target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [], enabled: null, publishedRevision: null },
     enemies: [
       {
         key: 'slime',
@@ -190,6 +190,8 @@ for (const version of [2, 3] as const)
               expectedRevision: null,
               currentContentHash: null,
               changedFields: [],
+              enabled: null,
+              publishedRevision: null,
             },
             enemies: [],
             lootTables: [

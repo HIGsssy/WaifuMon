@@ -186,6 +186,23 @@ export interface EnemyCatalogueService {
    */
   delete(key: string, input: { expectedRevision: number }, actor: string | null): Promise<boolean>;
   export(): Promise<EnemyExport>;
+  /**
+   * Package import (Content Portability CP-3): write one enemy in the
+   * importer's transaction through the same validation, artwork checks,
+   * revision bump and reference trail as an edit. `expectedRevision` null
+   * creates it; otherwise the row must still be at that revision.
+   * @throws {EnemyInvalidError | EnemyStaleError | EnemyKeyTakenError}
+   */
+  applyImported(
+    tx: DbOrTx,
+    input: {
+      definition: CombatEnemyDefinition;
+      artworkAssetId: string | null;
+      spriteAssetId: string | null;
+      expectedRevision: number | null;
+    },
+    actor: string | null,
+  ): Promise<CombatEnemyRow>;
 
   // ── runtime ───────────────────────────────────────────────────────────────
   /** Every enemy, enabled or not, as the combat systems read them. */
@@ -591,6 +608,16 @@ export function createEnemyCatalogueService(deps: EnemyCatalogueServiceDeps): En
             .map((row) => ({ key: row.enemyKey, artworkAssetId: row.artworkAssetId, spriteAssetId: row.spriteAssetId })),
         },
       };
+    },
+
+    async applyImported(tx, { definition, artworkAssetId, spriteAssetId, expectedRevision }, actor) {
+      const { key, ...fields } = definition;
+      const input = { ...fields, artworkAssetId, spriteAssetId };
+      if (expectedRevision === null) return insertRow(tx, await assertWritable(tx, key, input, undefined), actor);
+      const row = await readCombatEnemyRow(tx, key, true);
+      if (!row) throw new EnemyStaleError(key, expectedRevision, 0, null, new Date(0));
+      assertRevision(row, expectedRevision);
+      return writeRow(tx, row, await assertWritable(tx, key, input, row), actor);
     },
 
     async definitions(tx = db) {

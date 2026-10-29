@@ -13,7 +13,7 @@ const planOf = (restricted = false): api.DungeonImportPlan => ({
   dungeonKey: 'tunnels',
   contentHash: hash,
   planHash: hash,
-  target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [] },
+  target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [], enabled: null, publishedRevision: null },
   enemies: [],
   lootTables: [],
   equipmentChanges: [],

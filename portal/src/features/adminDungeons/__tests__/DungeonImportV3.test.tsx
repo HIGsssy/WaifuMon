@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as api from '@/api/adminDungeons';
 import { fixture, install, renderAt } from './dungeonFixtures';
@@ -13,7 +13,7 @@ const planOf = (status: 'available' | 'missing' | 'disabled'): api.DungeonImport
   dungeonKey: 'tunnels',
   contentHash: hash,
   planHash: hash,
-  target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [] },
+  target: { status: 'new', expectedRevision: null, currentContentHash: null, changedFields: [], enabled: null, publishedRevision: null },
   enemies: [],
   lootTables: [],
   equipmentChanges: [],
@@ -71,8 +71,9 @@ describe('v3 event import review', () => {
     const user = await open();
     expect(screen.getByText('Vault Key: Available here')).toBeInTheDocument();
     expect(
-      screen.getByText(/This import creates a disabled, unpublished draft/),
+      screen.getByText(/Creates a new draft that is disabled and unpublished/),
     ).toBeInTheDocument();
+    expect(screen.getByText(/This import changes only the draft/)).toBeInTheDocument();
     expect(screen.getByText('No reusable loot tables in this package.')).toBeInTheDocument();
     expect(apply()).toBeDisabled();
     await user.click(screen.getByLabelText('Approve create dungeon draft'));
@@ -120,21 +121,47 @@ describe('v3 event import review', () => {
       );
     },
   );
-  it('discloses disabling and clearing current publication for a v3 replacement even without loot', async () => {
+  it('states that a replacement keeps the live revision and enabled state of a published dungeon', async () => {
     vi.mocked(api.planDungeonImport).mockResolvedValue({
       ...planOf('available'),
       target: {
         status: 'different',
         expectedRevision: 3,
         currentContentHash: hash,
-        changedFields: ['publication', 'enabled'],
+        changedFields: ['rooms'],
+        enabled: true,
+        publishedRevision: 2,
       },
     });
     await open();
+    expect(screen.getByText('Current state: Enabled · Published revision 2')).toBeInTheDocument();
+    const notes = within(screen.getByRole('list', { name: 'Publication after import' }));
+    expect(notes.getByText(/Revision 2 is published and stays live/)).toBeInTheDocument();
     expect(
-      screen.getByText(/This import also disables the dungeon and clears its current publication/),
+      notes.getByText(/New runs keep starting on revision 2 until you publish the imported draft/),
     ).toBeInTheDocument();
+    expect(notes.getByText(/separate action that revalidates it here/)).toBeInTheDocument();
+    expect(screen.queryByText(/disables the dungeon|clears its current publication/)).toBeNull();
     expect(screen.getByLabelText('Approve replace dungeon draft')).toBeInTheDocument();
+  });
+  it('keeps a disabled, unpublished target that way and flags an incomplete draft as unpublishable', async () => {
+    vi.mocked(api.planDungeonImport).mockResolvedValue({
+      ...planOf('missing'),
+      target: {
+        status: 'different',
+        expectedRevision: 3,
+        currentContentHash: hash,
+        changedFields: ['rooms'],
+        enabled: false,
+        publishedRevision: null,
+      },
+    });
+    await open();
+    expect(screen.getByText('Current state: Disabled · Unpublished')).toBeInTheDocument();
+    const notes = within(screen.getByRole('list', { name: 'Publication after import' }));
+    expect(notes.getByText(/not published and stays unpublished/)).toBeInTheDocument();
+    expect(notes.getByText(/stays disabled\. Import does not enable it/)).toBeInTheDocument();
+    expect(notes.getByText(/cannot be published until its reported problems are repaired/)).toBeInTheDocument();
   });
   it('never allows incomplete acceptance to bypass invalid event package validation', async () => {
     vi.mocked(api.planDungeonImport).mockResolvedValue({

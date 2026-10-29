@@ -35,6 +35,36 @@ export const draftOperation = (plan: DungeonImportPlan): DungeonImportDecisions[
       ? 'unchanged'
       : 'replace';
 
+/**
+ * What the import leaves live, from the server's view of the target. Import only
+ * ever writes the draft: an existing dungeon keeps its enabled flag and its
+ * published revision until someone publishes the draft.
+ */
+export function draftLifecycleNotes(plan: DungeonImportPlan): string[] {
+  const target = plan.target;
+  if (!target) return [];
+  const incomplete = !plan.publishable;
+  if (target.status === 'new')
+    return [
+      'Creates a new draft that is disabled and unpublished. Publishing and enabling are separate actions.',
+      ...(incomplete ? ['The draft cannot be published until its reported problems are repaired.'] : []),
+    ];
+  const live = target.publishedRevision ?? null;
+  return [
+    live !== null
+      ? `Revision ${live} is published and stays live: players, active runs and its WaifuMon acquisition terms are unaffected. Only the draft changes.`
+      : 'This dungeon is not published and stays unpublished. Only the draft changes.',
+    target.enabled
+      ? live !== null
+        ? `The dungeon stays enabled. New runs keep starting on revision ${live} until you publish the imported draft.`
+        : 'The dungeon stays enabled, but players cannot start it until a revision is published.'
+      : 'The dungeon stays disabled. Import does not enable it.',
+    incomplete
+      ? `The imported draft cannot be published until its reported problems are repaired${live !== null ? `; revision ${live} remains live meanwhile` : ''}.`
+      : 'Publishing the imported draft is a separate action that revalidates it here.',
+  ];
+}
+
 /** Interpret server issue codes only; content validation remains on the server. */
 export function importBlockers(plan: DungeonImportPlan, decisions: DungeonImportDecisions) {
   return plan.issues.filter((issue) => {

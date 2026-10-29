@@ -384,6 +384,52 @@ export async function postBlob(
   return response.data;
 }
 
+/**
+ * `POST` answering with a file to save (a content package). A refusal still
+ * comes back as the API's JSON error, which a `blob` response would hide, so
+ * the body is read as bytes and a non-200 is decoded into a
+ * {@link PortalApiError} like any other call. CSRF via the request interceptor.
+ */
+export async function postDownload(
+  url: string,
+  body?: unknown,
+  config?: AxiosRequestConfig,
+): Promise<{ blob: Blob; filename: string | null }> {
+  const response = await apiClient.post<ArrayBuffer>(url, body ?? {}, {
+    ...config,
+    responseType: 'arraybuffer',
+    validateStatus: () => true,
+  });
+  if (response.status !== 200) {
+    let parsed: unknown = null;
+    try {
+      parsed = JSON.parse(new TextDecoder().decode(response.data));
+    } catch {
+      // Not the API's JSON (a proxy page): reported as unexpected below.
+    }
+    if (looksLikeErrorBody(parsed)) {
+      throw new PortalApiError({
+        status: response.status,
+        code: parsed.error.code,
+        message: parsed.error.message,
+        requestId: parsed.requestId,
+        details: parsed.error.details,
+      });
+    }
+    throw new PortalApiError({
+      status: response.status,
+      code: 'UNEXPECTED_RESPONSE',
+      message: 'The Waifumon server returned an unexpected response.',
+    });
+  }
+  const disposition = String(response.headers['content-disposition'] ?? '');
+  const type = String(response.headers['content-type'] ?? 'application/octet-stream');
+  return {
+    blob: new Blob([response.data], { type }),
+    filename: /filename="([^"]+)"/.exec(disposition)?.[1] ?? null,
+  };
+}
+
 export async function putData<T>(
   url: string,
   body?: unknown,

@@ -173,15 +173,20 @@ describe('v2 loot decisions and draft provenance', () => {
     await expect(w.content.applyImport(await review(pkg, choices), 'admin')).rejects.toMatchObject({ code: 'DUNGEON_IMPORT_INVALID' });
     expect(await state()).toEqual(before);
   });
-  it('replacing an existing published target disables/unpublishes its draft but preserves old revisions and active runs', async () => {
+  it('replacing an existing published target changes only its draft, keeping publication, enabled state, old revisions and active runs', async () => {
     const pkg = currencyPackage(); await installTable(pkg);
-    await w.publish(pkg.dungeon); const player = await w.player(); await w.runs.start(player.playerId, pkg.dungeon.key);
+    const { revision } = await w.publish(pkg.dungeon); const player = await w.player(); await w.runs.start(player.playerId, pkg.dungeon.key);
+    // Live state alone is no longer a reason to replace: the identical draft is unchanged.
+    const identical = await w.content.planImport(pkg);
+    expect(identical.target).toMatchObject({ status: 'identical', changedFields: [], enabled: true, publishedRevision: revision.number });
     const before = await state();
-    const plan = await w.content.planImport(pkg);
-    expect(plan.target!.status).toBe('different'); expect(plan.target!.changedFields).toContain('publication');
-    const result = await w.content.applyImport(await review(pkg), 'admin');
-    expect(result.result).toBe('replaced');
-    expect(await w.content.get(pkg.dungeon.key)).toMatchObject({ enabled: false, published: null });
+    const definition = { ...pkg.dungeon, name: 'Updated hoard' };
+    const changed = DungeonPackageV2Schema.parse(buildDungeonPackage({ definition, rewardSnapshot: pkg.rewardSnapshot, source: { environment: 'staging', origin: 'revision', draftRevision: null, publishedRevision: 2 } }));
+    const plan = await w.content.planImport(changed);
+    expect(plan.target).toMatchObject({ status: 'different', changedFields: ['name'], enabled: true, publishedRevision: revision.number });
+    const result = await w.content.applyImport(await review(changed), 'admin');
+    expect(result).toMatchObject({ result: 'replaced', enabled: true, publishedRevision: revision.number });
+    expect(await w.content.get(pkg.dungeon.key)).toMatchObject({ enabled: true, open: true, published: { revisionId: revision.revisionId }, draft: definition });
     const after = await state(); expect(after.revisions).toEqual(before.revisions); expect(after.runs).toEqual(before.runs);
   });
 });

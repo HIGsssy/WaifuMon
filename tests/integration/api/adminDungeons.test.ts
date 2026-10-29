@@ -280,9 +280,11 @@ describe('package import API', () => {
     const preview = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/plan', { package: pkg });
     expect(preview.statusCode, preview.body).toBe(200); const plan = data<Json>(preview);
     expect(plan).toMatchObject({ validPackage: true, encounterDependencies: { encounterCount: 1, requiredSpecies: [{ slug: 'neko_barista', status: 'available', sourceRarity: 'N', targetRarity: 'N' }], captureItems: [{ key: 'basic_charm', status: 'available' }] } });
-    const applied = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: plan.target.expectedRevision, decisions: { dungeon: 'replace', enemies: {}, allowMissingDependencies: false } });
-    expect(applied.statusCode, applied.body).toBe(200); expect(data<Json>(applied)).toMatchObject({ sourceSchemaVersion: 4, publishable: true });
-    expect(await w.content.get(definition.key)).toMatchObject({ enabled: false, published: null });
+    // Its own export is an identical draft; the enabled, unpublished target state is reported and kept.
+    expect(plan.target).toMatchObject({ status: 'identical', changedFields: [], enabled: true, publishedRevision: null });
+    const applied = await as(WRITER_TOKEN, 'POST', '/admin/dungeons/import/apply', { package: pkg, requestId: randomUUID(), expectedPlanHash: plan.planHash, expectedRevision: plan.target.expectedRevision, decisions: { dungeon: 'unchanged', enemies: {}, allowMissingDependencies: false } });
+    expect(applied.statusCode, applied.body).toBe(200); expect(data<Json>(applied)).toMatchObject({ result: 'unchanged', sourceSchemaVersion: 4, publishable: true, enabled: true, publishedRevision: null });
+    expect(await w.content.get(definition.key)).toMatchObject({ enabled: true, published: null });
   });
   it('v2 conflict preview and copy application return reward-aware contracts and an unchanged destination table', async () => {
     const { pkg, table, body } = v2ApiPackage();

@@ -43,6 +43,10 @@ export interface DungeonImportPlan {
     expectedRevision: number | null;
     currentContentHash: string | null;
     changedFields: string[];
+    /** Current target state, preserved by import. Null for a new target. */
+    enabled: boolean | null;
+    /** The live revision, which stays live after import. Null when unpublished or new. */
+    publishedRevision: number | null;
   } | null;
   enemies: Array<{
     key: string;
@@ -130,4 +134,6 @@ export interface DungeonImportResult {
   tableKeyChanges?: Record<string, string> | undefined;
   sourceSchemaVersion?: 2 | 3 | 4 | undefined;
   rewardSnapshotHash?: string | null | undefined;
+  enabled?: boolean | undefined;
+  publishedRevision?: number | null | undefined;
 }

@@ -229,9 +229,9 @@ Required item definitions must already exist on the target. Import does not
 create global items or transfer player holdings. Explicitly accept missing or
 disabled requirements only when intentionally keeping an incomplete draft.
 Resolve those notices before release. Artwork bytes also need uploading separately.
-New imports are disabled and unpublished. V2/v3 replacement imports disable and
-unpublish the target too; review, publish and enable explicitly. Existing active
-runs still use their old revision. Retry an uncertain import with its original
+New imports are disabled and unpublished. A replacement import changes only the
+target's draft: it stays enabled or disabled, and its published revision stays live
+until you publish the draft. Existing active runs still use their old revision. Retry an uncertain import with its original
 request; a changed plan needs a fresh review. Manually changing package contents
 can invalidate its integrity checks; edit in the Dungeon Editor and export again.
 

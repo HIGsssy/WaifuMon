@@ -113,6 +113,7 @@ describe('proxied responses carry exactly one copy of each header', () => {
       '^~ /api/v1/admin/bosses/import/',
       '^~ /api/v1/admin/dungeons/import/',
       '^~ /api/v1/admin/encounters/import/',
+      '^~ /api/v1/admin/enemies/import/',
       '^~ /api/v1/admin/equipment/import/',
       '^~ /auth/',
     ]);
@@ -253,6 +254,14 @@ describe('request body size', () => {
     const body = blocks.find((b) => b.selector === '^~ /api/v1/admin/equipment/import/')?.body ?? '';
     const mib = Number(body.match(/client_max_body_size\s+(\d+)m;/)?.[1] ?? 0);
     expect(mib).toBeGreaterThan(4);
+    expect(body).toContain('proxy_pass ${PORTAL_API_UPSTREAM};');
+  });
+
+  it('lets an Enemy Catalogue package import through to the API’s 48 MiB cap', () => {
+    // ENEMY_PACKAGE_BODY_LIMIT_BYTES: a ZIP of enemies with their artwork.
+    const body = blocks.find((b) => b.selector === '^~ /api/v1/admin/enemies/import/')?.body ?? '';
+    const mib = Number(body.match(/client_max_body_size\s+(\d+)m;/)?.[1] ?? 0);
+    expect(mib).toBeGreaterThan(48);
     expect(body).toContain('proxy_pass ${PORTAL_API_UPSTREAM};');
   });
 
