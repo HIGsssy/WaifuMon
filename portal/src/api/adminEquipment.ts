@@ -223,10 +223,18 @@ export interface ImportPreview {
   planHash: string;
   statusNotes: ImportStatusNote[];
   rewardImpact: { key: string; impact: RewardImpact }[];
+  /** Artwork this server cannot serve. A warning only: it never blocks the import. */
+  artwork: { checked: boolean; warnings: ImportArtworkWarning[] };
+}
+
+export interface ImportArtworkWarning {
+  key: string;
+  artworkPath: string;
+  status: 'missing' | 'unsafe';
 }
 
 export interface ImportResult {
-  plan: Omit<ImportPreview, 'planHash' | 'statusNotes' | 'rewardImpact'>;
+  plan: Omit<ImportPreview, 'planHash' | 'statusNotes' | 'rewardImpact' | 'artwork'>;
   logId: number;
   planHash: string;
   statusNotes: ImportStatusNote[];

@@ -47,9 +47,12 @@ import {
   AppError,
   EquipmentDefinitionStaleError,
   EquipmentEnableConfirmationRequiredError,
+  EquipmentExportKeysNotFoundError,
+  EquipmentExportRefusedError,
   EquipmentValidationError,
 } from '../../../../shared/errors';
 import { EquipmentImportRejectedError } from '../../../../modules/equipment/equipmentImportService';
+import { EQUIPMENT_PACKAGE_MAX_BYTES } from '../../../../modules/equipment/equipmentPackage';
 import {
   CATALOGUE_MAX_PAGE_SIZE,
   CATALOGUE_SORTS,
@@ -67,6 +70,21 @@ import {
 
 /** Where equipment artwork lives, relative to the assets root (`definitionSchema` convention). */
 export const EQUIPMENT_ARTWORK_ROOTS = ['equipment'] as const;
+
+/**
+ * Request-body ceiling for import preview and apply: the largest package an
+ * export may produce ({@link EQUIPMENT_PACKAGE_MAX_BYTES}, compact JSON) plus
+ * room for the `{ package, expectedPlanHash, sourceFilename }` wrapper. The
+ * API's global 64 KB limit would refuse a few hundred definitions, so a
+ * server could not re-import its own export.
+ *
+ * Route-scoped on purpose, as for encounter import: every other endpoint keeps
+ * 64 KB. These two routes gate permission at `onRequest`, before the body is
+ * read, so only an `equipment.write` caller can spend the larger limit. The
+ * Portal's Nginx allows slightly more on `/api/v1/admin/equipment/import/`,
+ * so this limit's JSON 413 is what callers meet.
+ */
+export const EQUIPMENT_IMPORT_BODY_LIMIT_BYTES = EQUIPMENT_PACKAGE_MAX_BYTES + 64 * 1024;
 
 const keySchema = z.string().min(1).max(EQUIPMENT_KEY_MAX_LENGTH).regex(EQUIPMENT_KEY_PATTERN);
 /** The shared definition schema validates the body itself, so a bad field is an issue at that field. */
@@ -223,6 +241,10 @@ const importPreviewSchema = planSchema.extend({
   planHash: z.string(),
   statusNotes: z.array(statusNoteSchema),
   rewardImpact: z.array(z.object({ key: z.string(), impact: impactSchema })),
+  artwork: z.object({
+    checked: z.boolean(),
+    warnings: z.array(z.object({ key: z.string(), artworkPath: z.string(), status: z.enum(['missing', 'unsafe']) })),
+  }),
 });
 const importResultSchema = z.object({
   plan: planSchema,
@@ -297,6 +319,12 @@ async function translate<T>(work: () => Promise<T>): Promise<T> {
     }
     if (err instanceof EquipmentEnableConfirmationRequiredError) {
       throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, { impact: err.impact });
+    }
+    if (err instanceof EquipmentExportKeysNotFoundError) {
+      throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, { missingKeys: err.missingKeys });
+    }
+    if (err instanceof EquipmentExportRefusedError) {
+      throw new ApiErrorWithDetails(err.code, err.message, err.userMessage, { reason: err.reason, issues: err.issues });
     }
     throw err;
   }
@@ -558,14 +586,22 @@ export const adminEquipmentRoutes =
         schema: {
           tags,
           summary:
-            'A `waifumon-equipment` v3 package: every definition, the named `keys` (comma-separated), or the ones ' +
-            'matching the catalogue filters. Definitions only — never owned copies or rolls',
+            'A `waifumon-equipment` v3 package: every definition, exactly the named `keys` (comma-separated), or ' +
+            'the ones matching the catalogue filters. Definitions only — never owned copies or rolls. Unknown keys ' +
+            'are 404 EQUIPMENT_EXPORT_KEYS_NOT_FOUND (details.missingKeys); an empty selection or filter, or a ' +
+            'package larger than import accepts, is 422 EQUIPMENT_EXPORT_REFUSED — never a wider export',
           querystring: catalogueQuery.extend({ keys: z.string().max(10_000).optional(), label: z.string().max(200).optional() }),
-          response: { 200: dataSchema(packageSchema), ...commonErrorResponses },
+          response: {
+            200: dataSchema(packageSchema),
+            ...notFoundResponse,
+            422: errorSchema.describe('EQUIPMENT_EXPORT_REFUSED — details.reason: empty, too_large or unportable (details.issues).'),
+            ...commonErrorResponses,
+          },
         },
       },
       async (req) => {
         const { keys, label, ...query } = req.query;
+        // A `keys` parameter is a selection even when it lists nothing.
         const list = keys
           ?.split(',')
           .map((k) => k.trim())
@@ -573,11 +609,13 @@ export const adminEquipmentRoutes =
         const filteredQuery = Object.values(query).some((v) => v !== undefined)
           ? (Object.fromEntries(Object.entries(query).filter(([, v]) => v !== undefined)) as NonNullable<Parameters<EquipmentCatalogueService['list']>[0]>)
           : null;
-        const pkg = await catalogue.exportPackage({
-          ...(list && list.length > 0 ? { keys: list } : {}),
-          ...(filteredQuery ? { query: filteredQuery } : {}),
-          label: label ?? null,
-        });
+        const pkg = await translate(() =>
+          catalogue.exportPackage({
+            ...(list !== undefined ? { keys: list } : {}),
+            ...(filteredQuery ? { query: filteredQuery } : {}),
+            label: label ?? null,
+          }),
+        );
         return ok(req, pkg as unknown as z.infer<typeof packageSchema>);
       },
     );
@@ -585,7 +623,8 @@ export const adminEquipmentRoutes =
     app.post(
       '/admin/equipment/import/preview',
       {
-        preValidation: gate('equipment.write'),
+        onRequest: gate('equipment.write'),
+        bodyLimit: EQUIPMENT_IMPORT_BODY_LIMIT_BYTES,
         schema: {
           tags,
           summary:
@@ -604,7 +643,8 @@ export const adminEquipmentRoutes =
     app.post(
       '/admin/equipment/import/apply',
       {
-        preValidation: gate('equipment.write'),
+        onRequest: gate('equipment.write'),
+        bodyLimit: EQUIPMENT_IMPORT_BODY_LIMIT_BYTES,
         schema: {
           tags,
           summary:

@@ -10,6 +10,31 @@ import type {
 import type { DungeonSpeciesUnavailableReason } from '@/api/dungeonSpeciesTypes';
 export const SPECIES_POOL_LIMITS = { pools: 30, entries: 50, weight: 1_000_000 };
 const poolsOf = (d: DungeonDefinition) => d.speciesPools ?? [];
+/** Attach and select in one draft edit; membership never creates acquisition terms. */
+export function selectSharedEncounterPool(
+  definition: DungeonDefinition,
+  roomId: string,
+  actionId: string,
+  shared: { key: string; name: string; enabled: boolean },
+): DungeonDefinition {
+  const action = definition.rooms.find(r => r.id === roomId)?.actions.find(a => a.id === actionId);
+  if (!shared.enabled || !action || !['wild_encounter', 'rescue'].includes(action.type)) return definition;
+  const currentId = action.source?.kind === 'pool' ? action.source.poolId : undefined;
+  const pools = poolsOf(definition);
+  let reference = pools.find(p => p.id === currentId && p.sharedPoolKey === shared.key)
+    ?? pools.find(p => p.sharedPoolKey === shared.key);
+  let next = definition;
+  if (!reference) {
+    const made = createSpeciesPool(definition);
+    if (!made.id) return definition;
+    reference = { id: made.id, name: shared.name, sharedPoolKey: shared.key, entries: [] };
+    next = { ...made.definition, speciesPools: [...pools, reference] };
+  }
+  const poolId = reference.id;
+  return { ...next, rooms: next.rooms.map(room => room.id !== roomId ? room : {
+    ...room, actions: room.actions.map(a => a.id !== actionId ? a : { ...a, source: { kind: 'pool', poolId } }),
+  }) };
+}
 function id(prefix: 'sp' | 'se', taken: string[]) {
   for (;;) {
     const next = `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`;
@@ -118,6 +143,12 @@ export function incompleteSpeciesIssues(d: DungeonDefinition, code: string): Dun
   poolsOf(d).forEach((p, n) => {
     const path = `speciesPools[${n}]`;
     if (!p.name.trim()) add(`${path}.name`, 'Give this WaifuMon pool a name.');
+    if (p.sharedPoolKey !== undefined) {
+      if (p.sharedPoolKey.length > 64 || !/^[a-z0-9]+(?:_[a-z0-9]+)*$/.test(p.sharedPoolKey))
+        add(`${path}.sharedPoolKey`, 'Choose a shared pool with a valid stable key.');
+      if (p.entries.length) add(`${path}.entries`, 'Shared references must have empty entries; embedded fallback is forbidden.');
+      return;
+    }
     if (!p.entries.length)
       add(`${path}.entries`, 'Add at least one species entry to finish this pool.');
     p.entries.forEach((e, i) => {

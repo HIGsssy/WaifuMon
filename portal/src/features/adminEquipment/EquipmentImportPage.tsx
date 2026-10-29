@@ -34,8 +34,13 @@ import { Card } from '@/components/ui/card';
 import { IssueList } from './catalogueParts';
 import { SOURCE_LABELS, WHEN_LABELS, equipmentPath, refusedIssues } from './equipmentModel';
 
-/** Matches the server's request ceiling comfortably below it. */
-const MAX_FILE_BYTES = 2_000_000;
+/**
+ * A first check on the file as saved. The server's ceiling (4 MiB + 64 KiB,
+ * `EQUIPMENT_IMPORT_BODY_LIMIT_BYTES`) applies to the compact JSON this page
+ * sends, and an exported file is pretty-printed, so the file may be larger;
+ * anything past this is far beyond it. The server's 413 names the real limit.
+ */
+const MAX_FILE_BYTES = 8 * 1024 * 1024;
 
 const ACTION_LABELS: Record<ImportPreview['entries'][number]['action'], string> = {
   create: 'New',
@@ -211,6 +216,26 @@ export function EquipmentImportPage() {
                         )
                         .join('; ')}
                     </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {plan.artwork.warnings.length > 0 && (
+            <div className="space-y-1" data-testid="import-artwork-warnings">
+              <p className="text-xs font-semibold uppercase text-ink-muted">
+                Artwork not on this server
+              </p>
+              <p className="text-sm text-ink-muted">
+                Artwork is not part of the package. Deploy these files with the assets release, or
+                the gear shows without a picture. This does not block the import.
+              </p>
+              <ul className="text-sm">
+                {plan.artwork.warnings.map((w) => (
+                  <li key={w.key}>
+                    <span className="font-mono">{w.key}</span>:{' '}
+                    <span className="font-mono text-ink-muted">{w.artworkPath}</span>
+                    {w.status === 'unsafe' ? ' (outside the assets folder)' : ' (missing)'}
                   </li>
                 ))}
               </ul>

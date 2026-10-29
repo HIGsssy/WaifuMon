@@ -58,6 +58,14 @@ export type EquipmentPackageVersion = (typeof EQUIPMENT_PACKAGE_READABLE_VERSION
 const V3_DEFINITION_FIELDS = ['primarySpEligible', 'maxAdditionalBonuses'] as const;
 /** A sanity ceiling, far above any real catalogue. */
 export const EQUIPMENT_PACKAGE_MAX_DEFINITIONS = 1000;
+/**
+ * The largest package, as compact UTF-8 JSON, this build exports — and so the
+ * size the import routes are sized for (`EQUIPMENT_IMPORT_BODY_LIMIT_BYTES`
+ * adds the request wrapper). The largest valid definition with plain-text
+ * fields is about 2.6 KB compact, so 1,000 of them are about 2.5 MiB; 4 MiB
+ * leaves room for multi-byte text while staying a cheap `JSON.parse`.
+ */
+export const EQUIPMENT_PACKAGE_MAX_BYTES = 4 * 1024 * 1024;
 
 const PACKAGE_FIELDS = new Set(['format', 'version', 'exportedAt', 'label', 'definitions']);
 
@@ -169,6 +177,34 @@ export function buildEquipmentPackage(
       .sort((a, b) => a.key.localeCompare(b.key))
       .map(definitionInputFromRow),
   };
+}
+
+/**
+ * Why `pkg` is too big for this build's importer, or null if it fits. An
+ * export checks this rather than writing a file its own import would refuse;
+ * it never trims the package to fit.
+ */
+export function exportCapacityIssue(
+  pkg: EquipmentPackage,
+  limits: { maxDefinitions: number; maxBytes: number } = {
+    maxDefinitions: EQUIPMENT_PACKAGE_MAX_DEFINITIONS,
+    maxBytes: EQUIPMENT_PACKAGE_MAX_BYTES,
+  },
+): string | null {
+  if (pkg.definitions.length > limits.maxDefinitions) {
+    return (
+      `${pkg.definitions.length} definitions is more than the ${limits.maxDefinitions} a package may hold. ` +
+      'Export a smaller selection or filter instead.'
+    );
+  }
+  const bytes = Buffer.byteLength(JSON.stringify(pkg), 'utf8');
+  if (bytes > limits.maxBytes) {
+    return (
+      `The package would be ${bytes} bytes, more than the ${limits.maxBytes} an import accepts. ` +
+      'Export a smaller selection or filter instead.'
+    );
+  }
+  return null;
 }
 
 // ── Planning ──────────────────────────────────────────────────────────────

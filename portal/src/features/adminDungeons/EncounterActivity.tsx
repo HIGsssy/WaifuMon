@@ -1,3 +1,4 @@
+import { EncounterPoolPicker } from './EncounterPoolPicker';
 import { useContext, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -15,7 +16,7 @@ import { EMPTY_SPECIES_SCENARIO, useSpeciesInsight } from './useSpeciesInsight';
 import { Odds } from './SpeciesPoolSheet';
 import { EventEditorContext } from './eventEditorContext';
 import { ACTION_OUTCOMES } from './dungeonActionModel';
-import { speciesAccessView, speciesPolicyOf } from './dungeonSpeciesModel';
+import { selectSharedEncounterPool, speciesAccessView, speciesPolicyOf } from './dungeonSpeciesModel';
 import { EncounterPreview } from './EncounterPreview';
 import { getDungeonCaptureItems } from '@/api/adminDungeons';
 
@@ -27,12 +28,14 @@ export function EncounterActivity({
   definition,
   disabled,
   onChange,
+  onDefinitionChange,
 }: {
   action: DungeonAction;
   room: DungeonRoom;
   definition: DungeonDefinition;
   disabled: boolean;
   onChange: (a: DungeonAction) => void;
+  onDefinitionChange: (definition: DungeonDefinition) => void;
 }) {
   const host = useContext(EventEditorContext);
   const [picking, setPicking] = useState(false);
@@ -178,20 +181,9 @@ export function EncounterActivity({
           </div>
         ) : (
           <div className="space-y-2">
-            <select
-              aria-label="WaifuMon pool"
-              className={select}
-              value={poolId}
-              onChange={(e) => patch({ source: { kind: 'pool', poolId: e.target.value } })}
-            >
-              <option value="">Choose a pool…</option>
-              {poolId && !pool && <option value={poolId}>Missing pool ({poolId})</option>}
-              {definition.speciesPools?.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name} ({p.sharedPoolKey ? `Shared: ${p.sharedPoolKey}` : 'Dungeon-local'})
-                </option>
-              ))}
-            </select>
+            <EncounterPoolPicker definition={definition} poolId={poolId} disabled={disabled} species={species} direct={direct}
+              onLocal={poolId => patch({ source: { kind: 'pool', poolId } })}
+              onShared={shared => onDefinitionChange(selectSharedEncounterPool(definition, room.id, action.id, shared))} />
             {pool ? (
               <>
                 <p className={hint}>
@@ -231,7 +223,7 @@ export function EncounterActivity({
               <p role="alert" className={hint}>
                 {poolId
                   ? 'This pool is missing. Its reference is kept; select an existing pool to repair it.'
-                  : 'Create a pool in Dungeon settings or choose one here.'}
+                  : 'Choose a dungeon-local or shared pool above.'}
               </p>
             )}
           </div>

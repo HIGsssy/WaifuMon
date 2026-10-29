@@ -22,6 +22,7 @@ import { createContentReloader } from './modules/content/reloadService';
 import { contentRegionCatalogue } from './modules/regionPools/regionCatalogue';
 import { createRegionPoolService } from './modules/regionPools/regionPoolService';
 import { resolveExistingAssetFile } from './modules/assets/assetContainment';
+import { locateArtworkFile } from './modules/assets/artworkFile';
 import { createCurrencyService } from './modules/currency/currencyService';
 import { createEssenceAwardService } from './modules/currency/essenceAwardService';
 import { createDailyService } from './modules/daily/dailyService';
@@ -450,6 +451,8 @@ async function main(): Promise<void> {
     rollRules: equipmentRollRules,
     getAffixes,
     getWorkshopConfig: () => contentSnapshot.equipmentWorkshop ?? null,
+    // Import previews warn about artwork this server cannot serve (CP-1).
+    artworkStatus: (relative) => locateArtworkFile(config.assetsDir, relative).status,
   });
   /**
    * Combat Trials: automatic fights against content-defined enemies, gated by

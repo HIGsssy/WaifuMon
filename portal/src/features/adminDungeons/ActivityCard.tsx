@@ -903,7 +903,7 @@ export function ActivityCard({
           />
         </div>
       )}
-      {open && encounterActivity && <div className="border-t border-border p-2.5"><EncounterActivity action={action} room={room} definition={definition} disabled={disabled} onChange={onChange} /></div>}
+      {open && encounterActivity && <div className="border-t border-border p-2.5"><EncounterActivity action={action} room={room} definition={definition} disabled={disabled} onChange={onChange} onDefinitionChange={onDefinitionChange} /></div>}
       {open && !eventActivity && !encounterActivity && (
         <fieldset disabled={disabled} className="space-y-3 border-t border-border p-2.5">
           <Essentials

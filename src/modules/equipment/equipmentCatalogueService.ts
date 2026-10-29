@@ -39,6 +39,7 @@ import {
 import {
   EquipmentDefinitionNotFoundError,
   EquipmentEnableConfirmationRequiredError,
+  EquipmentExportRefusedError,
   EquipmentValidationError,
   type EquipmentIssue,
 } from '../../shared/errors';
@@ -240,9 +241,23 @@ export interface RewardImpact {
   deferred: RewardImpactEntry[];
 }
 
+/**
+ * A package definition whose `artworkPath` this server cannot serve. Artwork
+ * travels in the assets release, not in the package, so this is a warning:
+ * it never blocks the import or changes its `planHash`.
+ */
+export interface ImportArtworkWarning {
+  key: string;
+  artworkPath: string;
+  /** `missing`: no file at that path here. `unsafe`: the path resolves outside the assets root. */
+  status: 'missing' | 'unsafe';
+}
+
 export interface CatalogueImportPreview extends ImportPreview {
   /** For each N/R/SR definition the import would create, what it would join once enabled. */
   rewardImpact: { key: string; impact: RewardImpact }[];
+  /** `checked` is false when this server was built without an assets directory to look in. */
+  artwork: { checked: boolean; warnings: ImportArtworkWarning[] };
 }
 
 export interface CatalogueHistoryEntry {
@@ -287,6 +302,11 @@ export interface EquipmentCatalogueService {
   impact(definition: Pick<RewardableDefinition, 'key' | 'slot' | 'rarity'>): Promise<RewardImpact>;
   /** Analysis, and optionally seeded sample rolls, for a stored key or an unsaved input. Writes nothing. */
   previewRoll(target: { key: string } | { input: unknown }, opts?: { seed?: number; count?: number }): Promise<RollPreview>;
+  /**
+   * No `keys` and no `query` exports everything. `keys` (wins over `query`)
+   * exports exactly those; `query` exports what the list would show. A scope
+   * that matches nothing is refused (`empty`), never widened.
+   */
   exportPackage(opts?: { keys?: readonly string[]; query?: CatalogueQuery; label?: string | null }): Promise<EquipmentPackage>;
   previewImport(raw: unknown): Promise<CatalogueImportPreview>;
   applyImport(raw: unknown, opts: { expectedPlanHash: string; actor: string | null; sourceFilename?: string | null }): ReturnType<EquipmentPromotionService['applyImport']>;
@@ -300,6 +320,8 @@ export interface EquipmentCatalogueServiceDeps {
   rollRules: Pick<EquipmentRollRulesService, 'forGrant' | 'affixLibraryForGrant'>;
   getAffixes(): EquipmentAffixCatalogue;
   getWorkshopConfig(): WorkshopConfig | null;
+  /** Whether this server's assets root can serve an artwork path (`locateArtworkFile`); omitted, previews skip the check. */
+  artworkStatus?(relativePath: string): 'available' | 'missing' | 'unsafe';
 }
 
 export const SAMPLE_ROLL_MAX = 20;
@@ -791,8 +813,16 @@ export function createEquipmentCatalogueService(deps: EquipmentCatalogueServiceD
     },
 
     async exportPackage(opts = {}) {
-      const keys = opts.keys && opts.keys.length > 0 ? opts.keys : opts.query ? filtered(await all(), opts.query).map((d) => d.key) : undefined;
-      return deps.promotion.exportPackage({ ...(keys ? { keys } : {}), label: opts.label ?? null });
+      const label = opts.label ?? null;
+      if (opts.keys === undefined && opts.query === undefined) return deps.promotion.exportPackage({ label });
+      const keys = opts.keys ?? filtered(await all(), opts.query!).map((d) => d.key);
+      if (keys.length === 0) {
+        throw new EquipmentExportRefusedError(
+          'empty',
+          opts.keys ? 'No equipment was selected, so nothing was exported.' : 'No equipment matches these filters, so nothing was exported.',
+        );
+      }
+      return deps.promotion.exportPackage({ keys, label });
     },
 
     async previewImport(raw) {
@@ -805,7 +835,20 @@ export function createEquipmentCatalogueService(deps: EquipmentCatalogueServiceD
         const impact = await impactOf({ key: definition.key, slot: definition.slot as EquipmentSlot, rarity: definition.rarity });
         if (impact.automatic.length + impact.deferred.length > 0) rewardImpact.push({ key: definition.key, impact });
       }
-      return { ...preview, rewardImpact };
+      const warnings: ImportArtworkWarning[] = [];
+      if (deps.artworkStatus) {
+        const statusOf = new Map<string, ReturnType<NonNullable<typeof deps.artworkStatus>>>();
+        for (const definition of preview.package.definitions) {
+          if (!definition.artworkPath) continue;
+          let status = statusOf.get(definition.artworkPath);
+          if (status === undefined) {
+            status = deps.artworkStatus(definition.artworkPath);
+            statusOf.set(definition.artworkPath, status);
+          }
+          if (status !== 'available') warnings.push({ key: definition.key, artworkPath: definition.artworkPath, status });
+        }
+      }
+      return { ...preview, rewardImpact, artwork: { checked: deps.artworkStatus !== undefined, warnings } };
     },
 
     applyImport(raw, opts) {

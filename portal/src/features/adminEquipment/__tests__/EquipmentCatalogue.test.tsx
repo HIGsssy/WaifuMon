@@ -637,6 +637,7 @@ const PREVIEW: ImportPreview = {
     },
   ],
   rewardImpact: [{ key: 'new_n', impact: WORKSHOP_IMPACT }],
+  artwork: { checked: true, warnings: [] },
 };
 
 describe('importing', () => {
@@ -680,6 +681,35 @@ describe('importing', () => {
       expect(applySpy).toHaveBeenCalledWith(JSON.parse(pkg), 'sha256:plan', undefined),
     );
     expect(await screen.findByTestId('import-result')).toHaveTextContent('import #7');
+  });
+
+  it('warns about artwork this server lacks without blocking the import', async () => {
+    vi.spyOn(api, 'previewEquipmentImport').mockResolvedValue({
+      ...PREVIEW,
+      artwork: {
+        checked: true,
+        warnings: [{ key: 'new_n', artworkPath: 'equipment/new_n.webp', status: 'missing' }],
+      },
+    });
+    const user = renderAt('/admin/equipment/import');
+    await user.click(await screen.findByLabelText('Package JSON'));
+    await user.paste(pkg);
+    await user.click(screen.getByRole('button', { name: 'Preview import' }));
+    const warnings = await screen.findByTestId('import-artwork-warnings');
+    expect(warnings).toHaveTextContent('equipment/new_n.webp');
+    expect(warnings).toHaveTextContent('(missing)');
+    await user.click(screen.getByLabelText('Confirm import'));
+    expect(screen.getByRole('button', { name: 'Import' })).toBeEnabled();
+  });
+
+  it('a preview without artwork warnings shows no artwork section', async () => {
+    vi.spyOn(api, 'previewEquipmentImport').mockResolvedValue(PREVIEW);
+    const user = renderAt('/admin/equipment/import');
+    await user.click(await screen.findByLabelText('Package JSON'));
+    await user.paste(pkg);
+    await user.click(screen.getByRole('button', { name: 'Preview import' }));
+    await screen.findByTestId('import-preview');
+    expect(screen.queryByTestId('import-artwork-warnings')).not.toBeInTheDocument();
   });
 
   it('a refused plan cannot be applied', async () => {

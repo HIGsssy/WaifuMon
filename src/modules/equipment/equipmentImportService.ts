@@ -43,8 +43,11 @@ import {
 } from '../../db/schema';
 import {
   AppError,
+  EquipmentExportKeysNotFoundError,
+  EquipmentExportRefusedError,
   EquipmentImportConflictError,
   EquipmentImportStaleError,
+  EquipmentValidationError,
   uniqueViolationConstraint,
   type EquipmentIssue,
 } from '../../shared/errors';
@@ -53,6 +56,7 @@ import { readPublishedRollRules, recordEquipmentAdminEvent } from './equipmentRo
 import {
   applyCatalogueImportDefaults,
   buildEquipmentPackage,
+  exportCapacityIssue,
   importPlanHash,
   parseEquipmentPackage,
   planEquipmentImport,
@@ -104,6 +108,14 @@ export interface ImportOptions {
 }
 
 export interface EquipmentPromotionService {
+  /**
+   * Omitting `keys` exports every definition; a `keys` list exports exactly
+   * those, so an empty list is an empty package — never the whole catalogue.
+   *
+   * @throws {EquipmentExportKeysNotFoundError} when a listed key has no definition.
+   * @throws {EquipmentExportRefusedError} when the package would exceed what
+   * import accepts (`too_large`) or holds a row import would refuse (`unportable`).
+   */
   exportPackage(opts?: { keys?: readonly string[]; label?: string | null; now?: Date }): Promise<EquipmentPackage>;
   /**
    * Validate and plan without writing anything.
@@ -259,14 +271,42 @@ export function createEquipmentPromotionService(deps: { db: Db }): EquipmentProm
 
   return {
     async exportPackage(opts = {}) {
-      const rows =
-        opts.keys && opts.keys.length > 0
-          ? await db.select().from(equipmentDefinitions).where(inArray(equipmentDefinitions.key, [...opts.keys]))
-          : await db.select().from(equipmentDefinitions);
-      return buildEquipmentPackage(rows, {
+      // `undefined` and `[]` are different scopes: an empty selection must
+      // never fall through to the unrestricted query.
+      let rows: EquipmentDefinitionRow[];
+      if (opts.keys === undefined) {
+        rows = await db.select().from(equipmentDefinitions);
+      } else {
+        const wanted = [...new Set(opts.keys)];
+        rows = wanted.length === 0 ? [] : await db.select().from(equipmentDefinitions).where(inArray(equipmentDefinitions.key, wanted));
+        const found = new Set(rows.map((r) => r.key));
+        const missing = wanted.filter((k) => !found.has(k)).sort();
+        if (missing.length > 0) throw new EquipmentExportKeysNotFoundError(missing);
+      }
+      const pkg = buildEquipmentPackage(rows, {
         exportedAt: (opts.now ?? new Date()).toISOString(),
         label: opts.label ?? null,
       });
+
+      const tooLarge = exportCapacityIssue(pkg);
+      if (tooLarge) throw new EquipmentExportRefusedError('too_large', tooLarge);
+      // The importer's own parse: a row it would refuse (an EX row inserted by
+      // hand, a region since removed) is named here, not discovered on import.
+      try {
+        parseEquipmentPackage(pkg);
+      } catch (err) {
+        if (!(err instanceof EquipmentValidationError)) throw err;
+        throw new EquipmentExportRefusedError(
+          'unportable',
+          'Some definitions could not be imported anywhere as stored, so nothing was exported. Fix or deselect them first.',
+          err.issues.map((issue) => {
+            const index = /^definitions\[(\d+)\]/.exec(issue.path);
+            const key = index ? pkg.definitions[Number(index[1])]?.key : undefined;
+            return key ? { ...issue, path: issue.path.replace(/^definitions\[\d+\]/, key) } : issue;
+          }),
+        );
+      }
+      return pkg;
     },
 
     async previewImport(raw, opts = {}) {

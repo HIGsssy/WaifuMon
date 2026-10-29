@@ -1098,6 +1098,43 @@ export class EquipmentImportStaleError extends AppError {
 }
 
 /**
+ * A selected export named keys no definition has. Nothing was exported: a
+ * package that silently left them out would read as a complete selection.
+ */
+export class EquipmentExportKeysNotFoundError extends AppError {
+  readonly missingKeys: string[];
+  constructor(missingKeys: readonly string[]) {
+    const keys = Array.isArray(missingKeys) ? missingKeys.map(String) : [];
+    super(
+      'EQUIPMENT_EXPORT_KEYS_NOT_FOUND',
+      `Equipment export named unknown key(s): ${keys.join(', ')}`,
+      `No equipment definition has the key${keys.length === 1 ? '' : 's'} ${keys.join(', ')}. Nothing was exported.`,
+    );
+    this.missingKeys = keys;
+  }
+}
+
+/**
+ * Why an export was refused rather than written:
+ *  - `empty` — the filter or selection matched nothing (never widened to everything);
+ *  - `too_large` — more definitions or bytes than this build's importer accepts;
+ *  - `unportable` — a stored definition the importer would refuse (`issues`).
+ */
+export type EquipmentExportRefusal = 'empty' | 'too_large' | 'unportable';
+
+/** An export that would not produce a package this server could import back. Nothing was exported. */
+export class EquipmentExportRefusedError extends AppError {
+  readonly reason: EquipmentExportRefusal;
+  readonly issues: EquipmentIssue[];
+  constructor(reason: EquipmentExportRefusal, userMessage: string, issues: readonly EquipmentIssue[] = []) {
+    const message = String(userMessage);
+    super('EQUIPMENT_EXPORT_REFUSED', `Equipment export refused (${String(reason)}): ${message}`, message);
+    this.reason = reason;
+    this.issues = Array.isArray(issues) ? [...issues] : [];
+  }
+}
+
+/**
  * Enabling this definition would add it to automatic reward sources right
  * away, and the request did not acknowledge that. `impact` names them.
  */

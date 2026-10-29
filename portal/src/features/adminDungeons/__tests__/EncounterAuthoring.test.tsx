@@ -1,3 +1,4 @@
+import * as sharedApi from '@/api/adminDungeonSpeciesPools';
 import { useState } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
@@ -32,6 +33,7 @@ const normal: api.DungeonSpeciesRef = {
 let world: ReturnType<typeof install>;
 beforeEach(() => {
   world = install();
+  vi.spyOn(sharedApi, 'listSharedPools').mockResolvedValue([]);
   stubObjectUrls();
   vi.spyOn(api, 'getDungeonSpecies').mockResolvedValue({
     species: [
@@ -118,6 +120,7 @@ function Harness({
           definition={d}
           disabled={false}
           onChange={onChange}
+          onDefinitionChange={setD}
         />
       )}
       <output data-testid="draft-output">{JSON.stringify(d)}</output>

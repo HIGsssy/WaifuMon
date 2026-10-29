@@ -113,6 +113,7 @@ describe('proxied responses carry exactly one copy of each header', () => {
       '^~ /api/v1/admin/bosses/import/',
       '^~ /api/v1/admin/dungeons/import/',
       '^~ /api/v1/admin/encounters/import/',
+      '^~ /api/v1/admin/equipment/import/',
       '^~ /auth/',
     ]);
   });
@@ -244,6 +245,15 @@ describe('request body size', () => {
     const match = importBlock?.body.match(/client_max_body_size\s+(\d+)m;/);
     expect(match).toBeTruthy();
     expect(Number(match![1])).toBeGreaterThan(8);
+  });
+
+  it('lets an Equipment Catalogue import through to the API’s 4 MiB + 64 KiB cap', () => {
+    // EQUIPMENT_IMPORT_BODY_LIMIT_BYTES: a 1,000-definition package is ~2.5 MiB,
+    // well past nginx's 1 MB default.
+    const body = blocks.find((b) => b.selector === '^~ /api/v1/admin/equipment/import/')?.body ?? '';
+    const mib = Number(body.match(/client_max_body_size\s+(\d+)m;/)?.[1] ?? 0);
+    expect(mib).toBeGreaterThan(4);
+    expect(body).toContain('proxy_pass ${PORTAL_API_UPSTREAM};');
   });
 
   it('lets a boss artwork upload and a boss roster import through to the API’s own limits', () => {

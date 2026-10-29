@@ -6,12 +6,15 @@ import { describe, expect, it } from 'vitest';
 import {
   buildEquipmentPackage,
   EQUIPMENT_PACKAGE_FORMAT,
+  EQUIPMENT_PACKAGE_MAX_BYTES,
+  EQUIPMENT_PACKAGE_MAX_DEFINITIONS,
+  exportCapacityIssue,
   parseEquipmentPackage,
   planEquipmentImport,
   type ImportTargetDefinition,
 } from '../../src/modules/equipment/equipmentPackage';
 import { parseEquipmentDefinition } from '../../src/modules/equipment/definitionSchema';
-import { EquipmentValidationError } from '../../src/shared/errors';
+import { EquipmentExportKeysNotFoundError, EquipmentExportRefusedError, EquipmentValidationError } from '../../src/shared/errors';
 import type { EquipmentDefinitionRow } from '../../src/db/schema';
 
 const range = (min: number, max: number, step: number) => ({
@@ -206,5 +209,43 @@ describe('planEquipmentImport', () => {
     const plan = planEquipmentImport(parseEquipmentPackage(pkg([])), target([[ring, 5]]));
     expect(plan.entries).toEqual([]);
     expect(plan.ok).toBe(true);
+  });
+});
+
+describe('exportCapacityIssue', () => {
+  const parsed = () => parseEquipmentPackage(pkg([ring, belt]));
+
+  it('accepts a package within both limits, by default the importer’s own', () => {
+    expect(exportCapacityIssue(parsed())).toBeNull();
+    expect(EQUIPMENT_PACKAGE_MAX_DEFINITIONS).toBe(1000);
+    expect(EQUIPMENT_PACKAGE_MAX_BYTES).toBe(4 * 1024 * 1024);
+  });
+
+  it('refuses more definitions than a package may hold, rather than trimming', () => {
+    expect(exportCapacityIssue(parsed(), { maxDefinitions: 1, maxBytes: EQUIPMENT_PACKAGE_MAX_BYTES })).toMatch(/2 definitions is more than the 1/);
+  });
+
+  it('refuses a package whose compact UTF-8 JSON exceeds the byte limit, counting multi-byte text as bytes', () => {
+    const p = parsed();
+    const bytes = Buffer.byteLength(JSON.stringify(p), 'utf8');
+    expect(exportCapacityIssue(p, { maxDefinitions: 10, maxBytes: bytes })).toBeNull();
+    expect(exportCapacityIssue(p, { maxDefinitions: 10, maxBytes: bytes - 1 })).toMatch(/more than the/);
+    const wide = { ...p, label: '\u{1F5E1}'.repeat(10) }; // 4 bytes, 2 UTF-16 units each
+    expect(exportCapacityIssue(wide, { maxDefinitions: 10, maxBytes: bytes + 30 })).toMatch(/more than the/);
+  });
+});
+
+describe('export refusal errors', () => {
+  it('carry their structure, and tolerate junk constructor input', () => {
+    expect(new EquipmentExportKeysNotFoundError(['a', 'b'])).toMatchObject({ code: 'EQUIPMENT_EXPORT_KEYS_NOT_FOUND', missingKeys: ['a', 'b'] });
+    expect(new EquipmentExportRefusedError('empty', 'nothing', [{ path: 'x', message: 'y' }])).toMatchObject({
+      code: 'EQUIPMENT_EXPORT_REFUSED',
+      reason: 'empty',
+      issues: [{ path: 'x', message: 'y' }],
+      userMessage: 'nothing',
+    });
+    const junk = new Date(0) as never;
+    expect(new EquipmentExportKeysNotFoundError(junk).missingKeys).toEqual([]);
+    expect(new EquipmentExportRefusedError(junk, junk, junk).issues).toEqual([]);
   });
 });

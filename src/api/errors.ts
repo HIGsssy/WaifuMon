@@ -550,6 +550,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   EQUIPMENT_DEFINITION_STALE: 409,
   /** The catalogue changed between import preview and apply; preview again. */
   EQUIPMENT_IMPORT_STALE: 409,
+  /** A selected export named keys no definition has (`details.missingKeys`); nothing exported. */
+  EQUIPMENT_EXPORT_KEYS_NOT_FOUND: 404,
+  /** Empty scope, over capacity, or unportable rows (`details.reason`); nothing exported. */
+  EQUIPMENT_EXPORT_REFUSED: 422,
   /** Enabling would join automatic rewards; resend with the acknowledgement. */
   EQUIPMENT_ENABLE_CONFIRMATION_REQUIRED: 409,
   EQUIPMENT_CONFIG_STALE: 409,
