@@ -3652,6 +3652,21 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_pumpkinwitch",
+        "name": "Pumpkin Witch",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "witch",
+          "pumpkin"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -4078,6 +4093,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_harvestmask",
+        "name": "Harvest Mask",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "kitsune"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -4492,6 +4521,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_mummy",
+        "name": "Mummy",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "mummy"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -4831,6 +4874,20 @@
         "unlock": {
           "type": "level",
           "atLevel": 50
+        }
+      },
+      {
+        "id": "halloween_catrina",
+        "name": "La Catrina",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "catrina"
+        ],
+        "unlock": {
+          "type": "owned"
         }
       }
     ],
@@ -6462,6 +6519,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_sheetghost",
+        "name": "Sheet Ghost",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "ghost"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -6996,6 +7067,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_vampire",
+        "name": "Vampire",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "vampire"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -7356,6 +7441,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_supergirl",
+        "name": "Supergirl",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "supergirl"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -7537,6 +7636,19 @@
         "unlock": {
           "type": "level",
           "atLevel": 50
+        }
+      },
+      {
+        "id": "halloween_horseman",
+        "name": "Headless Horseman",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "headless-horseman"
+        ],
+        "unlock": {
+          "type": "owned"
         }
       }
     ],
@@ -8173,6 +8285,20 @@
           "type": "level",
           "atLevel": 50
         }
+      },
+      {
+        "id": "halloween_devil",
+        "name": "Devil",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "devil"
+        ],
+        "unlock": {
+          "type": "owned"
+        }
       }
     ],
     "buddyBonus": {
@@ -8443,6 +8569,20 @@
         "unlock": {
           "type": "level",
           "atLevel": 50
+        }
+      },
+      {
+        "id": "halloween_reaper",
+        "name": "Grim Reaper",
+        "cosmeticRarity": "seasonal",
+        "sortOrder": 60,
+        "tags": [
+          "halloween",
+          "cosplay",
+          "reaper"
+        ],
+        "unlock": {
+          "type": "owned"
         }
       }
     ],
