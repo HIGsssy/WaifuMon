@@ -8,7 +8,10 @@ import { speciesAccessView, speciesSelectable } from './dungeonSpeciesModel';
 import { ArtworkThumbnail } from '@/components/media/ArtworkThumbnail';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import type { DungeonSpeciesUnavailableReason } from '@/api/dungeonSpeciesTypes';
+import type {
+  DungeonSpeciesUnavailableReason,
+  DungeonSpeciesRegion,
+} from '@/api/dungeonSpeciesTypes';
 export const speciesReasonText: Record<DungeonSpeciesUnavailableReason, string> = {
   missing: 'Species is missing from the catalogue',
   disabled: 'Species is disabled',
@@ -37,7 +40,8 @@ export function SpeciesAvailability({
         directRescue: species.directRescue,
         source: null,
       };
-  const admissible = !view.permitted && view.reason === 'not_permitted' && species.dungeonPolicyAllowed;
+  const admissible =
+    !view.permitted && view.reason === 'not_permitted' && species.dungeonPolicyAllowed;
   return (
     <div className="min-w-0 space-y-1">
       <p className={hint}>
@@ -48,7 +52,11 @@ export function SpeciesAvailability({
         {species.regionExclusive ? 'Region-exclusive' : 'No region exclusivity'} ·{' '}
         {species.dungeonExclusive ? 'Dungeon-exclusive' : 'No dungeon exclusivity'}
       </p>
-      <p className={view.permitted ? hint : admissible ? 'text-xs font-medium' : 'text-xs text-danger'}>
+      <p
+        className={
+          view.permitted ? hint : admissible ? 'text-xs font-medium' : 'text-xs text-danger'
+        }
+      >
         {view.permitted
           ? view.source === 'dungeon' || view.source === 'both'
             ? 'Permitted by this dungeon’s Species access'
@@ -88,9 +96,18 @@ export function SpeciesAvailability({
     </div>
   );
 }
-export function SpeciesThumb({ species }: { species: DungeonSpeciesRef }) {
+export function SpeciesThumb({
+  species,
+  compact = false,
+}: {
+  species: DungeonSpeciesRef;
+  compact?: boolean;
+}) {
   return (
-    <div className="w-16 shrink-0" data-testid={`species-${species.slug}-thumbnail`}>
+    <div
+      className={compact ? 'w-12 shrink-0' : 'w-16 shrink-0'}
+      data-testid={`species-${species.slug}-thumbnail`}
+    >
       <ArtworkThumbnail path={species.slug} load={dungeonSpeciesArtworkBlob} alt={species.name} />
     </div>
   );
@@ -103,23 +120,35 @@ export function DungeonSpeciesPicker({
   purpose = 'pool',
   dungeonKey,
   policies,
+  regions = [],
+  onRemove,
 }: {
   species: DungeonSpeciesRef[];
   listed: Set<string>;
   disabled: boolean;
   onSelect: (slug: string) => void;
+  onRemove?: (slug: string) => void;
+  regions?: DungeonSpeciesRegion[];
   purpose?: 'pool' | 'encounter' | 'shared_pool';
   dungeonKey: string;
   /** The draft's Species access entries. */
   policies?: DungeonSpeciesPolicyEntry[] | undefined;
 }) {
   const entryOf = (slug: string) => policies?.find((p) => p.species === slug);
-  const permitted = (s: DungeonSpeciesRef) => speciesAccessView(s, dungeonKey, entryOf(s.slug)).permitted;
+  const permitted = (s: DungeonSpeciesRef) =>
+    speciesAccessView(s, dungeonKey, entryOf(s.slug)).permitted;
   const [search, setSearch] = useState('');
   const [rarity, setRarity] = useState('');
   const [race, setRace] = useState('');
   const [affinity, setAffinity] = useState('');
   const [status, setStatus] = useState('all');
+  const [region, setRegion] = useState('');
+  const [exclusive, setExclusive] = useState('');
+  const shared = purpose === 'shared_pool';
+  const selectable = (s: DungeonSpeciesRef) =>
+    shared
+      ? s.enabled && (s.dungeonPolicyAllowed || s.dungeonAccess.length > 0)
+      : speciesSelectable(s, dungeonKey, entryOf(s.slug));
   const needle = search.trim().toLowerCase();
   const rows = species.filter(
     (s) =>
@@ -127,7 +156,18 @@ export function DungeonSpeciesPicker({
       (!rarity || s.rarity === rarity) &&
       (!race || s.race === race) &&
       (!affinity || s.affinity === affinity) &&
-      (status === 'all' || (status === 'permitted' ? permitted(s) : !permitted(s))),
+      (status === 'all' ||
+        (status === 'permitted'
+          ? shared
+            ? selectable(s)
+            : permitted(s)
+          : !(shared ? selectable(s) : permitted(s)))) &&
+      (!shared ||
+        !region ||
+        (region === 'unassigned' ? s.regions?.length === 0 : s.regions?.includes(region))) &&
+      (!shared ||
+        !exclusive ||
+        (exclusive === 'dungeon' ? s.dungeonExclusive : !s.dungeonExclusive)),
   );
   return (
     <section aria-label="Species picker" className="space-y-2">
@@ -183,44 +223,139 @@ export function DungeonSpeciesPicker({
             onChange={(e) => setStatus(e.target.value)}
           >
             <option value="all">All</option>
-            <option value="permitted">Permitted</option>
+            <option value="permitted">{shared ? 'Can add to pool' : 'Permitted'}</option>
             <option value="unavailable">Unavailable</option>
           </select>
         </label>
+        {shared && (
+          <>
+            <label className={hint}>
+              Region
+              <select
+                aria-label="Filter species by region"
+                className="block w-full rounded border border-border bg-surface p-2 text-sm"
+                value={region}
+                onChange={(e) => setRegion(e.target.value)}
+              >
+                <option value="">All regions</option>
+                {regions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+                <option value="unassigned">Unassigned / No Region</option>
+              </select>
+            </label>
+            <label className={hint}>
+              Dungeon Exclusive
+              <select
+                aria-label="Filter species by dungeon exclusivity"
+                className="block w-full rounded border border-border bg-surface p-2 text-sm"
+                value={exclusive}
+                onChange={(e) => setExclusive(e.target.value)}
+              >
+                <option value="">All species</option>
+                <option value="dungeon">Dungeon Exclusive</option>
+                <option value="other">Not Dungeon Exclusive</option>
+              </select>
+            </label>
+          </>
+        )}
       </div>
+      {shared && (
+        <p role="status" className={hint}>
+          {rows.length} matching · {listed.size} selected. Region means published Region Pool
+          membership.
+        </p>
+      )}
       <ul className="max-h-96 space-y-2 overflow-y-auto" aria-label="Matching species">
         {rows.map((s) => {
-          const selectable = purpose === 'shared_pool' ? s.enabled && (s.dungeonPolicyAllowed || s.dungeonAccess.length > 0) : speciesSelectable(s, dungeonKey, entryOf(s.slug));
+          const canAdd = selectable(s);
+          if (shared)
+            return (
+              <li
+                key={s.slug}
+                className="flex items-center gap-2 rounded border border-border p-2"
+                data-testid={`species-option-${s.slug}`}
+              >
+                <SpeciesThumb species={s} compact />
+                <div className="min-w-0 flex-1">
+                  <p className="break-words text-sm font-medium">{s.name}</p>
+                  <p className={hint}>
+                    {s.rarity} · {s.race} · {s.affinity}
+                    {s.dungeonExclusive ? ' · Dungeon Exclusive' : ''}
+                  </p>
+                  <p className={hint}>
+                    {s.regions
+                      ? s.regions
+                          .map((id) => regions.find((r) => r.id === id)?.name ?? id)
+                          .join(', ') || 'Unassigned / No Region'
+                      : 'Region data unavailable'}
+                  </p>
+                  {!canAdd && (
+                    <p className="text-xs text-danger">Unavailable for dungeon encounters</p>
+                  )}
+                  {listed.has(s.slug) && <p className="text-xs font-medium">In this pool</p>}
+                </div>
+                {listed.has(s.slug) && onRemove ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={disabled}
+                    aria-label={`Remove species ${s.name}`}
+                    onClick={() => onRemove(s.slug)}
+                  >
+                    Remove
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={disabled || !canAdd || listed.has(s.slug)}
+                    aria-label={`Add species ${s.name}`}
+                    onClick={() => {
+                      if (canAdd && !listed.has(s.slug)) onSelect(s.slug);
+                    }}
+                  >
+                    {listed.has(s.slug) ? 'In pool' : 'Add'}
+                  </Button>
+                )}
+              </li>
+            );
           const ready = permitted(s);
           return (
-          <li
-            key={s.slug}
-            className="space-y-2 rounded border border-border p-2"
-            data-testid={`species-option-${s.slug}`}
-          >
-            <div className="flex gap-2">
-              <SpeciesThumb species={s} />
-              <div className="min-w-0">
-                <p className="break-words text-sm font-medium">{s.name}</p>
-                {purpose === 'shared_pool' ? <p className={hint}>{s.rarity} · {s.race} · {s.affinity} · {s.enabled ? 'Enabled' : 'Disabled'}{s.dungeonExclusive ? ' · Dungeon-exclusive' : ''}. Eligibility and acquisition terms are checked separately for each dungeon.</p> : <SpeciesAvailability species={s} dungeonKey={dungeonKey} entry={entryOf(s.slug)} />}
-              </div>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={disabled || !selectable || listed.has(s.slug)}
-              onClick={() => {
-                if (selectable && !listed.has(s.slug)) onSelect(s.slug);
-              }}
-              aria-label={`${purpose !== 'encounter' ? 'Add species' : 'Select species'} ${s.name}`}
+            <li
+              key={s.slug}
+              className="space-y-2 rounded border border-border p-2"
+              data-testid={`species-option-${s.slug}`}
             >
-              {listed.has(s.slug)
-                ? 'Already in this pool'
-                : !selectable
-                  ? purpose === 'shared_pool' ? 'Unavailable for dungeon encounters' : 'Unavailable in this dungeon'
-                  : `${purpose !== 'encounter' ? 'Add to pool' : 'Select WaifuMon'}${ready || purpose === 'shared_pool' ? '' : ' and set access'}`}
-            </Button>
-          </li>
+              <div className="flex gap-2">
+                <SpeciesThumb species={s} />
+                <div className="min-w-0">
+                  <p className="break-words text-sm font-medium">{s.name}</p>
+                  <SpeciesAvailability
+                    species={s}
+                    dungeonKey={dungeonKey}
+                    entry={entryOf(s.slug)}
+                  />
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={disabled || !canAdd || listed.has(s.slug)}
+                onClick={() => {
+                  if (canAdd && !listed.has(s.slug)) onSelect(s.slug);
+                }}
+                aria-label={`${purpose !== 'encounter' ? 'Add species' : 'Select species'} ${s.name}`}
+              >
+                {listed.has(s.slug)
+                  ? 'Already in this pool'
+                  : !canAdd
+                    ? 'Unavailable in this dungeon'
+                    : `${purpose !== 'encounter' ? 'Add to pool' : 'Select WaifuMon'}${ready ? '' : ' and set access'}`}
+              </Button>
+            </li>
           );
         })}
       </ul>

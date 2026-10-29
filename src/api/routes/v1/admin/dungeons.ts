@@ -1,3 +1,4 @@
+import { REGIONS, regionLabel } from '../../../../modules/locations/regions';
 import { resolveSharedPools } from '../../../../modules/dungeons/sharedPools/sharedPoolDefinition';
 import { SceneSpriteInstanceSchema, resolveSceneSpriteInstance } from '../../../../modules/dungeons/sceneSprites/sceneSpriteDefinition';
 import { composeEnvironmentalScene } from '../../../../modules/artworkAssets/sceneLayers';
@@ -358,6 +359,7 @@ const speciesScenarioSchema = z.object({
 });
 const speciesCatalogueSchema = z.object({
   slug: z.string(), name: z.string(), rarity: z.string(), race: z.string(), affinity: z.string(),
+  regions: z.array(z.string()),
   enabled: z.boolean(), regionExclusive: z.boolean(), dungeonExclusive: z.boolean(), permitted: z.boolean(),
   unavailableReason: speciesReasonSchema, dungeonPolicyAllowed: z.boolean(),
   dungeonAccess: z.array(z.object({ dungeon: z.string(), perPlayerLimit: z.union([z.number().int().positive(), z.literal('unlimited')]).optional(), directRescue: z.boolean().optional() })),
@@ -1166,13 +1168,13 @@ export const adminDungeonRoutes =
       onRequest: gate('dungeons.read'),
       schema: { tags, summary: 'Read-only species catalogue with live availability for the named dungeon; no player counts',
         querystring: z.object({ dungeonKey: z.string().min(1).max(DUNGEON_KEY_MAX_LENGTH).regex(DUNGEON_KEY_PATTERN) }),
-        response: { 200: dataSchema(z.object({ species: z.array(speciesCatalogueSchema) })), ...commonErrorResponses } },
+        response: { 200: dataSchema(z.object({ species: z.array(speciesCatalogueSchema), regions: z.array(z.object({ id: z.string(), name: z.string() })) })), ...commonErrorResponses } },
     }, async (req) => {
       const content = new Map(ctx.getContent().species.map((s) => [s.slug, s]));
       const species = (await dungeons.speciesCatalogue(req.query.dungeonKey)).map(({ archetype, ...s }) => ({
         ...s, dungeonAccess: [...s.dungeonAccess], race: resolveRace(content.get(s.slug) ?? { archetype }),
       }));
-      return ok(req, { species });
+      return ok(req, { species, regions: REGIONS.map(id => ({ id, name: ctx.getContent().regions.find(r => r.id === id)?.name ?? regionLabel(id) })) });
     });
     app.get('/admin/dungeons/capture-items', {
       onRequest: gate('dungeons.read'),

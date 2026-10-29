@@ -13,6 +13,8 @@ export interface DungeonSpeciesRef {
   race: string;
   affinity: string;
   enabled: boolean;
+  /** Published Region Pool memberships; absent only on older cached reference responses. */
+  regions?: string[];
   regionExclusive: boolean;
   dungeonExclusive: boolean;
   /** Judged by species content alone; the dungeon's own Species access is applied by the editor. */
@@ -56,3 +58,5 @@ export interface DungeonSpeciesPoolAnalysis {
   base: DungeonSpeciesPoolOdds;
   scenario: DungeonSpeciesPoolOdds;
 }
+
+export interface DungeonSpeciesRegion { id: string; name: string }

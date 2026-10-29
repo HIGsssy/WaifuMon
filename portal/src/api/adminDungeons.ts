@@ -1,4 +1,4 @@
-import type { DungeonSpeciesPoolAnalysis, DungeonSpeciesScenario, DungeonSpeciesRef } from './dungeonSpeciesTypes';
+import type { DungeonSpeciesPoolAnalysis, DungeonSpeciesScenario, DungeonSpeciesRef, DungeonSpeciesRegion } from './dungeonSpeciesTypes';
 export type { DungeonSpeciesPoolAnalysis, DungeonSpeciesPoolOdds, DungeonSpeciesScenario, DungeonSpeciesRef } from './dungeonSpeciesTypes';
 import type { SceneSpriteInstance } from './adminDungeonSceneSprites';
 import type { SpritePlacement } from './adminArtworkAssets';
@@ -833,7 +833,7 @@ export function updateProgressionCurrency(
 }
 
 /** Policy stays on the server; metadata only, no player data or writes. */
-export function getDungeonSpecies(dungeonKey: string, signal?: AbortSignal): Promise<{ species: DungeonSpeciesRef[] }> {
+export function getDungeonSpecies(dungeonKey: string, signal?: AbortSignal): Promise<{ species: DungeonSpeciesRef[]; regions?: DungeonSpeciesRegion[] }> {
   return getData(`${base}/species`, { params: { dungeonKey }, ...opts(signal) });
 }
 export function getDungeonCaptureItems(signal?: AbortSignal): Promise<{ items: Array<{ slug: string; name: string; enabled: boolean; guaranteed: boolean; rarities: string[] | null }> }> {

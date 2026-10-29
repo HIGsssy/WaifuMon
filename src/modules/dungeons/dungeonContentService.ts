@@ -71,6 +71,8 @@ import {
   items,
   species,
   progressionCurrencies,
+  regionPools,
+  regionPoolRevisionEntries,
   rewardTables,
   type DungeonContentEventAction,
   type DungeonDefinitionRow,
@@ -390,7 +392,7 @@ export interface DungeonContentService extends DungeonImportService {
   get(key: string): Promise<DungeonDetail | null>;
   reference(): Promise<DungeonReferenceData>;
   /** Live read-only catalogue for pool authoring; no player data. */
-  speciesCatalogue(dungeonKey: string): Promise<DungeonAuthoringSpecies[]>;
+  speciesCatalogue(dungeonKey: string): Promise<Array<DungeonAuthoringSpecies & { regions: string[] }>>;
   encounterCatalogue(): Promise<{ species: SpeciesRow[]; items: ItemRow[]; speciesAccess: Record<string, readonly import('./content/dungeonDefinition').DungeonSpeciesAccess[]> }>;
   speciesDependencyStatus(key: string): Promise<SpeciesRevisionStatus[] | null>;
   /** The active managed asset a dungeon artwork reference means here, as a run would resolve it; null when none. */
@@ -1006,6 +1008,16 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
 
     async speciesCatalogue(dungeonKey) {
       const rows = await db.select().from(species).orderBy(asc(species.name), asc(species.slug));
+      // Read-only published membership, matching the Region Pools catalogue.
+      // Drafts and shipped encounterPool JSON are not the current authority.
+      const memberships = await db.select({ speciesId: regionPoolRevisionEntries.speciesId, regionId: regionPools.regionId })
+        .from(regionPools).innerJoin(regionPoolRevisionEntries, eq(regionPoolRevisionEntries.revisionId, regionPools.publishedRevisionId));
+      const regionsBySpecies = new Map<number, Set<string>>();
+      for (const membership of memberships) {
+        const regions = regionsBySpecies.get(membership.speciesId) ?? new Set<string>();
+        regions.add(membership.regionId);
+        regionsBySpecies.set(membership.speciesId, regions);
+      }
       return rows.map((row) => {
         const policy = dungeonSpeciesPolicy(row, deps.getSpeciesAccess)!;
         const access = policy.access?.find((a) => a.dungeon === dungeonKey);
@@ -1013,6 +1025,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
         const directReason = dungeonSpeciesUnavailableReason(policy, dungeonKey, true);
         return {
           slug: row.slug, name: row.name, rarity: row.rarity, archetype: row.archetype, affinity: row.affinity,
+          regions: [...(regionsBySpecies.get(row.id) ?? [])].sort(),
           enabled: row.enabled, regionExclusive: row.tags.includes('region_exclusive'), dungeonExclusive: row.tags.includes('dungeon_exclusive'),
           dungeonAccess: policy.access ?? [], permitted: reason === null, unavailableReason: reason,
           // Whether this dungeon's own Species access can admit her; `permitted` is species content alone.

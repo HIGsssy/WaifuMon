@@ -1,3 +1,5 @@
+import { REGIONS } from '../../../src/modules/locations/regions';
+import { publishRegionPoolRevisionForTest } from '../../helpers/regionPoolFixtures';
 import { createSharedDungeonPoolService } from '../../../src/modules/dungeons/sharedPools/sharedPoolService';
 /**
  * Portal admin — dungeon authoring over HTTP, against a real database. Pins
@@ -20,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPlatformApiServer } from '../../../src/api/server';
 import type { ZodFastify } from '../../../src/api/plugins/typeProvider';
 import type { PortalSession, PortalSessionService } from '../../../src/api/portalSession';
-import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items, playerInventory, species } from '../../../src/db/schema';
+import { dungeonContentEvents, dungeonDefinitions, dungeonRevisions, dungeonRunEvents, dungeonRuns, items, playerInventory, species, regionPools, regionPoolRevisions, regionPoolRevisionEntries, regionEncounterPools } from '../../../src/db/schema';
 import { DungeonDefinitionSchema } from '../../../src/modules/dungeons/content/dungeonDefinition';
 import { startDungeonRun } from '../../../src/modules/dungeons/engine/step';
 import { createDungeonLootTableService } from '../../../src/modules/dungeons/dungeonLootTableService';
@@ -1846,5 +1848,33 @@ describe('shared Dungeon WaifuMon Pools API', () => {
     expect(data<Json[]>(await as(READER_TOKEN, 'GET', `${root}/api_shared_pool/history`)).map(e => e.action)).toEqual(['created', 'enabled']);
     expect((await as(WRITER_TOKEN, 'DELETE', `${root}/api_shared_pool`)).statusCode).toBe(404);
     expect((await as(WRITER_TOKEN, 'PUT', `${root}/api_shared_pool`, { definition: { ...definition, entries: [{ id: 'e', species: 'missing', weight: 1 }] }, expectedRevision: 2 })).statusCode).toBe(400);
+  });
+});
+
+
+describe('Dungeon species reference region metadata', () => {
+  it('reports published multi-region membership, all supported regions, and independent exclusivity without writes', async () => {
+    for (const regionId of ['waifu-valley', 'twin-peeks'] as const) {
+      await w.t.db.insert(regionPools).values({ regionId, draftEntries: [], draftHash: `sha256:${'0'.repeat(64)}` }).onConflictDoNothing();
+      await publishRegionPoolRevisionForTest(w.t.db, regionId, [{ species: 'neko_barista', weight: 1 }]);
+      await w.t.db.update(regionPools).set({ draftEntries: [{ species: 'gym_oni', weight: 10 }] }).where(eq(regionPools.regionId, regionId));
+    }
+    const snapshot = async () => ({ pools: await w.t.db.select().from(regionPools), revisions: await w.t.db.select().from(regionPoolRevisions), entries: await w.t.db.select().from(regionPoolRevisionEntries), hunting: await w.t.db.select().from(regionEncounterPools), species: await w.t.db.select().from(species) });
+    const before = await snapshot();
+    const result = await as(READER_TOKEN, 'GET', '/admin/dungeons/species?dungeonKey=shared_pool_catalogue');
+    expect(result.statusCode, result.body).toBe(200);
+    const response = data<Json>(result);
+    expect(response.regions.map((r: Json) => r.id)).toEqual([...REGIONS]);
+    expect(response.regions.every((r: Json) => !!r.name)).toBe(true);
+    expect(response.species.find((s: Json) => s.slug === 'neko_barista').regions).toEqual(expect.arrayContaining(['twin-peeks', 'waifu-valley']));
+    const publishedIds = new Set(before.pools.map(p => p.publishedRevisionId));
+    const assigned = new Set(before.entries.filter(e => publishedIds.has(e.revisionId)).map(e => e.speciesId));
+    const unassignedRow = before.species.find(s => !assigned.has(s.id))!;
+    expect(unassignedRow).toBeDefined();
+    const unassigned = response.species.find((s: Json) => s.slug === unassignedRow.slug);
+    expect(unassigned.regions).toEqual([]);
+    expect(response.species.find((s: Json) => s.slug === 'gym_oni').regions).not.toEqual(expect.arrayContaining(['waifu-valley', 'twin-peeks']));
+    expect(unassigned.dungeonExclusive).toBe(before.species.find(s => s.slug === unassigned.slug)!.tags.includes('dungeon_exclusive'));
+    expect(await snapshot()).toEqual(before);
   });
 });
