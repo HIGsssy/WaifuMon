@@ -906,6 +906,18 @@
      "type": "level",
      "atLevel": 50
     }
+   },
+   {
+    "id": "halloween_nun",
+    "name": "Nun",
+    "cosmeticRarity": "seasonal",
+    "sortOrder": 60,
+    "tags": [
+     "halloween"
+    ],
+    "unlock": {
+     "type": "owned"
+    }
    }
   ],
   "buddyBonus": {
