@@ -50376,6 +50376,65 @@
         }
       }
     },
+    "waifumon/sandworm_bride/halloween_nun": {
+      "source": "waifumon/sandworm_bride/halloween_nun.png",
+      "sourceSha256": "c8fbf0b5b535a419663b06559d8642fb51dd4a5884c086142c2394f96faf8973",
+      "sourceBytes": 2719873,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/sandworm_bride/halloween_nun.webp",
+          "bytes": 18836,
+          "sha256": "29f6204ed676e32feb9bfbcd311b9aac80822a631c3404b2a3e4166367a9b804",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/sandworm_bride/halloween_nun.webp",
+          "bytes": 55186,
+          "sha256": "c86ff47de5b3d5df691b0cc475378cf4a7096604c6addfb982c962c6fca3f250",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/sandworm_bride/halloween_nun.webp",
+          "bytes": 148150,
+          "sha256": "d2d86d210716a8e9866c386cffaf0685ce570fa30943533f144efb4956279d33",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/sandworm_bride/halloween_nun.webp",
+          "bytes": 324762,
+          "sha256": "6a80dfd3f038752c69b303d1932737c32680de9b995b65f02f6363ff52e594d1",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/sandworm_bride/level_10": {
       "source": "waifumon/sandworm_bride/level_10.png",
       "sourceSha256": "3d4046cf7699e0b27de61e628b4dad08b38fca87f2b4a00ab9305f0a0719f617",
