@@ -1,3 +1,4 @@
+import { loadSharedPoolCatalogue } from './sharedPools/sharedPoolService';
 /**
  * The live species policy a dungeon encounter is judged by, read from the
  * database and loaded content.
@@ -142,6 +143,7 @@ export async function loadDungeonEncounterValidationSource(
   const itemBySlug = new Map(allItems.map((i) => [i.slug, i]));
   const captureItems = allItems.filter((i) => i.enabled && i.category === 'capture');
   return {
+    sharedPools: await loadSharedPoolCatalogue(tx),
     ...(artwork ? { speciesArtwork: (slug: string) => { const row = bySlug.get(slug); return !row || artwork(row); } } : {}),
     species: (slug) => dungeonSpeciesPolicy(bySlug.get(slug), access),
     item: (slug) => {

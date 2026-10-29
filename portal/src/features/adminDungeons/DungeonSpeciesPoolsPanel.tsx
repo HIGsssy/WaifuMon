@@ -1,3 +1,4 @@
+import { SharedPoolPicker } from '@/features/adminDungeonSpeciesPools/SharedPoolPicker';
 import { useContext, useState } from 'react';
 import { Copy, Pencil, Trash2 } from 'lucide-react';
 import type { DungeonDefinition } from '@/api/adminDungeons';
@@ -21,6 +22,7 @@ export function DungeonSpeciesPoolsPanel({
   onChange: (d: DungeonDefinition) => void;
 }) {
   const host = useContext(EventEditorContext);
+  const [linking, setLinking] = useState(false);
   const [removing, setRemoving] = useState<string | null>(null);
   const pools = definition.speciesPools ?? [];
   const pool = pools.find((p) => p.id === removing);
@@ -29,7 +31,7 @@ export function DungeonSpeciesPoolsPanel({
     <section aria-label="WaifuMon Pools" data-testid="dungeon-species-pools" className="space-y-3">
       <h2 className="text-sm font-semibold">WaifuMon Pools</h2>
       <p className="text-xs text-ink-muted">
-        Species pools belong to this dungeon. Encounter activities use their stable identities.
+        Use dungeon-local pools or references to shared Dungeon WaifuMon Pools. Shared membership never grants acquisition permission.
       </p>
       <div className="flex items-start gap-2 rounded border border-border p-2" data-testid="species-access-summary">
         <div className="min-w-0 flex-1">
@@ -61,7 +63,7 @@ export function DungeonSpeciesPoolsPanel({
           >
             <div className="min-w-0 flex-1">
               <p className="break-words text-sm font-medium">{p.name || 'Unnamed WaifuMon pool'}</p>
-              <p className="text-xs text-ink-muted">{p.entries.length} entries</p>
+              <p className="text-xs text-ink-muted">{p.sharedPoolKey ? `Shared · ${p.sharedPoolKey}` : `Local · ${p.entries.length} entries`}</p>
               <p className="break-words text-xs text-ink-muted">
                 {speciesPoolUsage(definition, p.id)
                   .map((u) => u.name)
@@ -115,6 +117,13 @@ export function DungeonSpeciesPoolsPanel({
           + New WaifuMon pool
         </Button>
       )}
+      {!disabled && <Button variant="outline" size="sm" disabled={pools.length >= SPECIES_POOL_LIMITS.pools} onClick={() => setLinking(!linking)}>Reference shared pool</Button>}
+      {linking && !disabled && <SharedPoolPicker disabled={disabled} onSelect={(sharedPoolKey, name) => {
+        const made = createSpeciesPool(definition);
+        if (!made.id) return;
+        onChange({ ...made.definition, speciesPools: (made.definition.speciesPools ?? []).map(p => p.id === made.id ? { ...p, name, sharedPoolKey, entries: [] } : p) });
+        setLinking(false);
+      }} />}
       <Dialog open={!!pool} onOpenChange={(open) => !open && setRemoving(null)}>
         <DialogContent>
           <DialogTitle>

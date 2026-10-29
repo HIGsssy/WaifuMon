@@ -1,3 +1,4 @@
+import type { SharedPoolCatalogue } from '../sharedPools/sharedPoolDefinition';
 /** Structural checks, plus live catalogue and policy checks when a source is supplied (`dungeonSpeciesPolicy.ts`). */
 import {
   ACTION_OUTCOMES,
@@ -88,6 +89,7 @@ export function dungeonSpeciesUnavailableReason(
 }
 /** No database imports here. Adapter must use current species and charm definitions. */
 export interface DungeonEncounterValidationSource {
+  sharedPools?: SharedPoolCatalogue;
   speciesArtwork?(slug: string): boolean;
   species(slug: string): DungeonSpeciesPolicy | undefined;
   item(slug: string): { enabled: boolean; capture: boolean } | undefined;
@@ -169,6 +171,7 @@ export function validateDungeonEncounters(
   pools.forEach((pool, p) => {
     const path = `speciesPools[${p}]`;
     duplicate(poolIds, pool.id, `${path}.id`);
+    if (pool.sharedPoolKey) return; // A portable reference; catalogue checks happen when a live source is supplied.
     const ids = new Set<string>(),
       species = new Set<string>();
     pool.entries.forEach((e, i) => {

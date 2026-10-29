@@ -1,3 +1,4 @@
+import { resolveSharedPools } from './sharedPools/sharedPoolDefinition';
 import type { DungeonAuthoringSpecies } from './engine/speciesAuthoring';
 import { playerBuddySpriteLayer } from '../artworkAssets/sceneLayers';
 import { defaultAssetId } from '../appearance/appearanceContent';
@@ -591,7 +592,7 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
   function validateContentDefinition(raw: unknown, context?: DungeonValidationContext) {
     const report = validateDungeonDefinition(raw, context);
     if (report.definition && context?.encounterSource)
-      report.issues.push(...explicitCaptureDependencyIssues(report.definition, context.encounterSource));
+      report.issues.push(...explicitCaptureDependencyIssues(resolveSharedPools(report.definition, context.encounterSource.sharedPools ?? new Map()), context.encounterSource));
     return report;
   }
 

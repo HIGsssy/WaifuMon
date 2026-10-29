@@ -1,3 +1,4 @@
+import { adminDungeonSpeciesPoolRoutes } from './admin/dungeonSpeciesPools';
 import { adminDungeonSceneSpriteRoutes } from './admin/dungeonSceneSprites';
 /**
  * Registration root for `/api/v1` (plan §8.1).
@@ -150,6 +151,7 @@ export const v1Routes =
     // settings and progression currency. Skipped when the dungeon services
     // are not wired.
     await app.register(adminDungeonRoutes(ctx));
+    await app.register(adminDungeonSpeciesPoolRoutes(ctx));
     await app.register(adminDungeonSceneSpriteRoutes(ctx));
 
     // Admin: managed artwork (uploads, the scene preview) and enemy artwork.

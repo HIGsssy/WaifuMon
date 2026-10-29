@@ -4265,3 +4265,22 @@ export const dungeonSceneSpriteEvents = pgTable('dungeon_scene_sprite_events', {
   details: jsonb('details').$type<Record<string, unknown>>().notNull().default({}),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 }, (t) => [index('dungeon_scene_sprite_events_key_idx').on(t.spriteKey, t.id.desc())]);
+
+/** Shared Dungeon WaifuMon authoring catalogue; unrelated to region encounter pools. */
+export const dungeonSpeciesPools = pgTable('dungeon_species_pools', {
+  poolKey: text('pool_key').primaryKey(),
+  definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
+  revision: integer('revision').notNull().default(1),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: text('updated_by'),
+}, t => [check('dungeon_species_pools_revision_check', sql`${t.revision} >= 1`)]);
+export const dungeonSpeciesPoolEvents = pgTable('dungeon_species_pool_events', {
+  id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+  poolKey: text('pool_key').notNull().references(() => dungeonSpeciesPools.poolKey),
+  revision: integer('revision').notNull(),
+  action: text('action').notNull(),
+  actor: text('actor'),
+  definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+});

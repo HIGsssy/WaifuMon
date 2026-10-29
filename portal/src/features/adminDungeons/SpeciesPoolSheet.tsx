@@ -1,3 +1,5 @@
+import { Link } from 'react-router';
+import { SharedPoolPicker } from '@/features/adminDungeonSpeciesPools/SharedPoolPicker';
 import { useContext, useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
@@ -123,6 +125,12 @@ export function SpeciesPoolSheet({
     return () => window.clearTimeout(timer);
   }, [focus]);
   if (!pool) return null;
+  if (pool.sharedPoolKey) return <Sheet open onOpenChange={open => !open && onClose()}><SheetContent side="right" className="overflow-y-auto p-6 pt-14">
+    <SheetTitle>Shared WaifuMon pool: {pool.name}</SheetTitle>
+    <SheetDescription>This dungeon references {pool.sharedPoolKey}. Shared edits affect future runs. Acquisition permission stays in this dungeon’s Species access.</SheetDescription>
+    <Link className="underline" to={`/admin/dungeons/waifumon-pools/${pool.sharedPoolKey}`}>Manage shared pool</Link>
+    {!disabled && <SharedPoolPicker disabled={disabled} onSelect={(sharedPoolKey, name) => onChange(updateSpeciesPool(definition, poolId, p => ({ ...p, sharedPoolKey, name, entries: [] })))} />}
+  </SheetContent></Sheet>;
   const species = catalogue.data?.species ?? [];
   const bySlug = new Map(species.map((s) => [s.slug, s]));
   const names = new Map(species.map((s) => [s.slug, s.name]));

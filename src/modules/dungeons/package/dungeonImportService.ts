@@ -1,3 +1,4 @@
+import { sharedPoolKeys } from '../sharedPools/sharedPoolDefinition';
 /** Draft-only imports. Review is read-only; application re-plans under locks and records a receipt in the same transaction. */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs';
@@ -561,7 +562,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
     const packageHash = importHash(pkg);
     const planHash = importHash({
       packageHash,
-      ...(encounterCatalogue ? { encounterSpecies: encounterCatalogue.species, captureItems: encounterCatalogue.items } : {}),
+      ...(encounterCatalogue ? { encounterSpecies: encounterCatalogue.species, captureItems: encounterCatalogue.items, sharedPools: sharedPoolKeys(definition).map(key => [key, encounterCatalogue.source.sharedPools?.get(key) ?? null]) } : {}),
       ...(loot ? {
         lootChoices,
         lootTables: loot.tablePlans.map(table => ({

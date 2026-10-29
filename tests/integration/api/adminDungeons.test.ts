@@ -1,3 +1,4 @@
+import { createSharedDungeonPoolService } from '../../../src/modules/dungeons/sharedPools/sharedPoolService';
 /**
  * Portal admin — dungeon authoring over HTTP, against a real database. Pins
  * the contract the editor depends on: who may read, write and publish; the
@@ -147,6 +148,7 @@ beforeAll(async () => {
       services: {
         ...w.app,
         dungeonContent: w.content,
+        dungeonSpeciesPools: createSharedDungeonPoolService(w.t.db),
         dungeonRuns: w.runs,
         dungeonAllowance: w.allowance,
         progressionCurrency: w.currencies,
@@ -1808,5 +1810,41 @@ describe('P4C2B preview mechanics edge cases', () => {
     const impossible = await call('POST', '/admin/dungeons/encounter-preview', body);
     expect(impossible.statusCode, impossible.body).toBe(400);
     expect(errorOf(impossible).message).toContain('non-guaranteed charm');
+  });
+});
+
+
+describe('shared Dungeon WaifuMon Pools API', () => {
+  const root = '/admin/dungeons/waifumon-pools';
+  const definition = { key: 'api_shared_pool', name: 'API pool', description: '', enabled: false, entries: [{ id: 'e', species: 'neko_barista', weight: 2, oncePerRun: true }] };
+  it('enforces read/write permissions and authenticated access', async () => {
+    expect((await api.inject({ method: 'GET', url: `/api/v1${root}` })).statusCode).toBe(401);
+    expect((await as(NON_OWNER_TOKEN, 'GET', root)).statusCode).toBe(403);
+    expect((await as(READER_TOKEN, 'GET', root)).statusCode).toBe(200);
+    for (const token of [READER_TOKEN, PUBLISHER_TOKEN]) {
+      expect((await as(token, 'POST', root, definition)).statusCode).toBe(403);
+      expect((await as(token, 'POST', `${root}/import`, { package: {}, expectedRevisions: {} })).statusCode).toBe(403);
+    }
+    expect((await as(WRITER_TOKEN, 'POST', root, definition)).statusCode).toBe(200);
+  });
+  it('reads, edits, rejects stale revisions, duplicates disabled, exports/imports and exposes references/history', async () => {
+    const read = await as(READER_TOKEN, 'GET', `${root}/api_shared_pool`);
+    expect(data<Json>(read)).toMatchObject({ revision: 1, definition });
+    const enabled = await as(WRITER_TOKEN, 'POST', `${root}/api_shared_pool/enabled`, { enabled: true, expectedRevision: 1 });
+    expect(enabled.statusCode, enabled.body).toBe(200);
+    const stale = await as(WRITER_TOKEN, 'PUT', `${root}/api_shared_pool`, { definition, expectedRevision: 1 });
+    expect(stale.statusCode, stale.body).toBe(409);
+    expect(errorOf(stale).details).toMatchObject({ currentRevision: 2 });
+    expect((await as(WRITER_TOKEN, 'POST', `${root}/api_shared_pool/duplicate`, { key: 'api_shared_copy', expectedRevision: 2 })).statusCode).toBe(200);
+    expect(data<Json>(await as(READER_TOKEN, 'GET', `${root}/api_shared_copy`)).definition.enabled).toBe(false);
+    const pkg = data<Json>(await as(READER_TOKEN, 'GET', `${root}/export?key=api_shared_pool`));
+    pkg.pools[0].key = 'api_shared_import';
+    const imported = await as(WRITER_TOKEN, 'POST', `${root}/import`, { package: pkg, expectedRevisions: { api_shared_import: null } });
+    expect(imported.statusCode, imported.body).toBe(200);
+    expect(data<Json[]>(imported)[0]!.definition.enabled).toBe(false);
+    expect(data<unknown[]>(await as(READER_TOKEN, 'GET', `${root}/api_shared_pool/references`))).toEqual([]);
+    expect(data<Json[]>(await as(READER_TOKEN, 'GET', `${root}/api_shared_pool/history`)).map(e => e.action)).toEqual(['created', 'enabled']);
+    expect((await as(WRITER_TOKEN, 'DELETE', `${root}/api_shared_pool`)).statusCode).toBe(404);
+    expect((await as(WRITER_TOKEN, 'PUT', `${root}/api_shared_pool`, { definition: { ...definition, entries: [{ id: 'e', species: 'missing', weight: 1 }] }, expectedRevision: 2 })).statusCode).toBe(400);
   });
 });

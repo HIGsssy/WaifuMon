@@ -519,6 +519,13 @@
       "when": 1822082400000,
       "tag": "0073_equipment_catalogue_admin",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1822168800000,
+      "tag": "0074_dungeon_species_pools",
+      "breakpoints": true
     }
   ]
 }

@@ -1,3 +1,4 @@
+import { createSharedDungeonPoolService } from './modules/dungeons/sharedPools/sharedPoolService';
 import { createSceneSpriteService } from './modules/dungeons/sceneSprites/sceneSpriteService';
 /**
  * Startup order (plan §26): validate env → retry-connect to Postgres →
@@ -566,6 +567,7 @@ async function main(): Promise<void> {
   // Species dungeon policy is content with no column behind it, so both dungeon
   // services read it through the live snapshot and follow a content reload.
   const dungeonSpeciesAccess = (slug: string) => contentSnapshot.species.find((s) => s.slug === slug)?.dungeonAccess;
+  const dungeonSpeciesPools = createSharedDungeonPoolService(db);
   const dungeonContent = createDungeonContentService({
     db,
     enemies: enemyCatalogue,
@@ -961,6 +963,7 @@ async function main(): Promise<void> {
       combatTrials,
       equipmentWorkshop,
       dungeonContent,
+      dungeonSpeciesPools,
       dungeonLootTables: createDungeonLootTableService({ db }),
       dungeonRuns,
       dungeonAllowance,

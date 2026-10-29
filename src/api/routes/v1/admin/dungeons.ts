@@ -1,3 +1,4 @@
+import { resolveSharedPools } from '../../../../modules/dungeons/sharedPools/sharedPoolDefinition';
 import { SceneSpriteInstanceSchema, resolveSceneSpriteInstance } from '../../../../modules/dungeons/sceneSprites/sceneSpriteDefinition';
 import { composeEnvironmentalScene } from '../../../../modules/artworkAssets/sceneLayers';
 /**
@@ -1189,7 +1190,7 @@ export const adminDungeonRoutes =
       const report = await dungeons.validate(req.body.definition);
       // A structurally readable repair draft can be previewed, without pretending publication passed.
       if (!report.definition) throw withDetails(new DungeonInvalidError(report.issues));
-      const definition = structuredClone(report.definition);
+      const definition = resolveSharedPools(structuredClone(report.definition), (await dungeons.validationContext()).encounterSource?.sharedPools ?? new Map());
       const room = definition.rooms.find((r) => r.id === req.body.roomId);
       const original = room?.actions.find((a) => a.id === req.body.actionId);
       if (!room || !original || !isEncounterAction(original)) throw new AppError('NOT_FOUND', 'Encounter activity not found', 'Choose a Wild Encounter or Rescue activity.');
@@ -1262,7 +1263,7 @@ export const adminDungeonRoutes =
           ? describeEventAuthoring(report.definition, req.body.eventScenario)
           : { eventPools: [], eventPreviews: [] };
         const species = report.definition?.speciesPools?.length
-          ? describeSpeciesAuthoring(report.definition, await dungeons.speciesCatalogue(report.definition.key), req.body.speciesScenario)
+          ? describeSpeciesAuthoring(resolveSharedPools(report.definition, (await dungeons.validationContext()).encounterSource?.sharedPools ?? new Map()), await dungeons.speciesCatalogue(report.definition.key), req.body.speciesScenario)
           : { speciesPools: [] };
         return ok(req, { ...report, ...events, ...species, definition: report.definition as unknown as Record<string, unknown> | null });
       },
@@ -1331,7 +1332,7 @@ export const adminDungeonRoutes =
         ...(snapshot === undefined ? {} : { snapshot }),
       }));
       if (!report.definition || hasErrors(report.issues)) throw withDetails(new DungeonInvalidError(report.issues));
-      return { definition: report.definition, rewards: report.rewards };
+      return { definition: resolveSharedPools(report.definition, (await dungeons.validationContext()).encounterSource?.sharedPools ?? new Map()), rewards: report.rewards };
     }
 
     app.post(

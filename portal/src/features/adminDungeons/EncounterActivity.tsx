@@ -188,14 +188,14 @@ export function EncounterActivity({
               {poolId && !pool && <option value={poolId}>Missing pool ({poolId})</option>}
               {definition.speciesPools?.map((p) => (
                 <option key={p.id} value={p.id}>
-                  {p.name}
+                  {p.name} ({p.sharedPoolKey ? `Shared: ${p.sharedPoolKey}` : 'Dungeon-local'})
                 </option>
               ))}
             </select>
             {pool ? (
               <>
                 <p className={hint}>
-                  {pool.name} · {pool.entries.length} entries
+                  {pool.name} · {pool.sharedPoolKey ? `Shared: ${pool.sharedPoolKey}` : `Dungeon-local · ${pool.entries.length} entries`}
                 </p>
                 <Button
                   size="sm"

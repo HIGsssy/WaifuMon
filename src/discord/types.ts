@@ -1,3 +1,4 @@
+import type { SharedDungeonPoolService } from '../modules/dungeons/sharedPools/sharedPoolService';
 import type { SceneSpriteService } from '../modules/dungeons/sceneSprites/sceneSpriteService';
 import type {
   ButtonInteraction,
@@ -265,6 +266,7 @@ export interface AppServices {
   equipmentWorkshop?: EquipmentWorkshopService | undefined;
   /** Dungeon authoring: drafts, publication, rollback, audit and export (Portal Admin). */
   dungeonContent?: DungeonContentService | undefined;
+  dungeonSpeciesPools?: SharedDungeonPoolService | undefined;
   /** Dedicated dungeon reward catalogue (Portal Admin). */
   dungeonLootTables?: DungeonLootTableService | undefined;
   /** Playable dungeon runs (start, step, extract, abandon). Requires the `equipment` unlock. */

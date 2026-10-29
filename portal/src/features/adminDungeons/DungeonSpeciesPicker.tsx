@@ -108,7 +108,7 @@ export function DungeonSpeciesPicker({
   listed: Set<string>;
   disabled: boolean;
   onSelect: (slug: string) => void;
-  purpose?: 'pool' | 'encounter';
+  purpose?: 'pool' | 'encounter' | 'shared_pool';
   dungeonKey: string;
   /** The draft's Species access entries. */
   policies?: DungeonSpeciesPolicyEntry[] | undefined;
@@ -190,7 +190,7 @@ export function DungeonSpeciesPicker({
       </div>
       <ul className="max-h-96 space-y-2 overflow-y-auto" aria-label="Matching species">
         {rows.map((s) => {
-          const selectable = speciesSelectable(s, dungeonKey, entryOf(s.slug));
+          const selectable = purpose === 'shared_pool' ? s.enabled && (s.dungeonPolicyAllowed || s.dungeonAccess.length > 0) : speciesSelectable(s, dungeonKey, entryOf(s.slug));
           const ready = permitted(s);
           return (
           <li
@@ -202,7 +202,7 @@ export function DungeonSpeciesPicker({
               <SpeciesThumb species={s} />
               <div className="min-w-0">
                 <p className="break-words text-sm font-medium">{s.name}</p>
-                <SpeciesAvailability species={s} dungeonKey={dungeonKey} entry={entryOf(s.slug)} />
+                {purpose === 'shared_pool' ? <p className={hint}>{s.rarity} · {s.race} · {s.affinity} · {s.enabled ? 'Enabled' : 'Disabled'}{s.dungeonExclusive ? ' · Dungeon-exclusive' : ''}. Eligibility and acquisition terms are checked separately for each dungeon.</p> : <SpeciesAvailability species={s} dungeonKey={dungeonKey} entry={entryOf(s.slug)} />}
               </div>
             </div>
             <Button
@@ -212,13 +212,13 @@ export function DungeonSpeciesPicker({
               onClick={() => {
                 if (selectable && !listed.has(s.slug)) onSelect(s.slug);
               }}
-              aria-label={`${purpose === 'pool' ? 'Add species' : 'Select species'} ${s.name}`}
+              aria-label={`${purpose !== 'encounter' ? 'Add species' : 'Select species'} ${s.name}`}
             >
               {listed.has(s.slug)
                 ? 'Already in this pool'
                 : !selectable
-                  ? 'Unavailable in this dungeon'
-                  : `${purpose === 'pool' ? 'Add to pool' : 'Select WaifuMon'}${ready ? '' : ' and set access'}`}
+                  ? purpose === 'shared_pool' ? 'Unavailable for dungeon encounters' : 'Unavailable in this dungeon'
+                  : `${purpose !== 'encounter' ? 'Add to pool' : 'Select WaifuMon'}${ready || purpose === 'shared_pool' ? '' : ' and set access'}`}
             </Button>
           </li>
           );

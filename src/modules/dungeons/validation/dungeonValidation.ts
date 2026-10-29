@@ -1,3 +1,4 @@
+import { resolveSharedPools } from '../sharedPools/sharedPoolDefinition';
 import { encounterFlagsSet, encounterShapeIssue, validateDungeonEncounters, type DungeonEncounterValidationSource } from './dungeonEncounterValidation';
 import { sceneSpriteSites } from '../sceneSprites/sceneSpriteDefinition';
 import type { SceneSpriteCatalogue } from '../sceneSprites/sceneSpriteSnapshot';
@@ -282,8 +283,13 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
     }
     return { definition: null, issues };
   }
-  const definition = parsed.data;
   const issues: DungeonIssue[] = [];
+  parsed.data.speciesPools?.forEach((pool, i) => {
+    if (!pool.sharedPoolKey || !ctx.encounterSource) return;
+    const shared = ctx.encounterSource.sharedPools?.get(pool.sharedPoolKey);
+    if (!shared || !shared.enabled) issues.push({ code: 'species_pool_missing', severity: 'error', path: `speciesPools[${i}].sharedPoolKey`, message: `Shared WaifuMon pool "${pool.sharedPoolKey}" is ${shared ? 'disabled' : 'missing'}. Resolve this destination dependency explicitly.` });
+  });
+  const definition = ctx.encounterSource?.sharedPools ? resolveSharedPools(parsed.data, ctx.encounterSource.sharedPools) : parsed.data;
   for (const site of sceneSpriteSites(definition)) {
     const ids = new Set<string>();
     for (const [i, instance] of site.instances.entries()) {
@@ -671,5 +677,5 @@ export function validateDungeonDefinition(raw: unknown, ctx: DungeonValidationCo
   });
 
   issues.push(...validateDungeonRewards(definition, ctx).issues);
-  return { definition, issues };
+  return { definition: parsed.data, issues };
 }

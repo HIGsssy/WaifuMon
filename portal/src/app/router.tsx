@@ -167,6 +167,7 @@ const RewardTableEditorPage = lazy(() =>
 );
 // Dungeons (drafts, revisions and publication). Gated on
 // `dungeons.read` only.
+const SharedPoolsPage = lazy(() => import('@/features/adminDungeonSpeciesPools/SharedPoolsPage').then(m => ({ default: m.SharedPoolsPage })));
 const SceneSpritesPage = lazy(() => import('@/features/adminDungeonSceneSprites/SceneSpritesPage').then((m) => ({ default: m.SceneSpritesPage })));
 const DungeonsListPage = lazy(() =>
   import('@/features/adminDungeons/DungeonsListPage').then((m) => ({
@@ -554,6 +555,14 @@ export const routes: RouteObject[] = [
                 <DungeonCreatePage />
               </RequirePortalPermission>
             ),
+          },
+          {
+            path: 'admin/dungeons/waifumon-pools',
+            element: <RequirePortalPermission permission="dungeons.read"><SharedPoolsPage /></RequirePortalPermission>,
+          },
+          {
+            path: 'admin/dungeons/waifumon-pools/:key',
+            element: <RequirePortalPermission permission="dungeons.read"><SharedPoolsPage /></RequirePortalPermission>,
           },
           {
             path: 'admin/dungeons/scene-sprites',

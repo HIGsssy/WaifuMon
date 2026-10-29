@@ -1,3 +1,4 @@
+import { resolveSharedPools } from '../sharedPools/sharedPoolDefinition';
 /**
  * Target-side review. Export evidence never authorizes a grant or installs
  * species-content policy. The dungeon's own Species access is part of its
@@ -48,6 +49,7 @@ export function explicitCaptureDependencyIssues(
   definition: DungeonDefinition,
   source: DungeonEncounterValidationSource,
 ): DungeonIssue[] {
+  definition = resolveSharedPools(definition, source.sharedPools ?? new Map());
   const issues: DungeonIssue[] = [];
   for (const action of reachableEncounterActions(definition)) {
     if (action.type === 'rescue' && action.mode === 'direct') continue;
@@ -88,6 +90,7 @@ export function reviewEncounterDependencies(
   definition: DungeonDefinition,
   catalogue: EncounterImportCatalogue,
 ) {
+  definition = resolveSharedPools(definition, catalogue.source.sharedPools ?? new Map());
   const issues: DungeonIssueDetail[] = [];
   const requiredSpecies = pkg.dependencies.requiredSpecies.map((incoming) => {
     const row = catalogue.species.find((s) => s.slug === incoming.slug);

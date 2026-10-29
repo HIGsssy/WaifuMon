@@ -117,7 +117,7 @@ export interface DungeonEventPool {
 export type DungeonSpeciesPoolEntry = { id: string; weight: number; when?: DungeonCondition } & (
   { species: string; oncePerRun?: boolean } | { nothing: true; text?: string }
 );
-export interface DungeonSpeciesPool { id: string; name: string; entries: DungeonSpeciesPoolEntry[] }
+export interface DungeonSpeciesPool { id: string; name: string; sharedPoolKey?: string; entries: DungeonSpeciesPoolEntry[] }
 /** This dungeon's own terms for one species. `perPlayerLimit` is per player, from this dungeon, across runs. */
 export interface DungeonSpeciesPolicyEntry { species: string; perPlayerLimit: number | 'unlimited'; directRescue?: boolean }
 export type DungeonEventSource =

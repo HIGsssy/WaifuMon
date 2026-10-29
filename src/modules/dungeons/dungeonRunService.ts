@@ -1,3 +1,6 @@
+import { freezeSharedPools, withFrozenSharedPools } from './sharedPools/sharedPoolService';
+import { sharedPoolKeys, type FrozenSharedPools } from './sharedPools/sharedPoolDefinition';
+import { validateDungeonDefinition, hasErrors } from './validation/dungeonValidation';
 import { sceneSpritesForRoom, type SceneSpriteRenderVisual } from './sceneSprites/sceneSpriteSnapshot';
 /**
  * Playing a dungeon run: starting one, stepping it, and settling it.
@@ -179,6 +182,7 @@ import {
   dungeonEncounterSpeciesSlugs,
   dungeonSpeciesPolicy,
   loadSpeciesBySlug,
+  loadDungeonEncounterValidationSource,
   publishedDungeonSpeciesPolicies,
   type DungeonSpeciesAccessLookup,
 } from './dungeonSpeciesPolicy';
@@ -228,6 +232,7 @@ export interface DungeonDependencySnapshot extends EngineDependencies {
   version: typeof DUNGEON_DEPENDENCY_SNAPSHOT_VERSION;
   /** Managed artwork of each enemy, as *logical* references: replacing the image behind an id shows the new image. */
   enemyArtwork: Record<string, ManagedEnemyArtwork>;
+  sharedSpeciesPools?: FrozenSharedPools;
   currency: {
     key: string;
     singularName: string;
@@ -713,18 +718,19 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     }
     const snapshot = row.dependencySnapshot as unknown as DungeonDependencySnapshot;
     const fighter = row.fighter as unknown as DungeonFighter;
-    const facts = await eventItemFacts(tx, row.playerId, pinned.definition, stateOf(row));
-    const encounterFacts = await readEncounterFacts(tx, row, pinned.definition, stateOf(row), fighter);
+    const definition = withFrozenSharedPools(pinned.definition, snapshot.sharedSpeciesPools);
+    const facts = await eventItemFacts(tx, row.playerId, definition, stateOf(row));
+    const encounterFacts = await readEncounterFacts(tx, row, definition, stateOf(row), fighter);
     return {
       row,
-      definition: pinned.definition,
+      definition,
       revisionNumber: pinned.revision.number,
       sceneSpriteSnapshot: pinned.revision.sceneSpriteSnapshot,
       snapshot,
       fighter,
       eventItemNames: facts.names,
       ctx: {
-        definition: pinned.definition,
+        definition,
         dependencies: { enemies: snapshot.enemies, rewardTables: snapshot.rewardTables },
         fighter,
         runKey: String(row.id),
@@ -1453,7 +1459,15 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         .from(species)
         .where(eq(species.slug, fighter.speciesSlug));
       if (buddySpecies) fighter.captureBuddy = pinnedCaptureBuddy(buddySpecies, buddyBonus);
-      const snapshot = await buildSnapshot(tx, definition);
+      const frozen = await freezeSharedPools(tx, definition);
+      const resolved = withFrozenSharedPools(definition, frozen);
+      if (sharedPoolKeys(definition).length) {
+        const context = { encounterSource: await loadDungeonEncounterValidationSource(tx, deps.speciesAccess) };
+        const report = validateDungeonDefinition(definition, { encounterSource: context.encounterSource });
+        if (hasErrors(report.issues)) throw new DungeonInvalidError(report.issues);
+      }
+      const snapshot = await buildSnapshot(tx, resolved);
+      if (Object.keys(frozen).length) snapshot.sharedSpeciesPools = frozen;
       // Spent before the run is created so an exhausted allowance is refused
       // cheaply; it is only kept if everything below commits.
       const daily = await deps.allowance.consume(tx, playerId);

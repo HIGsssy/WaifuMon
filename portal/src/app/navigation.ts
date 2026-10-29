@@ -110,6 +110,12 @@ export const NAV_ITEMS: readonly NavItem[] = [
   },
   {
     // Region encounter pools: drafts, publication, odds and history.
+    to: '/admin/dungeons/waifumon-pools',
+    label: 'Admin — Dungeon WaifuMon Pools',
+    icon: Castle,
+    requiresPermission: 'dungeons.read',
+  },
+  {
     to: '/admin/region-pools',
     label: 'Admin — Region Pools',
     icon: Earth,

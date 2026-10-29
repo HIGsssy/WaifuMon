@@ -1,7 +1,7 @@
 /** Dungeon-only encounter content. Optional additions never materialise on legacy definitions. */
 import { z } from 'zod';
 import { SpritePlacementSchema } from '../../artworkAssets/scenePlacement';
-import { DungeonIdSchema as id } from './dungeonIdentifiers';
+import { DungeonKeySchema, DungeonIdSchema as id } from './dungeonIdentifiers';
 import {
   DungeonConditionSchema,
   referenceKey,
@@ -79,12 +79,17 @@ export const DungeonSpeciesPoolSchema = z
   .object({
     id,
     name: z.string().trim().min(1).max(80),
+    sharedPoolKey: DungeonKeySchema.optional(),
     entries: z
       .array(DungeonSpeciesPoolEntrySchema)
-      .min(1)
+      .min(0)
       .max(DUNGEON_ENCOUNTER_LIMITS.entries),
   })
-  .strict();
+  .strict()
+  .superRefine((pool, ctx) => {
+    if (pool.sharedPoolKey ? pool.entries.length !== 0 : pool.entries.length === 0)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['entries'], message: pool.sharedPoolKey ? 'Shared references must have empty entries; embedded fallback is forbidden.' : 'A local pool needs at least one entry.' });
+  });
 export type DungeonSpeciesPool = z.infer<typeof DungeonSpeciesPoolSchema>;
 export const DungeonSpeciesSourceSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('species'), species: referenceKey }).strict(),
