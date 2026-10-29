@@ -52972,6 +52972,360 @@
         }
       }
     },
+    "waifumon/recovery_wing_valkyrie/level_10": {
+      "source": "waifumon/recovery_wing_valkyrie/level_10.png",
+      "sourceSha256": "ac4c79602d61c9238326f1b13b63d461785ce3cea0d8a9c762f0dc8f972451fb",
+      "sourceBytes": 2984304,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/recovery_wing_valkyrie/level_10.webp",
+          "bytes": 17298,
+          "sha256": "b6cdedd876a589e9276ad39579ebe230a67dc032a11366c9b840cb40ed153cf9",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/recovery_wing_valkyrie/level_10.webp",
+          "bytes": 50768,
+          "sha256": "9c277de44af10aae21987427659bbc4f4265ade5fd9ff87bbf2f8ec074cf7b59",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/recovery_wing_valkyrie/level_10.webp",
+          "bytes": 140726,
+          "sha256": "eeff6933ffd3d27fd24ede727ccf96f4842d9a069ea4f154173801443b02558c",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/recovery_wing_valkyrie/level_10.webp",
+          "bytes": 322094,
+          "sha256": "74fc3e6911a24691c67b80e21559b1d44e4640e5fbb8488970e15236ffb0db43",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/recovery_wing_valkyrie/level_20": {
+      "source": "waifumon/recovery_wing_valkyrie/level_20.png",
+      "sourceSha256": "9833e3c51d12052531e310c1d6d19842abbd5ce1609b902cff32eb024cb69019",
+      "sourceBytes": 2892112,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/recovery_wing_valkyrie/level_20.webp",
+          "bytes": 15536,
+          "sha256": "5dad0b09097b55444a52e2cb4fcc849aef80709fbbf3ceb8850aa9b991bc8aaf",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/recovery_wing_valkyrie/level_20.webp",
+          "bytes": 44374,
+          "sha256": "04bc8c89c22b8f79edfaf81f601fe2e5b6c546ee515edb8e92c2dd7577758b11",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/recovery_wing_valkyrie/level_20.webp",
+          "bytes": 125090,
+          "sha256": "01184efdf87f5b7b695f20df28d41e55c2b42f1759814afb38ad3fe078270c24",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/recovery_wing_valkyrie/level_20.webp",
+          "bytes": 293066,
+          "sha256": "8df6ced34ea024960631cb44484d65d07889e05ba743e7ea7540b0e43a2dac83",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/recovery_wing_valkyrie/level_30": {
+      "source": "waifumon/recovery_wing_valkyrie/level_30.png",
+      "sourceSha256": "87f68a8506cecad8c4c0af5203a4dab28de53c607c9319480d8626f45199bd44",
+      "sourceBytes": 2852380,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/recovery_wing_valkyrie/level_30.webp",
+          "bytes": 15096,
+          "sha256": "0acabd21ee2f14ce7e73b60b2992a9318e23eccac2b3be65b5efeabcd87a36a7",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/recovery_wing_valkyrie/level_30.webp",
+          "bytes": 43146,
+          "sha256": "622e3883653df74bbe5b93681ba3318daaa8ed8eb896b36376cded8ec19d417d",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/recovery_wing_valkyrie/level_30.webp",
+          "bytes": 121002,
+          "sha256": "0d11ddc3501cef758a9dd765582d0c5710fe6df3409f675e900ec5a2b20c531e",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/recovery_wing_valkyrie/level_30.webp",
+          "bytes": 284242,
+          "sha256": "79601f7202cd0f17804a159f37df965a7c32bf3b3c38da6e9eb4b64a74521c45",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/recovery_wing_valkyrie/level_40": {
+      "source": "waifumon/recovery_wing_valkyrie/level_40.png",
+      "sourceSha256": "84f1c5df15f646b901d38fa173d909bcf138c293fecbc66895d2a13519498e4f",
+      "sourceBytes": 2869505,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/recovery_wing_valkyrie/level_40.webp",
+          "bytes": 15822,
+          "sha256": "96bccdd67eb9fe880eca302f6fd94cbb0437bd623cf60ee409029667d5f4f6af",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/recovery_wing_valkyrie/level_40.webp",
+          "bytes": 43744,
+          "sha256": "ee655072b11769794407296da7523914b17f239fa339f1addafd45ec18e6a9bd",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/recovery_wing_valkyrie/level_40.webp",
+          "bytes": 119526,
+          "sha256": "3d65e794c4ae660da023ba07b331769e479b40a6cf91f2d500ee39de33a08bbe",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/recovery_wing_valkyrie/level_40.webp",
+          "bytes": 274066,
+          "sha256": "423f8de20e3174d09ab67090275688d9fd9d221f067428adb1dc67ac112a6c8f",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/recovery_wing_valkyrie/level_50": {
+      "source": "waifumon/recovery_wing_valkyrie/level_50.png",
+      "sourceSha256": "66164f9d75fc3ee39afaa2a540d2c855b7336124935d56795e6a528b787b593e",
+      "sourceBytes": 2833726,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/recovery_wing_valkyrie/level_50.webp",
+          "bytes": 15110,
+          "sha256": "e6e92a82674596e088911f05ed87b54a0ff9abdd61d45f0e7a70bbd216081e29",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/recovery_wing_valkyrie/level_50.webp",
+          "bytes": 39974,
+          "sha256": "db972200ea8e146376c38cfc721990d7f6b315cc84b27b6251a798c091fe0d97",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/recovery_wing_valkyrie/level_50.webp",
+          "bytes": 105744,
+          "sha256": "bea7ed136f78ac55f91a609d11e66274fbb653094f662b289750232866afef36",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/recovery_wing_valkyrie/level_50.webp",
+          "bytes": 240016,
+          "sha256": "e32f799a1e088c516ba2fdb4613392fb1db2dec5e5d6f04517c3cf64a405c1fa",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
+    "waifumon/recovery_wing_valkyrie/standard": {
+      "source": "waifumon/recovery_wing_valkyrie/standard.png",
+      "sourceSha256": "38e4ef47e3bcefd905178ec63c376eef5a960201ba14811bec135e3cf4d76f32",
+      "sourceBytes": 3158525,
+      "outputs": {
+        "256": {
+          "path": ".thumbnails/256/waifumon/recovery_wing_valkyrie/standard.webp",
+          "bytes": 19272,
+          "sha256": "08e07ceab980e60769ed4978cf19f21b7146a591106dfd4315010713152cd56a",
+          "width": 256,
+          "height": 374,
+          "settingsHash": "50c323be6a245673",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "512": {
+          "path": ".thumbnails/512/waifumon/recovery_wing_valkyrie/standard.webp",
+          "bytes": 54556,
+          "sha256": "37d7cd4481db9c4686ba4852a3a7929aa37731744e855656c360e0a7c8d8d56b",
+          "width": 512,
+          "height": 748,
+          "settingsHash": "9283ff5e01c8d06b",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "1024": {
+          "path": ".thumbnails/1024/waifumon/recovery_wing_valkyrie/standard.webp",
+          "bytes": 149316,
+          "sha256": "af2477efc8b4a2fc060990a2c56155a54e6e6ff2d7237ff849c0212b2b6724cb",
+          "width": 1024,
+          "height": 1497,
+          "settingsHash": "9783d60e8cf70c82",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        },
+        "full": {
+          "path": "waifumon/recovery_wing_valkyrie/standard.webp",
+          "bytes": 357854,
+          "sha256": "f38e0658b323d3ef3f6bee4e679a98ae28d4bb06e786210fba9a4aeff39466c3",
+          "width": 1248,
+          "height": 1824,
+          "settingsHash": "20b983e25bf23bc9",
+          "encoder": {
+            "sharp": "0.35.3",
+            "vips": "8.18.3",
+            "webp": "1.6.0"
+          }
+        }
+      }
+    },
     "waifumon/resort_regent_idol/level_10": {
       "source": "waifumon/resort_regent_idol/level_10.png",
       "sourceSha256": "39bc3a6686733edda469e1e0c74d01a61523c0e2ae357bdb9150c1d9d07115ce",
