@@ -208,6 +208,12 @@ export function buildOnboardingView(
   view: EquipmentOnboardingView,
   content: OnboardingPresenterContent | null,
   homeArtwork?: BuddyArtwork | null,
+  /**
+   * Whether the completion screen points at Combat Trials: the Trial
+   * service's `entryVisible`, so a stale completion button after the Trials
+   * are cleared offers no dead entry. Defaults to "the service is wired".
+   */
+  combatTrialsOffered?: boolean,
 ): SessionPayload {
   // An unlocked player reopening the onboarding lands on Equipment management.
   if (view.kind === 'overview') return buildEquipmentHome(view.stats, null, homeArtwork);
@@ -293,7 +299,7 @@ export function buildOnboardingView(
       addLoadoutFields(embed, view.stats);
       // Point the newly geared player at Combat Trials, where the gear is used.
       // Presentation only: completion semantics are unchanged.
-      const trials = ctx.services?.combatTrials != null;
+      const trials = combatTrialsOffered ?? ctx.services?.combatTrials != null;
       if (trials) embed.addFields({ name: COMBAT_TRIALS_CTA_TITLE, value: COMBAT_TRIALS_CTA_TEXT });
       return {
         embeds: [embed],

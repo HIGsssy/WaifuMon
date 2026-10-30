@@ -46,6 +46,7 @@ import { parseCustomId, type AppContext, type Provisioned } from '../../src/disc
 import { createDungeonAllowanceService } from '../../src/modules/dungeons/dungeonAllowanceService';
 import { createDungeonContentService } from '../../src/modules/dungeons/dungeonContentService';
 import { createDungeonRunService } from '../../src/modules/dungeons/dungeonRunService';
+import { createDelveAccess } from '../../src/modules/combatTrials/trialCurriculum';
 import { dungeonEnemyReferences } from '../../src/modules/enemies/enemyReferences';
 import { createEnemyCatalogueService } from '../../src/modules/enemies/enemyService';
 import { shippedCombatEnemies } from '../../src/modules/enemies/enemyStore';
@@ -725,6 +726,7 @@ describe('after a restart', () => {
       allowance,
       combatRules: FIXED_RULES,
       featureUnlocks: svc.featureUnlocks,
+      delveAccess: createDelveAccess({ db: w.t.db, featureUnlocks: svc.featureUnlocks }),
       combatStats: createCombatStatsService({
         db: w.t.db,
         resolveActiveBuddy: (tx, playerId) => w.app.collection.resolveActiveBuddy(tx, playerId),

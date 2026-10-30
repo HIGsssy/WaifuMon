@@ -2,9 +2,9 @@
  * Dungeon button handlers (`dg:*`).
  *
  * Thin: every handler acts on `prov.playerId`, asks `DungeonRunService`
- * (which checks the Equipment unlock, locks the run and re-reads all state)
- * and hands the read model to `dungeonPresenter`. Nothing about a run is
- * decided here.
+ * (which checks the Equipment unlock and, for a new run, the Combat Trials
+ * prerequisite, locks the run and re-reads all state) and hands the read model
+ * to `dungeonPresenter`. Nothing about a run is decided here.
  *
  * Idempotency: a button that moves a run carries the run id and the step it
  * was drawn for, passed on as `expectedStep`. A double-click, a Discord retry
@@ -48,6 +48,7 @@ import {
   buildExtractConfirm,
   buildPuzzleModal,
   buildRunScreen,
+  delveLockedView,
   dgId,
   dungeonCaptureNavigation,
   lockedDungeonsView,
@@ -72,6 +73,7 @@ import {
   DungeonRunNotFoundError,
   DungeonStepContendedError,
   DungeonUnavailableError,
+  DelveLockedError,
   FeatureLockedError,
 } from '../../shared/errors';
 
@@ -225,6 +227,10 @@ async function run(
         await respondEphemeral(interaction, lockedDungeonsView());
         return;
       }
+      if (err instanceof DelveLockedError) {
+        await respondEphemeral(interaction, delveLockedView());
+        return;
+      }
       if (err instanceof DungeonRunActiveError) {
         const active = await service.activeRun(prov.playerId);
         await respondEphemeral(
@@ -262,6 +268,10 @@ async function run(
       err = inner;
       if (err instanceof FeatureLockedError) {
         await respondEphemeral(interaction, lockedDungeonsView());
+        return;
+      }
+      if (err instanceof DelveLockedError) {
+        await respondEphemeral(interaction, delveLockedView());
         return;
       }
     }

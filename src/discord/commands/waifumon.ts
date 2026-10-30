@@ -189,13 +189,18 @@ export function menuComponents(
   const equipmentButton = equipmentMenuButton(equipmentEntry);
   if (equipmentButton) bottomRow.push(equipmentButton);
   // Combat Trials: only once Equipment is unlocked (`available`) — no gear
-  // means no combat stats. At most the fifth of this row's five buttons. The
-  // service re-checks the unlock on every click, so this is presentation only.
+  // means no combat stats — and only while the player has Trials left to
+  // fight (`combatTrialsEnabled` is the service's `entryVisible`): the
+  // curriculum disappears once it is cleared. At most the fifth of this row's
+  // five buttons. The service re-checks on every click, so this is
+  // presentation only.
   if (combatTrialsEnabled && equipmentEntry === 'available') bottomRow.push(combatTrialsButton());
-  // Delve: the same gate as Combat Trials, and likewise re-checked by its
-  // service on every click. The bottom row can already be full (Locations,
-  // Quests, Change Target, Equipment, Combat Trials), so the entry spills
-  // onto a fourth row rather than push a sixth button into this one.
+  // Delve: once the Combat Trials are cleared and a dungeon is open in the
+  // player's region, or while they have a run to resume (`dungeonsEnabled` is
+  // the service's `entryVisible`). Re-checked by its service on every click.
+  // The bottom row can already be full (Locations, Quests, Change Target,
+  // Equipment, Combat Trials), so the entry spills onto a fourth row rather
+  // than push a sixth button into this one.
   if (dungeonsEnabled && equipmentEntry === 'available') bottomRow.push(dungeonMenuButton());
   for (let i = 0; i < bottomRow.length; i += MENU_ROW_SIZE) {
     rows.push(new ActionRowBuilder<ButtonBuilder>().addComponents(...bottomRow.slice(i, i + MENU_ROW_SIZE)));
@@ -245,6 +250,26 @@ async function loadEquipmentEntry(
   }
 }
 
+/**
+ * Whether a menu entry is offered to this player, from its service's
+ * `entryVisible`. Like the Equipment entry, a failure logs and hides it for
+ * this paint rather than break the menu.
+ */
+async function loadEntryVisible(
+  ctx: AppContext,
+  playerId: number,
+  tag: string,
+  service: { entryVisible(playerId: number): Promise<boolean> } | undefined,
+): Promise<boolean> {
+  if (!service) return false;
+  try {
+    return await service.entryVisible(playerId);
+  } catch (err) {
+    ctx.logger.warn({ err, tag, playerId }, 'menu entry state failed — hiding it');
+    return false;
+  }
+}
+
 /** The Actions legend's Equipment mention, while the entry is visible. */
 export function equipmentLegendLine(entry: EquipmentEntryState): string {
   if (entry === 'begin' || entry === 'resume') return '\n🔧 **Equipment** — something new is waiting';
@@ -252,12 +277,12 @@ export function equipmentLegendLine(entry: EquipmentEntryState): string {
   return '';
 }
 
-/** The Actions legend's Combat Trials mention, once Equipment is unlocked. */
+/** The Actions legend's Combat Trials mention, while the menu offers them. */
 export function combatTrialsLegendLine(entry: EquipmentEntryState, enabled: boolean): string {
   return enabled && entry === 'available' ? '\n⚔️ **Combat Trials** — put your gear to the test' : '';
 }
 
-/** The Actions legend's Delve mention, once Equipment is unlocked. */
+/** The Actions legend's Delve mention, while the menu offers it. */
 export function dungeonLegendLine(entry: EquipmentEntryState, enabled: boolean): string {
   return enabled && entry === 'available' ? '\n⛏️ **Delve** — take your Buddy into a dungeon' : '';
 }
@@ -347,8 +372,13 @@ async function renderMainMenu(
   if (banner) embed.setImage(banner.url);
 
   const equipmentEntry = await loadEquipmentEntry(ctx, prov.playerId);
-  const combatTrialsEnabled = ctx.services.combatTrials != null;
-  const dungeonsEnabled = ctx.services.dungeonRuns != null;
+  // Read per paint, so clearing the last Trial, travelling, or an admin
+  // opening or closing a dungeon shows on the next menu.
+  const unlocked = equipmentEntry === 'available';
+  const [combatTrialsEnabled, dungeonsEnabled] = await Promise.all([
+    unlocked && loadEntryVisible(ctx, prov.playerId, 'combat-trials/menu-state', ctx.services.combatTrials),
+    unlocked && loadEntryVisible(ctx, prov.playerId, 'dungeons/menu-state', ctx.services.dungeonRuns),
+  ]);
   embed.addFields({
     name: '🎮 Actions',
     value:

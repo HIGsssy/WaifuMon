@@ -94,10 +94,17 @@ import { sceneSpritesForRoom, type SceneSpriteRenderVisual } from './sceneSprite
  *
  * ## Eligibility, allowance and regions
  *
- * Unchanged from the prototype: the `equipment` feature unlock, an active
- * Buddy and a complete loadout; one daily run spent in the start transaction
- * and never refunded; a dungeon is startable only from one of its regions,
- * while an active run is playable anywhere.
+ * The `equipment` feature unlock, an active Buddy and a complete loadout; one
+ * daily run spent in the start transaction and never refunded; a dungeon is
+ * startable only from one of its regions, while an active run is playable
+ * anywhere.
+ *
+ * Starting a run — and browsing dungeons to start one — also needs Delve
+ * unlocked: the Combat Trials curriculum cleared (`delveAccess`, see
+ * `combatTrials/trialCurriculum.ts`). It is checked inside the start
+ * transaction, under the player lock. A run already under way never checks
+ * it: Resume, every step, extraction, abandoning and the home's active-run
+ * screen work for whoever holds the run.
  */
 import { and, asc, eq, gt, inArray } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
@@ -131,6 +138,7 @@ import {
   DungeonRunActiveError,
   DungeonRunNotFoundError,
   DungeonUnavailableError,
+  DelveLockedError,
   EquipmentRewardConfigError,
   EquipmentRollPinMissingError,
   FeatureLockedError,
@@ -159,6 +167,7 @@ import type { CombatStats, CombatStatsUnavailableReason } from '../equipment/equ
 import { listRewardableDefinitions, type EquipmentRewardService } from '../equipment/equipmentRewardService';
 import { readEquipmentRollPin, type EquipmentRollPin } from '../equipment/rollRules';
 import type { FeatureUnlockService } from '../features/featureUnlockService';
+import type { DelveAccess } from '../combatTrials/trialCurriculum';
 import type { InventoryService } from '../inventory/inventoryService';
 import { regionLabel } from '../locations/regions';
 import type { ProgressionCurrencyService } from '../progressionCurrency/progressionCurrencyService';
@@ -433,15 +442,22 @@ export interface DungeonRunEvent {
 export interface DungeonRunService {
   /** Whether the player may use dungeons at all. Never throws for a locked player. */
   isAvailable(playerId: number): Promise<boolean>;
-  /** @throws {FeatureLockedError} */
+  /**
+   * Whether navigation should offer Delve: the player has a run to resume, or
+   * Delve is unlocked and a dungeon is open in their current region. Temporary
+   * personal blockers (no Buddy, no runs left today) never hide it — those
+   * are explained on the screens behind it. Never throws for a locked player.
+   */
+  entryVisible(playerId: number): Promise<boolean>;
+  /** @throws {FeatureLockedError} {DelveLockedError} (only without an active run) */
   home(playerId: number): Promise<DungeonHomeView>;
-  /** @throws {FeatureLockedError} {DungeonUnavailableError} */
+  /** @throws {FeatureLockedError} {DelveLockedError} (only without an active run) {DungeonUnavailableError} */
   dungeon(playerId: number, dungeonKey: string): Promise<DungeonDetailView>;
   /**
    * Spend one daily run, pin the published revision, snapshot the fighter and
    * the run's dependencies, atomically: all of it happens or none does.
    *
-   * @throws {FeatureLockedError} {DungeonRunActiveError} {CombatBuddyRequiredError}
+   * @throws {FeatureLockedError} {DelveLockedError} {DungeonRunActiveError} {CombatBuddyRequiredError}
    *         {CombatLoadoutIncompleteError} {DungeonDailyLimitError}
    *         {DungeonUnavailableError} {DungeonInvalidError}
    */
@@ -464,6 +480,8 @@ export interface DungeonRunServiceDeps {
   enemies: Pick<EnemyCatalogueService, 'snapshot'>;
   allowance: Pick<DungeonAllowanceService, 'status' | 'consume'>;
   featureUnlocks: Pick<FeatureUnlockService, 'isUnlocked'>;
+  /** The Combat Trials prerequisite for starting a run. Required: there is no wiring without it. */
+  delveAccess: DelveAccess;
   combatStats: Pick<CombatStatsService, 'calculateCombatStats' | 'snapshotCombatStats'>;
   /** Resolves the pinned fighter's species, never a later active Buddy. */
   buddyBonus?: Pick<BuddyBonusService, 'bonusForSpeciesSlug'>;
@@ -549,6 +567,11 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
     if (!(await deps.featureUnlocks.isUnlocked(playerId, DUNGEON_FEATURE, tx))) {
       throw new FeatureLockedError(DUNGEON_FEATURE);
     }
+  }
+
+  /** A new run (or the screens that lead to one) needs Delve unlocked; a run in progress never does. */
+  async function requireDelve(playerId: number, tx: DbOrTx = db): Promise<void> {
+    if (!(await deps.delveAccess.isUnlocked(playerId, tx))) throw new DelveLockedError();
   }
 
   function regionView(id: string): DungeonRegionView {
@@ -1439,6 +1462,9 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
         .for('update');
       if (!player) throw new PlayerNotFoundError(playerId);
       if (await activeRow(tx, playerId)) throw new DungeonRunActiveError(playerId);
+      // Under the player lock, like the rest: a stale or forged Start from a
+      // player who has not cleared the Trials reaches nothing.
+      await requireDelve(playerId, tx);
 
       const published = await deps.content.published(tx, dungeonKey);
       if (typeof published === 'string') throw new DungeonUnavailableError(dungeonKey, published);
@@ -1571,16 +1597,27 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
       return deps.featureUnlocks.isUnlocked(playerId, DUNGEON_FEATURE);
     },
 
+    async entryVisible(playerId) {
+      if (!(await deps.featureUnlocks.isUnlocked(playerId, DUNGEON_FEATURE))) return false;
+      if (await activeRow(db, playerId)) return true;
+      if (!(await deps.delveAccess.isUnlocked(playerId))) return false;
+      const region = await currentRegion(db, playerId);
+      return (await deps.content.openDungeons(db)).some(({ definition }) => definition.availableRegions.includes(region.id));
+    },
+
     async home(playerId) {
       await requireUnlocked(playerId);
+      const active = await activeRow(db, playerId);
+      // A run in progress is always reachable; only a new one needs Delve.
+      const delve = await deps.delveAccess.isUnlocked(playerId);
+      if (!active && !delve) throw new DelveLockedError();
       const region = await currentRegion(db, playerId);
       const dungeons: DungeonCard[] = [];
-      for (const { definition } of await deps.content.openDungeons(db)) {
+      for (const { definition } of delve ? await deps.content.openDungeons(db) : []) {
         // Only what can be started here. A dungeon elsewhere is not listed at all.
         if (!definition.availableRegions.includes(region.id)) continue;
         dungeons.push(await card(db, playerId, definition));
       }
-      const active = await activeRow(db, playerId);
       const [stats, daily] = await Promise.all([deps.combatStats.calculateCombatStats(playerId), deps.allowance.status(playerId)]);
       return {
         region,
@@ -1593,6 +1630,7 @@ export function createDungeonRunService(deps: DungeonRunServiceDeps): DungeonRun
 
     async dungeon(playerId, dungeonKey) {
       await requireUnlocked(playerId);
+      if (!(await activeRow(db, playerId))) await requireDelve(playerId);
       const published = await deps.content.published(db, dungeonKey);
       if (typeof published === 'string') throw new DungeonUnavailableError(dungeonKey, published);
       const region = await currentRegion(db, playerId);

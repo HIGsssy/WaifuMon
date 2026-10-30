@@ -34,6 +34,8 @@ import { createEnemyCatalogueService, type EnemyCatalogueService } from '../../s
 import { seedCombatEnemies, shippedCombatEnemies } from '../../src/modules/enemies/enemyStore';
 import { createCombatStatsService, type CombatStatsService } from '../../src/modules/equipment/combatStatsService';
 import { createEquipmentRewardService } from '../../src/modules/equipment/equipmentRewardService';
+import { createDelveAccess } from '../../src/modules/combatTrials/trialCurriculum';
+import { recordTrialFirstClears } from './trialFixtures';
 import {
   bootstrapEquipmentRollRules,
   createEquipmentRollRulesService,
@@ -88,8 +90,11 @@ export interface DungeonWorld {
   speciesAccess: Map<string, DungeonSpeciesAccess[]>;
   /** The clock the daily allowance reads. Reassign `.now` to cross a reset. */
   clock: { now: Date };
-  /** A fresh, eligible player. `buddy`, `unlocked` and `starters` default to true. */
-  player(opts?: { buddy?: boolean; unlocked?: boolean; starters?: boolean }): Promise<{ playerId: number; buddyId: number | null }>;
+  /**
+   * A fresh, eligible player. `buddy`, `unlocked`, `starters` and `trials`
+   * (the Combat Trials curriculum cleared, which opens Delve) default to true.
+   */
+  player(opts?: { buddy?: boolean; unlocked?: boolean; starters?: boolean; trials?: boolean }): Promise<{ playerId: number; buddyId: number | null }>;
   /** Create a dungeon and publish its draft. Defaults to the test dungeon. */
   publish(definition?: DungeonDefinitionInput | DungeonDefinition): Promise<DungeonPublishResult>;
   /** Replace a dungeon's draft and publish it as the next revision. */
@@ -182,6 +187,7 @@ export async function createDungeonWorld(
     ...(opts.combatRules === null ? {} : { combatRules: opts.combatRules ?? FIXED_RULES }),
     ...(opts.logger ? { logger: opts.logger } : {}),
     featureUnlocks: svc.featureUnlocks,
+    delveAccess: createDelveAccess({ db: t.db, featureUnlocks: svc.featureUnlocks }),
     combatStats: stats,
     buddyBonus: app.buddyBonus,
     currencies,
@@ -227,6 +233,7 @@ export async function createDungeonWorld(
         buddyId = buddy.id;
       }
       if (o.unlocked !== false) await unlockEquipment(t.db, svc, playerId);
+      if (o.trials !== false && o.unlocked !== false) await recordTrialFirstClears(t.db, playerId);
       if (o.starters !== false && o.unlocked !== false) {
         for (const [slot, key] of [['attack', 'rusty_pipe'], ['defense', 'scrap_plate'], ['health', 'dented_lunchbox']] as const) {
           const id = await grant(t.db, svc, playerId, key, starterRoll(key));

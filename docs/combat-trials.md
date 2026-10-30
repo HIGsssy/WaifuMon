@@ -34,14 +34,52 @@ Equipment a player has no ATK / DEF / HP to fight with. Level is never checked
 directly.
 
 - The main menu shows **⚔️ Combat Trials** only when the Equipment entry state
-  is `available`, which means unlocked.
+  is `available`, which means unlocked, and the player still has Trials to
+  fight (`entryVisible`; see [the curriculum](#the-curriculum-and-delve)).
 - `combatTrialService` checks the unlock on **every** list, detail and fight
   call. A stale or forged `ct:*` button from a locked player gets the locked
   screen and nothing is fought or recorded.
 - Equipment onboarding is unchanged. Completing it still unlocks Equipment,
   and no Trial needs to be fought. The completion screen now also shows a
   "Your gear is ready. Try it out in Combat Trials." field and a **Combat
-  Trials** button. This is presentation only.
+  Trials** button while `entryVisible` is true. This is presentation only.
+
+## The curriculum and Delve
+
+The three shipped Trials are the **curriculum**: clearing all of them opens
+Delve. The list is `COMBAT_TRIAL_CURRICULUM` in
+`src/modules/combatTrials/trialCurriculum.ts` — fixed Trial keys, not "every
+Trial in `trials.json`" and not a tag:
+
+| Key | |
+| --- | --- |
+| `trial_scrapyard_drone` | Trial 1 |
+| `trial_alley_bruiser` | Trial 2 |
+| `trial_security_automaton` | Trial 3 |
+
+- **Completion** is read from the authoritative record: a Trial counts once
+  its `first_clear` attempt row exists. Nothing else is stored, so it survives
+  restarts and players who cleared all three before this release are already
+  unlocked. Disabling a cleared Trial in content later does not undo it.
+- **Stable.** A Trial added later (optional, advanced, repeatable) is not in
+  the list, so it neither blocks Delve nor re-locks anyone. Do not append to
+  the list: the unlock is derived from it, so a new required key would
+  re-lock players. A real curriculum change needs a durable unlock first (a
+  `player_feature_unlocks` key plus a backfill).
+- **While in progress** every Trial, cleared or not, stays fightable, exactly
+  as before. The list says how far the player is ("2 / 3 cleared").
+- **Once complete** the curriculum is retired for that player. Its Trials
+  leave the list and are refused on open and fight with
+  `CombatTrialsCompletedError`; Trials outside the curriculum stay. With
+  nothing left, the menu entry disappears and a stale `ct:*` button shows
+  "You have completed the Combat Trials — Delve is unlocked" with **Back to
+  Waifumon**.
+- The result of the clear that completed the curriculum shows **⛏️ Delve
+  unlocked!**, and offers no **Fight Again** (nor **All Trials** with nothing
+  left). A retried request for that fight replays it, unlock notice
+  included, and pays nothing.
+- The refusal is checked under the player lock, after the request-key replay,
+  so two racing Fights on the final Trial produce one clear and one refusal.
 
 ## Trial content
 
@@ -270,9 +308,12 @@ shows them. Later victories are ordinary attempts.
 | First clear | The Trial's `firstClearRewards`: WaifuBux and fixed salvage items, through the existing `currency.grantWaifubux` and `inventory.addItem` |
 | Repeat clear | Nothing |
 
-Because repeat clears pay nothing, Trials can be repeated freely: no Energy
-cost, cooldown or daily cap. That keeps testing and balancing easy without
-creating a farm. There is no Equipment reward in V1.
+Because repeat clears pay nothing, Trials can be repeated freely **until the
+curriculum is complete**: no Energy cost, cooldown or daily cap. After that
+the curriculum Trials are retired for the player (see [the
+curriculum](#the-curriculum-and-delve)); first clears and rewards already
+recorded are untouched, and a retired Trial can never pay again. There is no
+Equipment reward in V1.
 
 Shipped first-clear rewards:
 
@@ -314,6 +355,7 @@ the request key.
 | Situation | Error / behaviour |
 | --- | --- |
 | Equipment not unlocked | `FeatureLockedError` → locked screen |
+| Curriculum complete, curriculum Trial requested | `CombatTrialsCompletedError` → completed screen |
 | No active Buddy | `CombatBuddyRequiredError`; detail shows the blocker and Fight disabled |
 | Empty gear slot | `CombatLoadoutIncompleteError`; detail shows the blocker |
 | Trial missing or disabled, enemy missing or disabled | `CombatTrialUnavailableError` → list with a note |

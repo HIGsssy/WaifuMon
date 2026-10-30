@@ -85,6 +85,7 @@ import {
 } from './modules/enemies/enemyStore';
 import { createSceneCompositionService } from './modules/artworkAssets/sceneComposition';
 import { createDungeonRunService } from './modules/dungeons/dungeonRunService';
+import { createDelveAccess } from './modules/combatTrials/trialCurriculum';
 import { createDungeonAvailabilityProvider } from './modules/dungeons/dungeonAvailability';
 import { createDungeonAllowanceService } from './modules/dungeons/dungeonAllowanceService';
 import { createProgressionCurrencyService } from './modules/progressionCurrency/progressionCurrencyService';
@@ -622,6 +623,9 @@ async function main(): Promise<void> {
     allowance: dungeonAllowance,
     regionName: (regionId) => dungeonRegions().find((r) => r.id === regionId)?.name ?? regionLabel(regionId),
     featureUnlocks,
+    // Equipment onboarding → Combat Trials curriculum → Delve. The Trial
+    // service retires the same curriculum (its default) once it is cleared.
+    delveAccess: createDelveAccess({ db, featureUnlocks }),
     combatStats,
     buddyBonus,
     currencies: progressionCurrency,

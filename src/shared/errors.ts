@@ -1739,6 +1739,36 @@ export class CombatTrialRequestConflictError extends AppError {
   }
 }
 
+/**
+ * The player has cleared the Combat Trials curriculum, so its Trials are
+ * retired for them — a stale or forged `ct:*` button. Nothing is fought,
+ * recorded or paid. Clears and rewards already earned are untouched.
+ */
+export class CombatTrialsCompletedError extends AppError {
+  constructor() {
+    super(
+      'COMBAT_TRIALS_COMPLETED',
+      'The Combat Trials curriculum is complete for this player',
+      'You have completed the Combat Trials — Delve is unlocked.',
+    );
+  }
+}
+
+/**
+ * Starting a Delve needs the Combat Trials curriculum cleared. Never raised
+ * for a run already under way: continuing, extracting and abandoning do not
+ * check it.
+ */
+export class DelveLockedError extends AppError {
+  constructor() {
+    super(
+      'DELVE_LOCKED',
+      'Delve requires the Combat Trials to be completed',
+      'Delve unlocks once you have cleared the Combat Trials.',
+    );
+  }
+}
+
 /* ─────────────────────── Patch's Workshop ───────────────────────
  *
  * Constructors tolerate junk arguments, as above: `tests/unit/api/errors.test.ts`

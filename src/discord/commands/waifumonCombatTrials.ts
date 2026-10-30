@@ -2,8 +2,10 @@
  * Combat Trials button handlers (`ct:*`).
  *
  * Thin: every handler acts on `prov.playerId`, asks `CombatTrialService` (which
- * checks the Equipment unlock on every call and re-reads all state), and hands
- * the read model to `combatTrialPresenter`. No combat is orchestrated here.
+ * checks the Equipment unlock and the curriculum on every call and re-reads
+ * all state), and hands the read model to `combatTrialPresenter`. No combat is
+ * orchestrated here. A button from before the curriculum was cleared lands on
+ * the completed screen.
  *
  * Idempotency: the Fight button carries a nonce minted when its screen was
  * drawn. The nonce is the service's request key, so a double-click or a
@@ -18,6 +20,7 @@ import {
   buildFightResult,
   buildTrialDetail,
   buildTrialList,
+  completedTrialsView,
   lockedTrialsView,
   TRIAL_UNAVAILABLE,
   type TrialArtwork,
@@ -33,6 +36,7 @@ import {
   CombatBuddyRequiredError,
   CombatLoadoutIncompleteError,
   CombatTrialRequestConflictError,
+  CombatTrialsCompletedError,
   CombatTrialUnavailableError,
   FeatureLockedError,
 } from '../../shared/errors';
@@ -132,6 +136,10 @@ async function run(
         await respondEphemeral(interaction, lockedTrialsView());
         return;
       }
+      if (err instanceof CombatTrialsCompletedError) {
+        await respondEphemeral(interaction, completedTrialsView());
+        return;
+      }
       if (err instanceof CombatTrialUnavailableError || err instanceof CombatTrialRequestConflictError) {
         const status = err instanceof CombatTrialUnavailableError ? TRIAL_UNAVAILABLE : err.userMessage;
         await respondEphemeral(interaction, await listScreen(service, prov.playerId, 0, status));
@@ -150,6 +158,10 @@ async function run(
       err = inner;
       if (err instanceof FeatureLockedError) {
         await respondEphemeral(interaction, lockedTrialsView());
+        return;
+      }
+      if (err instanceof CombatTrialsCompletedError) {
+        await respondEphemeral(interaction, completedTrialsView());
         return;
       }
     }
@@ -198,7 +210,7 @@ export async function handleCombatTrialFight(ctx: AppContext, i: ButtonInteracti
         ctx.content.combatEnemies?.find((e) => e.key === outcome.attempt.enemyKey) ??
         null;
       return buildFightResult(outcome, {
-        againNonce: outcome.trial ? mintFightNonce() : null,
+        againNonce: outcome.trial && outcome.canFightAgain ? mintFightNonce() : null,
         itemName: itemNameResolver(ctx),
         art: {
           scene: trialSceneArtwork(ctx, outcome.trial, enemy),

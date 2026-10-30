@@ -11,7 +11,11 @@
  *   - the read models a screen needs (list, detail), neutral enough for
  *     Discord today and the Portal later — no embeds, no prose;
  *   - resolving a fight, recording it, first-clear tracking and the one-time
- *     first-clear reward.
+ *     first-clear reward;
+ *   - retiring the introductory curriculum (`trialCurriculum.ts`) once the
+ *     player has cleared it: its Trials leave the list and are refused on
+ *     open and fight, which is also what opens Delve. Before that, every
+ *     Trial — cleared or not — can be fought again, as it always could.
  *
  * It never calculates a stat. The player's ATK / DEF / HP and combat
  * modifiers come from `combatStatsService` (the one place Equipment
@@ -29,12 +33,14 @@
  *   1. unlock check;
  *   2. idempotency: an attempt with this `requestKey` already exists → read it
  *      back (`replayed: true`); nothing is fought or paid again;
- *   3. Trial and enemy still enabled;
- *   4. stats snapshotted inside the transaction (`snapshotCombatStats`);
- *   5. engine runs on `seededRng(combatTrialSeed(...))`; the attempt row is
+ *   3. a curriculum Trial is refused once the curriculum is complete (after
+ *      the replay check, so a retried final clear still shows its result);
+ *   4. Trial and enemy still enabled;
+ *   5. stats snapshotted inside the transaction (`snapshotCombatStats`);
+ *   6. engine runs on `seededRng(combatTrialSeed(...))`; the attempt row is
  *      written with a snapshot of both sides, the player's modifiers (inside
  *      `initial_state`) and the seed;
- *   6. on a first `player_victory`, `first_clear = true` and the reward is
+ *   7. on a first `player_victory`, `first_clear = true` and the reward is
  *      paid in the same transaction. The partial unique index on
  *      `(player_id, trial_key) WHERE first_clear` backs the row lock: a
  *      second first-clear cannot commit.
@@ -59,6 +65,7 @@ import {
   CombatBuddyRequiredError,
   CombatLoadoutIncompleteError,
   CombatTrialRequestConflictError,
+  CombatTrialsCompletedError,
   CombatTrialUnavailableError,
   ContentValidationError,
   FeatureLockedError,
@@ -95,6 +102,7 @@ import {
   type CombatTrialDefinition,
   type CombatTrialReward,
 } from '../combat/trialDefinitions';
+import { COMBAT_TRIAL_CURRICULUM, readCurriculumProgress, type TrialCurriculumProgress } from './trialCurriculum';
 
 /** The feature that gates Trials: no Equipment means no combat stats. */
 export const COMBAT_TRIAL_FEATURE = 'equipment' as const;
@@ -163,8 +171,10 @@ export interface CombatTrialSummary {
 }
 
 export interface CombatTrialListView {
-  /** Fightable Trials, in authored order. */
+  /** Fightable Trials, in authored order. Curriculum Trials are left out once it is complete. */
   trials: CombatTrialSummary[];
+  /** How far the player is through the curriculum that opens Delve. */
+  curriculum: { required: number; cleared: number; complete: boolean };
 }
 
 /** Why the Fight action is refused before it is pressed. */
@@ -220,6 +230,12 @@ export interface CombatTrialFightOutcome {
   replayed: boolean;
   /** The Trial's current definition, for display; null if it has since been removed. */
   trial: CombatTrialDefinition | null;
+  /** False once the curriculum is complete and this is one of its Trials. */
+  canFightAgain: boolean;
+  /** Whether the Trial list still has anything to fight. */
+  trialsOpen: boolean;
+  /** True on exactly the attempt whose first clear completed the curriculum (opening Delve). */
+  completedCurriculum: boolean;
 }
 
 // ── service ───────────────────────────────────────────────────────────────
@@ -227,15 +243,21 @@ export interface CombatTrialFightOutcome {
 export interface CombatTrialService {
   /** Whether the player may use Combat Trials at all. Never throws for a locked player. */
   isAvailable(playerId: number): Promise<boolean>;
-  /** @throws {FeatureLockedError} */
+  /**
+   * Whether navigation should offer Combat Trials: unlocked, and something is
+   * left to fight — the curriculum until it is cleared, then only Trials
+   * outside it. Never throws for a locked player.
+   */
+  entryVisible(playerId: number): Promise<boolean>;
+  /** @throws {FeatureLockedError} {CombatTrialsCompletedError} */
   list(playerId: number): Promise<CombatTrialListView>;
-  /** @throws {FeatureLockedError} {CombatTrialUnavailableError} */
+  /** @throws {FeatureLockedError} {CombatTrialUnavailableError} {CombatTrialsCompletedError} */
   detail(playerId: number, trialKey: string): Promise<CombatTrialDetailView>;
   /**
    * Resolve one fight. `requestKey` is the caller's idempotency key: the same
    * key always returns the same attempt, fought and paid once.
    *
-   * @throws {FeatureLockedError} {CombatTrialUnavailableError}
+   * @throws {FeatureLockedError} {CombatTrialUnavailableError} {CombatTrialsCompletedError}
    *         {CombatBuddyRequiredError} {CombatLoadoutIncompleteError}
    *         {CombatTrialRequestConflictError} {CombatStateInvalidError}
    */
@@ -254,6 +276,8 @@ export interface CombatTrialServiceDeps {
    * edit in Portal Admin reaches the next fight). May be async for that read.
    */
   getCatalogue(): CombatTrialCatalogue | Promise<CombatTrialCatalogue>;
+  /** The Trials that open Delve. Defaults to the shipped {@link COMBAT_TRIAL_CURRICULUM}. */
+  curriculum?: readonly string[];
   /**
    * The generator for a fight's seed. Defaults to `seededRng`; injected only
    * by tests that need to script draws. Production never overrides it — a
@@ -351,11 +375,29 @@ export function toAttemptView(row: CombatTrialAttemptRow): CombatTrialAttemptVie
 export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTrialService {
   const { db } = deps;
   const rngForSeed = deps.rngForSeed ?? seededRng;
+  const curriculum = deps.curriculum ?? COMBAT_TRIAL_CURRICULUM;
+  const inCurriculum = (trialKey: string) => curriculum.includes(trialKey);
 
   async function requireUnlocked(playerId: number, tx: DbOrTx = db): Promise<void> {
     if (!(await deps.featureUnlocks.isUnlocked(playerId, COMBAT_TRIAL_FEATURE, tx))) {
       throw new FeatureLockedError(COMBAT_TRIAL_FEATURE);
     }
+  }
+
+  /** What the list offers: everything fightable, less the curriculum once it is cleared. */
+  function openTrials<T extends { trial: CombatTrialDefinition }>(available: T[], progress: TrialCurriculumProgress): T[] {
+    return progress.complete ? available.filter((a) => !inCurriculum(a.trial.key)) : available;
+  }
+
+  /** The player's standing after a fight, for the result screen's buttons. */
+  async function standing(tx: DbOrTx, playerId: number, trialKey: string, attemptId: number) {
+    const progress = await readCurriculumProgress(tx, playerId, curriculum);
+    const trialsOpen = !progress.complete || openTrials((await deps.getCatalogue()).available(), progress).length > 0;
+    return {
+      canFightAgain: !(progress.complete && inCurriculum(trialKey)),
+      trialsOpen,
+      completedCurriculum: progress.completedByAttemptId === attemptId,
+    };
   }
 
   async function resolveOrThrow(trialKey: string) {
@@ -432,9 +474,18 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
       return deps.featureUnlocks.isUnlocked(playerId, COMBAT_TRIAL_FEATURE);
     },
 
+    async entryVisible(playerId) {
+      if (!(await deps.featureUnlocks.isUnlocked(playerId, COMBAT_TRIAL_FEATURE))) return false;
+      const progress = await readCurriculumProgress(db, playerId, curriculum);
+      if (!progress.complete) return true;
+      return openTrials((await deps.getCatalogue()).available(), progress).length > 0;
+    },
+
     async list(playerId) {
       await requireUnlocked(playerId);
-      const available = (await deps.getCatalogue()).available();
+      const standing = await readCurriculumProgress(db, playerId, curriculum);
+      const available = openTrials((await deps.getCatalogue()).available(), standing);
+      if (standing.complete && available.length === 0) throw new CombatTrialsCompletedError();
       const progress = await progressFor(
         db,
         playerId,
@@ -446,11 +497,15 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
           enemy,
           progress: progress.get(trial.key) ?? emptyProgress(),
         })),
+        curriculum: { required: standing.required.length, cleared: standing.cleared.length, complete: standing.complete },
       };
     },
 
     async detail(playerId, trialKey) {
       await requireUnlocked(playerId);
+      if (inCurriculum(trialKey) && (await readCurriculumProgress(db, playerId, curriculum)).complete) {
+        throw new CombatTrialsCompletedError();
+      }
       const { trial, enemy } = await resolveOrThrow(trialKey);
       const [stats, progress] = await Promise.all([
         deps.combatStats.calculateCombatStats(playerId),
@@ -487,7 +542,14 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
             attempt: toAttemptView(existing),
             replayed: true,
             trial: (await deps.getCatalogue()).get(existing.trialKey) ?? null,
+            ...(await standing(tx, playerId, existing.trialKey, existing.id)),
           };
+        }
+
+        // Read under the player lock: a concurrent final clear has either
+        // committed (and this is refused) or has not started.
+        if (inCurriculum(trialKey) && (await readCurriculumProgress(tx, playerId, curriculum)).complete) {
+          throw new CombatTrialsCompletedError();
         }
 
         const { trial, enemy } = await resolveOrThrow(trialKey);
@@ -560,7 +622,7 @@ export function createCombatTrialService(deps: CombatTrialServiceDeps): CombatTr
 
         if (reward) await payReward(tx, playerId, reward);
 
-        return { attempt: toAttemptView(row!), replayed: false, trial };
+        return { attempt: toAttemptView(row!), replayed: false, trial, ...(await standing(tx, playerId, trial.key, row!.id)) };
       });
     },
   };

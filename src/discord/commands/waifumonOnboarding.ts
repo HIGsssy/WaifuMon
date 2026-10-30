@@ -58,7 +58,11 @@ async function run(
     }
     // A finished player lands on the Equipment home, picture included.
     const artwork = view.kind === 'overview' ? await equipmentHomeArtwork(ctx, prov.playerId, view.stats) : null;
-    await respondEphemeral(interaction, buildOnboardingView(ctx, view, service.content(), artwork));
+    // The completion screen's Combat Trials pointer, only while there is something left to fight.
+    const trials = view.kind === 'complete' && ctx.services.combatTrials
+      ? await ctx.services.combatTrials.entryVisible(prov.playerId)
+      : undefined;
+    await respondEphemeral(interaction, buildOnboardingView(ctx, view, service.content(), artwork, trials));
   } catch (err) {
     if (err instanceof AppError) {
       await respondEphemeral(interaction, err.userMessage);

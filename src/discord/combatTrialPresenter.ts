@@ -21,6 +21,11 @@
  *
  * The explicit Fight button is the seam future interactive combat replaces
  * with Basic Attack / Special / Defend; opening a Trial never starts a fight.
+ *
+ * Once the curriculum is cleared its Trials are retired: the result of the
+ * clear that finished it announces Delve and offers neither Fight Again nor
+ * (with nothing left to fight) All Trials, and a stale `ct:*` button lands on
+ * {@link completedTrialsView}.
  */
 import {
   ActionRowBuilder,
@@ -55,6 +60,9 @@ export const REPLAYED_FIGHT = 'That fight was already resolved — here’s how 
 export const NO_BUDDY_BLOCKER = 'An active Buddy is required to fight. Choose one from your Collection.';
 export const INCOMPLETE_LOADOUT_BLOCKER = 'Equip Attack, Defense and Health gear before fighting.';
 export const NO_TRIALS = 'No Trials are available right now. Check back soon.';
+export const TRIALS_COMPLETED = '✅ You have completed the Combat Trials. ⛏️ **Delve** is now unlocked — look for it on the main menu wherever a dungeon is open.';
+export const DELVE_UNLOCKED_TITLE = '⛏️ Delve unlocked!';
+export const DELVE_UNLOCKED_TEXT = 'You have cleared every Combat Trial. Delve now appears on the main menu wherever a dungeon is open.';
 /** The onboarding completion's pointer at Combat Trials. */
 export const COMBAT_TRIALS_CTA_TITLE = 'Your gear is ready.';
 export const COMBAT_TRIALS_CTA_TEXT = 'Try it out in **Combat Trials**.';
@@ -237,18 +245,27 @@ function listEntry(summary: CombatTrialSummary): { name: string; value: string }
   return { name: truncate(trial.name, 256), value };
 }
 
+/** The list's pointer at Delve: how much of the curriculum is left. */
+export function curriculumLine(curriculum: CombatTrialListView['curriculum']): string {
+  return `⛏️ Clear all ${curriculum.required} Trials to unlock **Delve** — ${curriculum.cleared} / ${curriculum.required} cleared.`;
+}
+
 export function buildTrialList(view: CombatTrialListView, page: number, status?: string | null): SessionPayload {
   const totalPages = Math.max(1, Math.ceil(view.trials.length / TRIALS_PAGE_SIZE));
   const current = Math.min(Math.max(0, page), totalPages - 1);
   const shown = view.trials.slice(current * TRIALS_PAGE_SIZE, (current + 1) * TRIALS_PAGE_SIZE);
 
+  // Where the ladder leads, while it is still being climbed.
+  const unlockLine = !view.curriculum.complete && view.curriculum.required > 0
+    ? `\n\n${curriculumLine(view.curriculum)}`
+    : '';
   const embed = new EmbedBuilder()
     .setTitle(COMBAT_TRIALS_TITLE)
     .setColor(COLOR)
     .setDescription(
-      shown.length
+      (shown.length
         ? 'Test your Buddy and gear against a ladder of opponents. Pick a Trial to see the matchup.'
-        : NO_TRIALS,
+        : NO_TRIALS) + unlockLine,
     );
   for (const summary of shown) embed.addFields(listEntry(summary));
 
@@ -374,7 +391,7 @@ function hpBlock(side: CombatTrialAttemptView['player']): string {
 }
 
 export interface FightResultOptions {
-  /** Nonce for the Fight Again button; null hides it (e.g. the Trial is gone). */
+  /** Nonce for the Fight Again button; null hides it (the Trial is gone or retired). */
   againNonce: string | null;
   itemName(slug: string): string;
   art?: TrialArt;
@@ -394,11 +411,12 @@ export function buildFightResult(outcome: CombatTrialFightOutcome, opts: FightRe
       value: lines.length ? lines.join('\n') : 'Trial cleared for the first time.',
     });
   }
+  if (outcome.completedCurriculum) embed.addFields({ name: DELVE_UNLOCKED_TITLE, value: DELVE_UNLOCKED_TEXT });
   const art = opts.art ?? {};
   applyArt(embed, art);
 
   const buttons: ButtonBuilder[] = [];
-  if (opts.againNonce && trial) {
+  if (opts.againNonce && trial && outcome.canFightAgain) {
     buttons.push(
       new ButtonBuilder()
         .setCustomId(ctId.fight(trial.key, opts.againNonce))
@@ -407,7 +425,8 @@ export function buildFightResult(outcome: CombatTrialFightOutcome, opts: FightRe
         .setStyle(ButtonStyle.Danger),
     );
   }
-  buttons.push(trialsButton(), menuButton());
+  if (outcome.trialsOpen) buttons.push(trialsButton());
+  buttons.push(menuButton());
   return {
     content: replayed ? REPLAYED_FIGHT : '',
     embeds: [embed],
@@ -418,4 +437,9 @@ export function buildFightResult(outcome: CombatTrialFightOutcome, opts: FightRe
 
 export function lockedTrialsView(): SessionPayload {
   return { content: LOCKED_TRIALS, embeds: [], components: [row(menuButton())], files: [] };
+}
+
+/** A stale Combat Trials button after the curriculum is cleared. */
+export function completedTrialsView(): SessionPayload {
+  return { content: TRIALS_COMPLETED, embeds: [], components: [row(menuButton())], files: [] };
 }

@@ -626,7 +626,7 @@ describe('Combat Trials read the catalogue', () => {
   });
 
   it('fights the enemy as the catalogue has it, and a later edit changes only later fights', async () => {
-    const { playerId } = await w.player();
+    const { playerId } = await w.player({ trials: false });
     expect((await trials.list(playerId)).trials.map((s) => [s.trial.key, s.enemy.name])).toEqual([['t_weak', 'Trial Weakling']]);
     expect((await trials.detail(playerId, 't_weak')).enemy).toMatchObject({ key: 'trial_weak', attack: 1, defense: 0, hp: 10 });
 
@@ -649,7 +649,7 @@ describe('Combat Trials read the catalogue', () => {
   });
 
   it('a Trial whose enemy is missing or disabled is unavailable, clearly, and records nothing', async () => {
-    const { playerId } = await w.player();
+    const { playerId } = await w.player({ trials: false });
     const ghost = await trials.fight(playerId, 't_ghost', 'k-ghost').catch((e: unknown) => e);
     expect(ghost).toBeInstanceOf(CombatTrialUnavailableError);
     expect(ghost).toMatchObject({ reason: 'enemy_missing', trialKey: 't_ghost' });

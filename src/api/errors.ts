@@ -616,6 +616,10 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   COMBAT_LOADOUT_INCOMPLETE: 409,
   /** A request key already spent on a different Trial. */
   COMBAT_TRIAL_REQUEST_CONFLICT: 409,
+  /** The curriculum is cleared: its Trials are retired for this player. */
+  COMBAT_TRIALS_COMPLETED: 409,
+  /** Starting a Delve before the Combat Trials are cleared. Same family as FEATURE_LOCKED. */
+  DELVE_LOCKED: 422,
   /** Granting a definition that has been disabled — it is not obtainable now. */
   EQUIPMENT_DEFINITION_DISABLED: 422,
   /**

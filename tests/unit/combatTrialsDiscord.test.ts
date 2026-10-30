@@ -145,6 +145,7 @@ const LIST: CombatTrialListView = {
     { trial: T1, enemy: DRONE, progress: cleared },
     { trial: T2, enemy: BRUISER, progress: notCleared },
   ],
+  curriculum: { required: 3, cleared: 1, complete: false },
 };
 
 function detail(over: Partial<CombatTrialDetailView> = {}): CombatTrialDetailView {
@@ -192,6 +193,9 @@ const outcome = (attempt: CombatTrialAttemptView, over: Partial<CombatTrialFight
   attempt,
   replayed: false,
   trial: T1,
+  canFightAgain: true,
+  trialsOpen: true,
+  completedCurriculum: false,
   ...over,
 });
 
@@ -224,6 +228,7 @@ const fightButton = (p: unknown) => buttons(p).find((b) => b.custom_id?.startsWi
 function fakeService(over: Partial<Record<keyof CombatTrialService, unknown>> = {}) {
   return {
     isAvailable: vi.fn(async () => true),
+    entryVisible: vi.fn(async () => true),
     list: vi.fn(async () => LIST),
     detail: vi.fn(async () => detail()),
     fight: vi.fn(async () => outcome(attemptFrom(VICTORY()))),
@@ -343,6 +348,7 @@ describe('Trial list', () => {
         enemy: DRONE,
         progress: notCleared,
       })),
+      curriculum: { required: 0, cleared: 0, complete: true },
     };
     const first = buildTrialList(many, 0);
     expect(embedOf(first).fields).toHaveLength(5);
@@ -353,7 +359,7 @@ describe('Trial list', () => {
   });
 
   it('an empty ladder says so', () => {
-    expect(text(buildTrialList({ trials: [] }, 0))).toContain('No Trials are available');
+    expect(text(buildTrialList({ trials: [], curriculum: { required: 0, cleared: 0, complete: true } }, 0))).toContain('No Trials are available');
   });
 
   it('a malformed page is refused without calling the service', async () => {

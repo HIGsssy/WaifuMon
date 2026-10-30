@@ -308,6 +308,33 @@ Unchanged from the prototype: the `equipment` unlock gate, the Buddy and
 complete-loadout requirement, one active run per player, the shared daily
 allowance spent in the start transaction, region availability at start only.
 
+### Delve unlock (Combat Trials prerequisite)
+
+Progression is **Equipment onboarding → clear the Combat Trials curriculum →
+Delve** ([combat-trials.md](combat-trials.md#the-curriculum-and-delve)).
+`createDelveAccess` (`combatTrials/trialCurriculum.ts`) is the one decision:
+`equipment` unlocked and every Trial in `COMBAT_TRIAL_CURRICULUM` first-cleared.
+It is derived from the `first_clear` attempt rows; there is no separate flag.
+
+- **Starting a run** checks it inside the start transaction, after the player
+  lock and the one-active-run check, so a stale or forged `dg|start` from a
+  player who has not cleared the Trials is refused with `DelveLockedError`
+  and spends nothing. `home` and `dungeon` (the screens that lead to a start)
+  refuse the same way, unless the player has a run in progress.
+- **A run in progress never checks it.** Resume, every step, extraction,
+  abandoning, restart recovery and the home's active-run screen work for
+  whoever holds the run.
+- **Menu entry** — `entryVisible(playerId)`: true when the player has a run to
+  resume, or when Delve is unlocked *and* `openDungeons` (enabled, with a
+  readable published revision) has a dungeon whose `availableRegions`
+  includes the player's current region. Drafts never count. Temporary
+  personal blockers (no Buddy, incomplete loadout, no runs left today) never
+  hide it; the screens behind it explain them as before. The main menu reads
+  it on every paint, so travel and admin enable/disable show on the next one.
+- Start still re-reads `published(tx, key)` and the region off the locked
+  player row, so a dungeon disabled or unpublished after a menu was drawn
+  cannot be entered from that menu.
+
 ### Legacy Treasure compatibility
 
 A `reward` action pays an existing `expedition` reward table (and optionally a

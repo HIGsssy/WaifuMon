@@ -77,7 +77,7 @@ import type { DungeonActionView, DungeonConnectionView } from '../modules/dungeo
 import { formatCombatBonus, type CombatBonus } from '../modules/equipment/combatBonuses';
 import { EQUIPMENT_SLOTS, type EquipmentSlot } from '../modules/equipment/vocabulary';
 import { formatProgressionAmount } from '../modules/progressionCurrency/progressionCurrencyService';
-import { blockerLine, modifiersLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
+import { blockerLine, combatTrialsButton, modifiersLine, summarizeCombatEvents, type TrialArt } from './combatTrialPresenter';
 import { gearSpSuffix } from './combatSpFormat';
 import type { SessionPayload } from './ephemeralSession';
 import { formatChancePercent } from './rollFormat';
@@ -87,6 +87,7 @@ import { buildCustomId } from './types';
 export const DUNGEON_TITLE = '⛏️ Delve';
 export const DUNGEON_LABEL = 'Delve';
 export const LOCKED_DUNGEONS = '🔒 Delves unlock once you have Equipment.';
+export const DELVE_LOCKED = '🔒 Delve unlocks once you have cleared the Combat Trials.';
 export const NO_ZONES = 'There are no Delves available in this region.';
 export const ZONE_UNAVAILABLE = 'That dungeon isn’t open right now.';
 export const RUN_ACTIVE_NOTICE = 'You’re already in a dungeon — here’s your run.';
@@ -1390,4 +1391,9 @@ export function buildAbandonConfirm(view: DungeonRunView): SessionPayload {
 
 export function lockedDungeonsView(): SessionPayload {
   return { content: LOCKED_DUNGEONS, embeds: [], components: [row(menuButton())], files: [] };
+}
+
+/** A Delve button (stale, forged or from before this release) pressed before the Trials are cleared. */
+export function delveLockedView(): SessionPayload {
+  return { content: DELVE_LOCKED, embeds: [], components: [row(combatTrialsButton(ButtonStyle.Primary), menuButton())], files: [] };
 }

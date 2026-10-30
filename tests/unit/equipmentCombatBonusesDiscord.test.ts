@@ -429,7 +429,7 @@ describe('Combat Trials', () => {
 
   it('the result shows the modifiers the attempt was fought with, and what they did', () => {
     const a = attempt(MODS);
-    const payload = buildFightResult({ attempt: a, replayed: false, trial }, { againNonce: 'n', itemName: (s) => s });
+    const payload = buildFightResult({ attempt: a, replayed: false, trial, canFightAgain: true, trialsOpen: true, completedCurriculum: false }, { againNonce: 'n', itemName: (s) => s });
     expect(embedOf(payload).description).toContain('Crit 25% · Crit DMG 167.5% · Double 20% · Armor Pen 6% · Lifesteal 10%');
     const summary = fieldOf(payload, 'Combat summary')!.value;
     const totals = combatBonusTotalsLine(a.events, 'Warband Princess')!;
@@ -440,7 +440,7 @@ describe('Combat Trials', () => {
 
   it('a fight without modifiers reads exactly as before', () => {
     const a = attempt({ ...ZERO_COMBAT_MODIFIERS });
-    const payload = buildFightResult({ attempt: a, replayed: false, trial }, { againNonce: 'n', itemName: (s) => s });
+    const payload = buildFightResult({ attempt: a, replayed: false, trial, canFightAgain: true, trialsOpen: true, completedCurriculum: false }, { againNonce: 'n', itemName: (s) => s });
     expect(embedOf(payload).description).toBe(
       `**Warband Princess**\nHP: ${a.player.remainingHp} / 480\n\n**Drone**\nHP: ${a.enemy.remainingHp} / 1500\n\nRounds: ${a.rounds}`,
     );
