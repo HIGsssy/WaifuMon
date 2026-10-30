@@ -75,6 +75,7 @@ import { createLocalArtworkStorage } from './modules/artworkAssets/artworkStorag
 import { combatTrialEnemyReferences, dungeonEnemyReferences } from './modules/enemies/enemyReferences';
 import { createEnemyCatalogueService } from './modules/enemies/enemyService';
 import { createEnemyPackageService } from './modules/enemies/enemyPackageService';
+import { createDungeonBundleService } from './modules/dungeons/bundle/dungeonBundleService';
 import {
   mergeLegacyEnemyArtwork,
   reportCombatEnemySeed,
@@ -598,6 +599,21 @@ async function main(): Promise<void> {
     environment: config.deploymentEnv,
     logger,
   });
+  // Complete Dungeon Bundles (CP-4B): the dungeon, its enemies, sprites, shared pools and
+  // artwork in one ZIP. Shares CP-3's artwork journal, so the recovery above covers it too.
+  const dungeonBundles = createDungeonBundleService({
+    db,
+    content: dungeonContent,
+    enemyPackages,
+    sceneSprites: dungeonSceneSprites,
+    sharedPools: dungeonSpeciesPools,
+    assets: artworkAssets,
+    storage: artworkStorage,
+    assetsDir: config.assetsDir,
+    getRegions: dungeonRegions,
+    environment: config.deploymentEnv ?? 'unspecified',
+    logger,
+  });
   const dungeonAllowance = createDungeonAllowanceService({ db, timezone: config.dailyTimezone, logger });
   const dungeonRuns = createDungeonRunService({
     db,
@@ -990,6 +1006,7 @@ async function main(): Promise<void> {
       artworkAssets,
       enemies: enemyCatalogue,
       enemyPackages,
+      dungeonBundles,
       // Region Pools. `huntTables` is the very object the hunt was built with:
       // the hunt reads tables.json once, so the odds must too.
       regionPools: createRegionPoolService({

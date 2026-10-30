@@ -24,11 +24,13 @@ import { PageHeader } from '@/components/layout/PageHeader';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useHasPermission } from '@/auth/useSession';
 import { DungeonImportPanel } from './DungeonImportPanel';
+import { DungeonBundleImportPanel } from './DungeonBundleImportPanel';
 import { publicationState } from './dungeonPublicationModel';
 import { RewardHealthPanel } from './RewardHealthPanel';
 const formatUpdated = (iso: string) => new Date(iso).toLocaleString();
 export function DungeonsListPage() {
   const [importing, setImporting] = useState(false);
+  const [importingBundle, setImportingBundle] = useState(false);
   const client = useQueryClient();
   const canWrite = useHasPermission('dungeons.write');
   const query = useQuery({
@@ -51,8 +53,21 @@ export function DungeonsListPage() {
             </Button>
             {canWrite && (
               <>
-                <Button variant="outline" disabled={importing} onClick={() => setImporting(true)}>
+                <Button
+                  variant="outline"
+                  disabled={importing || importingBundle}
+                  title="Dungeon JSON — the definition and its dependencies; artwork must already be deployed here"
+                  onClick={() => setImporting(true)}
+                >
                   Import Dungeon
+                </Button>
+                <Button
+                  variant="outline"
+                  disabled={importing || importingBundle}
+                  title="Complete Dungeon Bundle (ZIP) — includes its artwork, enemies, Scene Sprites and shared pools"
+                  onClick={() => setImportingBundle(true)}
+                >
+                  Import Complete Dungeon Bundle (ZIP)
                 </Button>
                 <Button asChild>
                   <Link to="/admin/dungeons/new">Create dungeon</Link>
@@ -63,6 +78,7 @@ export function DungeonsListPage() {
         }
       />
       {importing && <DungeonImportPanel onCancel={() => setImporting(false)} />}
+      {importingBundle && <DungeonBundleImportPanel onCancel={() => setImportingBundle(false)} />}
       {query.isPending && <Skeleton className="h-32" />}
       {query.isError && (
         <ErrorState

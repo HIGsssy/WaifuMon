@@ -51,9 +51,9 @@
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { and, eq, inArray, lt, sql } from 'drizzle-orm';
+import { inArray, sql } from 'drizzle-orm';
 import type { Db, DbOrTx } from '../../db/client';
-import { combatEnemies, enemyPackageImports, type CombatEnemyRow } from '../../db/schema';
+import { combatEnemies, type CombatEnemyRow } from '../../db/schema';
 import {
   ArtworkUploadInvalidError,
   EnemyExportKeysNotFoundError,
@@ -73,11 +73,19 @@ import {
   findReusableAsset,
   insertStagedAssets,
   planStagedAssets,
-  removeUnclaimedStagedFiles,
   writeStagedAssets,
   type BundleAssetEntry,
   type StagedBundleAsset,
 } from '../artworkAssets/package/artworkBundle';
+import {
+  IMPORT_RECOVERY_AGE_MS,
+  failImportJournal,
+  findImportReceipt,
+  markImportApplied,
+  openImportJournal,
+  recoverInterruptedImports as recoverJournal,
+  type ImportJournalRow,
+} from '../artworkAssets/package/importJournal';
 import { locateArtworkFile } from '../assets/artworkFile';
 import type { CombatEnemyDefinition } from '../combat/enemyDefinitions';
 import { canonicalJson } from '../rewardTables/rewardTableCore';
@@ -98,8 +106,8 @@ import {
 import { RESERVED_ENEMY_KEYS, type EnemyCatalogueService } from './enemyService';
 import { combatEnemyHash, enemyDefinitionOf, readCombatEnemyRows } from './enemyStore';
 
-/** A `staged` journal row older than this belongs to no live import. */
-export const ENEMY_IMPORT_RECOVERY_AGE_MS = 10 * 60 * 1000;
+/** A `staged` journal row older than this belongs to no live import (the shared journal's age). */
+export const ENEMY_IMPORT_RECOVERY_AGE_MS = IMPORT_RECOVERY_AGE_MS;
 
 export type EnemyExportSelection = { scope: 'all' } | { scope: 'selected'; keys: readonly string[] };
 
@@ -197,8 +205,32 @@ export interface EnemyPackageService {
    *   EnemyImportDecisionsRequiredError | EnemyImportRequestConflictError}
    */
   apply(archive: Buffer, request: EnemyImportRequest, actor: string | null): Promise<EnemyImportResult>;
-  /** Remove files staged by imports that never finished. Safe to run any time. */
+  /** Remove files staged by imports that never finished — of every kind sharing the journal. Safe to run any time. */
   recoverInterruptedImports(opts?: { olderThanMs?: number }): Promise<{ abandoned: number; removedFiles: number }>;
+  /**
+   * The pieces a complete dungeon bundle (CP-4B) reuses so that enemies inside
+   * it are exported, reviewed and written exactly as a standalone package's are.
+   */
+  bundle: EnemyBundleSteps;
+}
+
+/** CP-3's export collection, plan and write, for a caller that owns the archive and the transaction. */
+export interface EnemyBundleSteps {
+  /** Each row's artwork into `collector`: its manifest bindings, or why it cannot travel. */
+  collect(
+    rows: readonly CombatEnemyRow[],
+    collector: ReturnType<typeof createBundleAssetCollector>,
+  ): Promise<{ bindings: EnemyPackageManifest['enemies']; definitions: CombatEnemyDefinition[]; errors: (EnemyPackageIssue & { reason: 'artwork_unavailable' | 'unsupported_artwork' })[]; warnings: EnemyPackageManifest['warnings'] }>;
+  /** The standalone preview's plan, in the caller's transaction (`lock`: the apply-time row locks). */
+  plan(tx: DbOrTx, pkg: EnemyPackage, lock: boolean): Promise<EnemyPlan>;
+  /** Write the approved entries of a locked plan; `assetIdOf` names each slot's destination asset. */
+  write(
+    tx: DbOrTx,
+    planned: readonly EnemyPlannedEntry[],
+    approved: (entry: EnemyPlannedEntry) => boolean,
+    assetIdOf: (destination: EnemySlotDestination) => string | null,
+    actor: string | null,
+  ): Promise<{ created: string[]; updated: string[]; skipped: string[]; unchanged: string[] }>;
 }
 
 export interface EnemyPackageServiceDeps {
@@ -220,14 +252,16 @@ const sha256 = (value: unknown) => createHash('sha256').update(typeof value === 
 const DEFINITION_FIELDS = ['name', 'description', 'attack', 'defense', 'hp', 'tags', 'artworkPath', 'spriteArtworkPath', 'spritePlacement'] as const;
 const SLOT_COLUMN = { artwork: 'artworkAssetId', sprite: 'spriteAssetId' } as const;
 
-interface PlannedEntry extends EnemyImportEntry {
+export interface EnemyPlannedEntry extends EnemyImportEntry {
   definition: CombatEnemyDefinition;
   row: CombatEnemyRow | null;
 }
-interface Plan {
+export interface EnemyPlan {
   preview: EnemyImportPreview;
-  planned: PlannedEntry[];
+  planned: EnemyPlannedEntry[];
 }
+type PlannedEntry = EnemyPlannedEntry;
+type Plan = EnemyPlan;
 
 export function createEnemyPackageService(deps: EnemyPackageServiceDeps): EnemyPackageService {
   const { db, storage } = deps;
@@ -253,30 +287,12 @@ export function createEnemyPackageService(deps: EnemyPackageServiceDeps): EnemyP
     }
   }
 
-  async function exportPackage(selection: EnemyExportSelection): Promise<EnemyPackageExport> {
-    const L = ENEMY_PACKAGE_LIMITS;
-    let rows = await readCombatEnemyRows(db);
-    if (selection.scope === 'selected') {
-      const wanted = [...new Set(selection.keys)];
-      if (wanted.length === 0) throw new EnemyExportRefusedError('empty', 'No enemies were selected, so nothing was exported.');
-      const present = new Set(rows.map((r) => r.enemyKey));
-      const missing = wanted.filter((k) => !present.has(k)).sort();
-      if (missing.length > 0) throw new EnemyExportKeysNotFoundError(missing);
-      const set = new Set(wanted);
-      rows = rows.filter((r) => set.has(r.enemyKey));
-    } else if (rows.length === 0) {
-      throw new EnemyExportRefusedError('empty', 'The Enemy Catalogue is empty, so nothing was exported.');
-    }
-    if (rows.length > L.maxEnemies) {
-      throw new EnemyExportRefusedError(
-        'too_large',
-        `${rows.length} enemies is more than the ${L.maxEnemies} a package may hold. Export a smaller selection.`,
-      );
-    }
-
+  async function collect(
+    rows: readonly CombatEnemyRow[],
+    collector: ReturnType<typeof createBundleAssetCollector>,
+  ): ReturnType<EnemyBundleSteps['collect']> {
     const managedIds = rows.flatMap((r) => [r.artworkAssetId, r.spriteAssetId]).filter((id): id is string => id !== null);
     const managed = await deps.assets.getMany(managedIds);
-    const collector = createBundleAssetCollector();
     const errors: (EnemyPackageIssue & { reason: 'artwork_unavailable' | 'unsupported_artwork' })[] = [];
     const warnings: EnemyPackageManifest['warnings'] = [];
     const bindings: EnemyPackageManifest['enemies'] = [];
@@ -337,6 +353,33 @@ export function createEnemyPackageService(deps: EnemyPackageServiceDeps): EnemyP
       }
       bindings.push(binding);
     }
+
+    return { bindings, definitions, errors, warnings };
+  }
+
+  async function exportPackage(selection: EnemyExportSelection): Promise<EnemyPackageExport> {
+    const L = ENEMY_PACKAGE_LIMITS;
+    let rows = await readCombatEnemyRows(db);
+    if (selection.scope === 'selected') {
+      const wanted = [...new Set(selection.keys)];
+      if (wanted.length === 0) throw new EnemyExportRefusedError('empty', 'No enemies were selected, so nothing was exported.');
+      const present = new Set(rows.map((r) => r.enemyKey));
+      const missing = wanted.filter((k) => !present.has(k)).sort();
+      if (missing.length > 0) throw new EnemyExportKeysNotFoundError(missing);
+      const set = new Set(wanted);
+      rows = rows.filter((r) => set.has(r.enemyKey));
+    } else if (rows.length === 0) {
+      throw new EnemyExportRefusedError('empty', 'The Enemy Catalogue is empty, so nothing was exported.');
+    }
+    if (rows.length > L.maxEnemies) {
+      throw new EnemyExportRefusedError(
+        'too_large',
+        `${rows.length} enemies is more than the ${L.maxEnemies} a package may hold. Export a smaller selection.`,
+      );
+    }
+
+    const collector = createBundleAssetCollector();
+    const { bindings, definitions, errors, warnings } = await collect(rows, collector);
 
     if (errors.length > 0) {
       const reason = errors.some((e) => e.reason === 'artwork_unavailable') ? 'artwork_unavailable' : 'unsupported_artwork';
@@ -543,40 +586,14 @@ export function createEnemyPackageService(deps: EnemyPackageServiceDeps): EnemyP
 
   // ── apply ─────────────────────────────────────────────────────────────────
 
-  function replayOf(row: typeof enemyPackageImports.$inferSelect): EnemyImportResult {
+  function replayOf(row: ImportJournalRow): EnemyImportResult {
     return { ...(row.result as unknown as EnemyImportResult), importId: row.id, replayed: true };
   }
 
   async function journal(input: { requestId: string; requestHash: string; packageHash: string; planHash: string; keys: string[]; actor: string | null }) {
-    const [inserted] = await db
-      .insert(enemyPackageImports)
-      .values({
-        requestId: input.requestId,
-        requestHash: input.requestHash,
-        packageHash: input.packageHash,
-        planHash: input.planHash,
-        status: 'staged',
-        stagedStorageKeys: input.keys,
-        actor: input.actor,
-      })
-      .onConflictDoNothing()
-      .returning();
-    if (inserted) return inserted;
-    // The id was used before: only a failed or abandoned attempt of the very same request may be retried.
-    const [reclaimed] = await db
-      .update(enemyPackageImports)
-      .set({ status: 'staged', stagedStorageKeys: input.keys, planHash: input.planHash, createdAt: now(), finishedAt: null, error: null })
-      .where(
-        and(
-          eq(enemyPackageImports.requestId, input.requestId),
-          eq(enemyPackageImports.requestHash, input.requestHash),
-          inArray(enemyPackageImports.status, ['failed', 'abandoned']),
-        ),
-      )
-      .returning();
-    if (reclaimed) return reclaimed;
-    const [existing] = await db.select().from(enemyPackageImports).where(eq(enemyPackageImports.requestId, input.requestId));
-    throw new EnemyImportRequestConflictError(existing?.requestHash === input.requestHash && existing.status === 'staged');
+    const opened = await openImportJournal(db, { kind: 'enemy_package', ...input }, now());
+    if ('conflict' in opened) throw new EnemyImportRequestConflictError(opened.conflict.inProgress);
+    return opened.row;
   }
 
   async function apply(archive: Buffer, request: EnemyImportRequest, actor: string | null): Promise<EnemyImportResult> {
@@ -584,9 +601,9 @@ export function createEnemyPackageService(deps: EnemyPackageServiceDeps): EnemyP
     const requestHash = sha256({ packageHash: pkg.packageHash, expectedPlanHash: request.expectedPlanHash, decisions: request.decisions, actor });
 
     // An applied request is answered from its receipt, whatever the catalogue looks like now.
-    const [receipt] = await db.select().from(enemyPackageImports).where(eq(enemyPackageImports.requestId, request.requestId));
+    const receipt = await findImportReceipt(db, request.requestId);
     if (receipt?.status === 'applied') {
-      if (receipt.requestHash !== requestHash) throw new EnemyImportRequestConflictError(false);
+      if (receipt.requestHash !== requestHash || receipt.kind !== 'enemy_package') throw new EnemyImportRequestConflictError(false);
       return replayOf(receipt);
     }
 
@@ -659,68 +676,56 @@ export function createEnemyPackageService(deps: EnemyPackageServiceDeps): EnemyP
           },
         };
         const reused = new Map<string, string>();
-        for (const p of locked.planned) {
-          if (!writes(p)) {
-            (p.outcome === 'unchanged' ? result.unchanged : result.skipped).push(p.key);
-            continue;
-          }
+        for (const p of locked.planned.filter(writes)) {
           for (const slot of ENEMY_ARTWORK_SLOTS) {
             const d = p[slot].destination;
             if (d.kind === 'reuse') reused.set(d.asset, d.assetId);
           }
-          await deps.enemies.applyImported(
-            tx,
-            {
-              definition: p.definition,
-              artworkAssetId: assetIdOf(p.artwork.destination),
-              spriteAssetId: assetIdOf(p.sprite.destination),
-              expectedRevision: p.row ? p.row.revision : null,
-            },
-            actor,
-          );
-          (p.outcome === 'create' ? result.created : result.updated).push(p.key);
         }
+        Object.assign(result, await write(tx, locked.planned, writes, assetIdOf, actor));
         result.assets.reused = [...reused].map(([asset, assetId]) => ({ asset, assetId }));
         await deps.faults?.beforeCommit?.(tx);
-        await tx
-          .update(enemyPackageImports)
-          .set({ status: 'applied', result: result as unknown as Record<string, unknown>, finishedAt: now() })
-          .where(eq(enemyPackageImports.id, row.id));
+        await markImportApplied(tx, row, result as unknown as Record<string, unknown>, now());
         return { ...result, importId: row.id, replayed: false };
       });
     } catch (err) {
-      try {
-        await removeUnclaimedStagedFiles(db, storage, staged.map((s) => s.storageKey));
-        await db
-          .update(enemyPackageImports)
-          .set({ status: 'failed', finishedAt: now(), error: err instanceof Error ? err.message.slice(0, 500) : String(err).slice(0, 500) })
-          .where(and(eq(enemyPackageImports.id, row.id), eq(enemyPackageImports.status, 'staged')));
-      } catch (cleanupErr) {
-        // The row stays `staged`; recovery removes the files later.
-        deps.logger?.warn({ tag: 'enemy-package/cleanup', requestId: request.requestId, err: cleanupErr }, 'could not clean up a failed enemy import');
-      }
+      await failImportJournal(db, storage, row, err, now(), (cleanupErr) =>
+        deps.logger?.warn({ tag: 'enemy-package/cleanup', requestId: request.requestId, err: cleanupErr }, 'could not clean up a failed enemy import'),
+      );
       throw err;
     }
   }
 
-  async function recoverInterruptedImports(opts: { olderThanMs?: number } = {}) {
-    const cutoff = new Date(now().getTime() - (opts.olderThanMs ?? ENEMY_IMPORT_RECOVERY_AGE_MS));
-    const stale = await db
-      .select()
-      .from(enemyPackageImports)
-      .where(and(eq(enemyPackageImports.status, 'staged'), lt(enemyPackageImports.createdAt, cutoff)));
-    let removedFiles = 0;
-    let abandoned = 0;
-    for (const row of stale) {
-      const removed = await removeUnclaimedStagedFiles(db, storage, row.stagedStorageKeys);
-      removedFiles += removed.length;
-      const [marked] = await db
-        .update(enemyPackageImports)
-        .set({ status: 'abandoned', finishedAt: now(), error: `interrupted; ${removed.length} staged file(s) removed` })
-        .where(and(eq(enemyPackageImports.id, row.id), eq(enemyPackageImports.status, 'staged')))
-        .returning({ id: enemyPackageImports.id });
-      if (marked) abandoned += 1;
+  async function write(
+    tx: DbOrTx,
+    planned: readonly PlannedEntry[],
+    approved: (entry: PlannedEntry) => boolean,
+    assetIdOf: (destination: EnemySlotDestination) => string | null,
+    actor: string | null,
+  ) {
+    const out = { created: [] as string[], updated: [] as string[], skipped: [] as string[], unchanged: [] as string[] };
+    for (const p of planned) {
+      if (!approved(p)) {
+        (p.outcome === 'unchanged' ? out.unchanged : out.skipped).push(p.key);
+        continue;
+      }
+      await deps.enemies.applyImported(
+        tx,
+        {
+          definition: p.definition,
+          artworkAssetId: assetIdOf(p.artwork.destination),
+          spriteAssetId: assetIdOf(p.sprite.destination),
+          expectedRevision: p.row ? p.row.revision : null,
+        },
+        actor,
+      );
+      (p.outcome === 'create' ? out.created : out.updated).push(p.key);
     }
+    return out;
+  }
+
+  async function recoverInterruptedImports(opts: { olderThanMs?: number } = {}) {
+    const { abandoned, removedFiles } = await recoverJournal(db, storage, { now: now(), olderThanMs: opts.olderThanMs });
     if (abandoned > 0) deps.logger?.info?.({ tag: 'enemy-package/recovery', abandoned, removedFiles }, 'recovered interrupted enemy imports');
     return { abandoned, removedFiles };
   }
@@ -733,5 +738,6 @@ export function createEnemyPackageService(deps: EnemyPackageServiceDeps): EnemyP
     },
     apply,
     recoverInterruptedImports,
+    bundle: { collect, plan, write },
   };
 }

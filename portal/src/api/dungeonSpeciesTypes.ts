@@ -6,6 +6,19 @@ export type DungeonSpeciesUnavailableReason =
   | 'direct_not_permitted'
   | 'direct_limit_missing'
   | 'player_limit';
+/** Server policy verdict for potentially reachable encounters in an unsaved draft. */
+export interface DungeonSpeciesAccessReview {
+  species: string;
+  authorization: 'content' | 'dungeon' | 'both' | 'unrestricted' | 'none';
+  perPlayerLimit: number | 'unlimited' | null;
+  captureReason: DungeonSpeciesUnavailableReason | null;
+  directReason: DungeonSpeciesUnavailableReason | null;
+  canAdd: boolean;
+  references: Array<{
+    roomId: string; roomName: string; actionId: string; actionName: string; direct: boolean;
+    poolId?: string; poolName?: string; sharedPoolKey?: string;
+  }>;
+}
 export interface DungeonSpeciesRef {
   slug: string;
   name: string;

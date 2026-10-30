@@ -9,8 +9,8 @@ import { dungeonSpeciesUnavailableReason } from './validation/dungeonEncounterVa
 import { explicitCaptureDependencyIssues, type EncounterImportCatalogue } from './package/dungeonEncounterImport';
 import { PackageSpeciesEvidenceSchema } from './package/dungeonEncounterDependencies';
 import { loadDungeonEncounterValidationSource, publishedDungeonSpeciesPolicies, type DungeonSpeciesAccessLookup } from './dungeonSpeciesPolicy';
-import { sceneSpriteCatalogue, freezeSceneSprites, readSceneSpriteSnapshot, pinnedSceneSpriteCatalogue } from './sceneSprites/sceneSpriteSnapshot';
-import { hasSceneSprites } from './sceneSprites/sceneSpriteDefinition';
+import { sceneSpriteCatalogue, freezeSceneSprites, readSceneSpriteSnapshot, pinnedSceneSpriteCatalogue, type SceneSpriteSnapshot } from './sceneSprites/sceneSpriteSnapshot';
+import { hasSceneSprites, sceneSpriteKeys } from './sceneSprites/sceneSpriteDefinition';
 /**
  * Dungeon authoring: drafts, publication, rollback, audit and export.
  *
@@ -447,6 +447,14 @@ export interface DungeonContentService extends DungeonImportService {
   history(key: string, limit?: number): Promise<DungeonContentEvent[]>;
   /** @throws {DungeonNotFoundError | DungeonRevisionNotFoundError} */
   exportPackage(key: string, origin: DungeonExportOrigin, actor: string | null): Promise<DungeonPackage>;
+  /**
+   * The JSON package a complete dungeon bundle (CP-4B) wraps, read in the
+   * bundle's own read-only transaction. Unlike {@link exportPackage}, Scene
+   * Sprite placements are allowed — the bundle carries their definitions —
+   * and a revision export returns that revision's frozen sprite visuals, so
+   * the bundle never reads a different, current catalogue row instead.
+   */
+  exportBundleSource(tx: DbOrTx, key: string, origin: DungeonExportOrigin): Promise<{ pkg: DungeonPackage; sceneSpriteSnapshot: SceneSpriteSnapshot | null }>;
 
   // ── runtime ───────────────────────────────────────────────────────────────
   /** Every dungeon players can start: enabled, published. In list order. */
@@ -612,6 +620,93 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       items: itemRows.map(row => ({ slug: row.slug, name: row.name, enabled: row.enabled, category: row.category,
         captureRarities: row.captureRarities, isGuaranteedCapture: row.isGuaranteedCapture })),
     };
+  }
+
+  async function buildExport(tx: DbOrTx, key: string, origin: DungeonExportOrigin, allowSceneSprites: boolean): Promise<{ pkg: DungeonPackage; sceneSpriteSnapshot: SceneSpriteSnapshot | null }> {
+    const [row] = await tx.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, key));
+    if (!row) throw new DungeonNotFoundError(key);
+    const published = await publishedInfo(tx, row);
+    let rewardSnapshot: DungeonRewardSnapshot | undefined;
+    let lootTableMetadata: Parameters<typeof buildDungeonPackage>[0]['lootTableMetadata'];
+    let definition: DungeonDefinition;
+    let layout: DungeonLayout;
+    let revisionNumber: number | null = published?.number ?? null;
+    let sceneSpriteSnapshot: SceneSpriteSnapshot | null = null;
+    if (origin === 'draft') {
+      definition = parseStoredDefinition(key, row.draft);
+      layout = parseStoredLayout(row.layout);
+      if (hasDungeonRewardBundles(definition)) {
+        const context = await loadDungeonRewardContext(tx);
+        const { issues } = validateDungeonRewards(definition, context);
+        if (hasErrors(issues)) throw new DungeonInvalidError(issues);
+        const snapshot = resolveDungeonRewardDependencies(definition, context).snapshot;
+        if (!snapshot) throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewards', message: 'Draft reward dependencies cannot be exported. Repair its loot tables, items and equipment.' }]);
+        rewardSnapshot = snapshot;
+        const tables = await tx.select({ key: dungeonLootTables.tableKey, description: dungeonLootTables.description, origin: dungeonLootTables.origin })
+          .from(dungeonLootTables).where(inArray(dungeonLootTables.tableKey, Object.keys(snapshot.tables)));
+        lootTableMetadata = new Map(tables.map((table) => [table.key, table]));
+      }
+    } else {
+      const wanted = origin === 'published' ? published?.number : origin.revision;
+      const [revision] =
+        wanted == null
+          ? []
+          : await tx.select().from(dungeonRevisions).where(and(eq(dungeonRevisions.dungeonKey, key), eq(dungeonRevisions.number, wanted)));
+      if (!revision) throw new DungeonRevisionNotFoundError(key, wanted ?? 0);
+      definition = parseStoredDefinition(key, revision.content);
+      layout = parseStoredLayout(revision.layout);
+      revisionNumber = revision.number;
+      if (allowSceneSprites && hasSceneSprites(definition)) {
+        // The visuals players of this revision see: never today's mutable catalogue rows.
+        sceneSpriteSnapshot = readSceneSpriteSnapshot(revision.sceneSpriteSnapshot);
+        const missing = sceneSpriteSnapshot ? sceneSpriteKeys(definition).filter((k) => !sceneSpriteSnapshot!.sprites[k]) : sceneSpriteKeys(definition);
+        if (!sceneSpriteSnapshot || missing.length)
+          throw new DungeonInvalidError([{ code: 'scene_sprite_snapshot_invalid', severity: 'error', path: 'rooms', message: `Revision ${revision.number} has no usable frozen Scene Sprite visuals${missing.length ? ` (${missing.join(', ')})` : ''}. Export the draft, or publish again and export the new revision.` }]);
+      }
+      if (revision.contentHash !== dungeonContentHash(definition))
+        throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'contentHash', message: `Revision ${revision.number} content integrity failed. Export refused.` }]);
+      if (hasDungeonRewardBundles(definition)) {
+        const snapshot = readDungeonRewardSnapshot(revision.rewardSnapshot);
+        if (!snapshot || revision.contentHash !== dungeonContentHash(definition) || revision.gameplayHash !== dungeonGameplayHash(revision.contentHash, snapshot.hash))
+          throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot', message: `Revision ${revision.number} has a missing, invalid or unsupported reward snapshot. Export refused.` }]);
+        rewardSnapshot = snapshot;
+      }
+    }
+    // Reward-free events still need structural verification and field-level
+    // authoring errors. Published exports never consult mutable catalogues here.
+    if (dungeonUsesEvents(definition)) {
+      const { issues } = validateContentDefinition(definition);
+      if (hasErrors(issues)) throw new DungeonInvalidError(issues);
+    }
+    if (hasSceneSprites(definition) && !allowSceneSprites) throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'rooms', message: 'Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely. Remove placements from a copy to export it.' }]);
+    let encounterCatalogue: EncounterImportCatalogue | undefined;
+    if (hasDungeonEncounters(definition)) {
+      encounterCatalogue = await loadEncounterImportContext(tx);
+      const { issues } = validateContentDefinition(definition, { encounterSource: encounterCatalogue.source });
+      if (hasErrors(issues)) throw new DungeonInvalidError(issues);
+    }
+    const enemies = new Map((await deps.enemies.definitions(tx)).map((e) => [e.key, e]));
+    let pkg: DungeonPackage;
+    try {
+      pkg = buildDungeonPackage({
+        definition,
+        layout,
+        enemies,
+        species: encounterCatalogue ? new Map(encounterCatalogue.species.map(({ name: _name, ...evidence }) => [evidence.slug, evidence])) : undefined,
+        rewardSnapshot,
+        lootTableMetadata,
+        source: {
+          environment: deps.environment ?? 'development',
+          origin: origin === 'draft' ? 'draft' : 'revision',
+          draftRevision: origin === 'draft' ? row.draftRevision : null,
+          publishedRevision: origin === 'draft' ? (published?.number ?? null) : revisionNumber,
+        },
+      }, { allowSceneSprites });
+    } catch (err) {
+      if (!rewardSnapshot) throw err;
+      throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot', message: err instanceof Error ? err.message : String(err) }]);
+    }
+    return { pkg, sceneSpriteSnapshot };
   }
 
   async function validationContext(tx: DbOrTx = db, rewardContext?: DungeonValidationContext): Promise<DungeonValidationContext> {
@@ -1539,85 +1634,12 @@ export function createDungeonContentService(deps: DungeonContentServiceDeps): Du
       return rows.map((r) => ({ id: r.id, dungeonKey: r.dungeonKey, action: r.action, actor: r.actor, details: r.details, createdAt: r.createdAt }));
     },
 
-    async exportPackage(key, origin, actor) {
-      return db.transaction(async (tx) => {
-        const [row] = await tx.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, key));
-        if (!row) throw new DungeonNotFoundError(key);
-        const published = await publishedInfo(tx, row);
-        let rewardSnapshot: DungeonRewardSnapshot | undefined;
-        let lootTableMetadata: Parameters<typeof buildDungeonPackage>[0]['lootTableMetadata'];
-        let definition: DungeonDefinition;
-        let layout: DungeonLayout;
-        let revisionNumber: number | null = published?.number ?? null;
-        if (origin === 'draft') {
-          definition = parseStoredDefinition(key, row.draft);
-          layout = parseStoredLayout(row.layout);
-          if (hasDungeonRewardBundles(definition)) {
-            const context = await loadDungeonRewardContext(tx);
-            const { issues } = validateDungeonRewards(definition, context);
-            if (hasErrors(issues)) throw new DungeonInvalidError(issues);
-            const snapshot = resolveDungeonRewardDependencies(definition, context).snapshot;
-            if (!snapshot) throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewards', message: 'Draft reward dependencies cannot be exported. Repair its loot tables, items and equipment.' }]);
-            rewardSnapshot = snapshot;
-            const tables = await tx.select({ key: dungeonLootTables.tableKey, description: dungeonLootTables.description, origin: dungeonLootTables.origin })
-              .from(dungeonLootTables).where(inArray(dungeonLootTables.tableKey, Object.keys(snapshot.tables)));
-            lootTableMetadata = new Map(tables.map((table) => [table.key, table]));
-          }
-        } else {
-          const wanted = origin === 'published' ? published?.number : origin.revision;
-          const [revision] =
-            wanted == null
-              ? []
-              : await tx.select().from(dungeonRevisions).where(and(eq(dungeonRevisions.dungeonKey, key), eq(dungeonRevisions.number, wanted)));
-          if (!revision) throw new DungeonRevisionNotFoundError(key, wanted ?? 0);
-          definition = parseStoredDefinition(key, revision.content);
-          layout = parseStoredLayout(revision.layout);
-          revisionNumber = revision.number;
-          if (revision.contentHash !== dungeonContentHash(definition))
-            throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'contentHash', message: `Revision ${revision.number} content integrity failed. Export refused.` }]);
-          if (hasDungeonRewardBundles(definition)) {
-            const snapshot = readDungeonRewardSnapshot(revision.rewardSnapshot);
-            if (!snapshot || revision.contentHash !== dungeonContentHash(definition) || revision.gameplayHash !== dungeonGameplayHash(revision.contentHash, snapshot.hash))
-              throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot', message: `Revision ${revision.number} has a missing, invalid or unsupported reward snapshot. Export refused.` }]);
-            rewardSnapshot = snapshot;
-          }
-        }
-        // Reward-free events still need structural verification and field-level
-        // authoring errors. Published exports never consult mutable catalogues here.
-        if (dungeonUsesEvents(definition)) {
-          const { issues } = validateContentDefinition(definition);
-          if (hasErrors(issues)) throw new DungeonInvalidError(issues);
-        }
-        if (hasSceneSprites(definition)) throw new DungeonInvalidError([{ code: 'schema', severity: 'error', path: 'rooms', message: 'Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely. Remove placements from a copy to export it.' }]);
-        let encounterCatalogue: EncounterImportCatalogue | undefined;
-        if (hasDungeonEncounters(definition)) {
-          encounterCatalogue = await loadEncounterImportContext(tx);
-          const { issues } = validateContentDefinition(definition, { encounterSource: encounterCatalogue.source });
-          if (hasErrors(issues)) throw new DungeonInvalidError(issues);
-        }
-        const enemies = new Map((await deps.enemies.definitions(tx)).map((e) => [e.key, e]));
-        let pkg: DungeonPackage;
-        try {
-          pkg = buildDungeonPackage({
-            definition,
-            layout,
-            enemies,
-            species: encounterCatalogue ? new Map(encounterCatalogue.species.map(({ name: _name, ...evidence }) => [evidence.slug, evidence])) : undefined,
-            rewardSnapshot,
-            lootTableMetadata,
-            source: {
-              environment: deps.environment ?? 'development',
-              origin: origin === 'draft' ? 'draft' : 'revision',
-              draftRevision: origin === 'draft' ? row.draftRevision : null,
-              publishedRevision: origin === 'draft' ? (published?.number ?? null) : revisionNumber,
-            },
-          });
-        } catch (err) {
-          if (!rewardSnapshot) throw err;
-          throw new DungeonInvalidError([{ code: 'reward_snapshot_invalid', severity: 'error', path: 'rewardSnapshot', message: err instanceof Error ? err.message : String(err) }]);
-        }
-        return pkg;
-      }, { isolationLevel: 'repeatable read', accessMode: 'read only' });
+    async exportPackage(key, origin, _actor) {
+      return db.transaction(async (tx) => (await buildExport(tx, key, origin, false)).pkg, { isolationLevel: 'repeatable read', accessMode: 'read only' });
+    },
+
+    async exportBundleSource(tx, key, origin) {
+      return buildExport(tx, key, origin, true);
     },
 
     async openDungeons(tx = db) {

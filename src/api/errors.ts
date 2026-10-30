@@ -393,6 +393,13 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   ENEMY_IMPORT_STALE: 409,
   ENEMY_IMPORT_DECISIONS_REQUIRED: 409,
   ENEMY_IMPORT_REQUEST_CONFLICT: 409,
+  /** Content Portability CP-4B: Complete Dungeon Bundles (ZIP) — `details.issues`, `details.reason`, `details.keys`. */
+  DUNGEON_BUNDLE_INVALID: 400,
+  DUNGEON_BUNDLE_EXPORT_REFUSED: 422,
+  DUNGEON_BUNDLE_REJECTED: 400,
+  DUNGEON_BUNDLE_STALE: 409,
+  DUNGEON_BUNDLE_DECISIONS_REQUIRED: 409,
+  DUNGEON_BUNDLE_REQUEST_CONFLICT: 409,
   /** One active dungeon run per player; this player already has one. */
   DUNGEON_RUN_ACTIVE: 409,
   /** Every Delve run of the current game day has been started. */

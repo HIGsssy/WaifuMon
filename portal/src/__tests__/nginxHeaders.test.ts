@@ -112,6 +112,7 @@ describe('proxied responses carry exactly one copy of each header', () => {
       '^~ /api/v1/admin/bosses/artwork/assets',
       '^~ /api/v1/admin/bosses/import/',
       '^~ /api/v1/admin/dungeons/import/',
+      '^~ /api/v1/admin/dungeons/import/bundle/',
       '^~ /api/v1/admin/encounters/import/',
       '^~ /api/v1/admin/enemies/import/',
       '^~ /api/v1/admin/equipment/import/',
@@ -262,6 +263,15 @@ describe('request body size', () => {
     const body = blocks.find((b) => b.selector === '^~ /api/v1/admin/enemies/import/')?.body ?? '';
     const mib = Number(body.match(/client_max_body_size\s+(\d+)m;/)?.[1] ?? 0);
     expect(mib).toBeGreaterThan(48);
+    expect(body).toContain('proxy_pass ${PORTAL_API_UPSTREAM};');
+  });
+
+  it('lets a Complete Dungeon Bundle import through to the API’s 64 MiB cap, and keeps Dungeon JSON at 2m', () => {
+    // DUNGEON_BUNDLE_BODY_LIMIT_BYTES: one dungeon with its enemies, sprites, pools and artwork.
+    const limitOf = (selector: string) => Number(blocks.find((b) => b.selector === selector)?.body.match(/client_max_body_size\s+(\d+)m;/)?.[1] ?? 0);
+    expect(limitOf('^~ /api/v1/admin/dungeons/import/bundle/')).toBeGreaterThan(64);
+    expect(limitOf('^~ /api/v1/admin/dungeons/import/')).toBe(2);
+    const body = blocks.find((b) => b.selector === '^~ /api/v1/admin/dungeons/import/bundle/')?.body ?? '';
     expect(body).toContain('proxy_pass ${PORTAL_API_UPSTREAM};');
   });
 

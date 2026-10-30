@@ -1017,6 +1017,13 @@ describe('OpenAPI registration', () => {
       'POST /api/v1/admin/dungeons/definitions',
       'POST /api/v1/admin/dungeons/import/apply',
       'POST /api/v1/admin/dungeons/import/plan',
+      // Complete Dungeon Bundles (CP-4B). `export/bundle` writes nothing but
+      // takes an origin body (`dungeons.read` + `enemies.read` + `artwork.read`);
+      // `preview` writes nothing (`dungeons.write`); `apply` needs
+      // `enemies.write` + `artwork.write` too and only ever writes the draft.
+      'POST /api/v1/admin/dungeons/definitions/{key}/export/bundle',
+      'POST /api/v1/admin/dungeons/import/bundle/apply',
+      'POST /api/v1/admin/dungeons/import/bundle/preview',
       // Legacy treasure conversion (Phase 2 T15B). `plan` writes nothing but
       // carries a body; `apply` creates the converted loot tables and rewrites
       // the draft in one transaction, guarded by the draft revision and the

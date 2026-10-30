@@ -4,6 +4,7 @@ import { Link, useParams, useBlocker, UNSAFE_DataRouterContext } from 'react-rou
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import * as api from '@/api/adminDungeons';
+import { exportDungeonBundle } from '@/api/adminDungeonBundles';
 import { isPortalApiError } from '@/api/client';
 import { useHasPermission } from '@/auth/useSession';
 import { Button } from '@/components/ui/button';
@@ -35,20 +36,22 @@ import { DungeonImportHistory } from './DungeonImportHistory';
 import { DungeonEditorHeader, type DungeonEditorView } from './DungeonEditorHeader';
 import { useViewportFill } from './useViewportFill';
 
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
 function downloadPackage(
   pkg: api.DungeonPackage,
   origin: 'draft' | 'published' | { revision: number },
 ) {
   const label = typeof origin === 'string' ? origin : `published-r${origin.revision}`;
   const filename = `${pkg.dungeon.key}.${label}.dungeon.json`;
-  const url = URL.createObjectURL(
-    new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' }),
-  );
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.click();
-  URL.revokeObjectURL(url);
+  downloadBlob(filename, new Blob([JSON.stringify(pkg, null, 2)], { type: 'application/json' }));
   return filename;
 }
 export function DungeonZoneEditorPage() {
@@ -81,6 +84,10 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
   const client = useQueryClient();
   const canWrite = useHasPermission('dungeons.write');
   const canPublish = useHasPermission('dungeons.publish');
+  // A Complete Dungeon Bundle carries enemies and artwork bytes, so it needs their read permissions too.
+  const canReadEnemies = useHasPermission('enemies.read');
+  const canReadArtwork = useHasPermission('artwork.read');
+  const canExportBundle = canReadEnemies && canReadArtwork;
   const [loaded, setLoaded] = useState(initial);
   const [draft, setDraft] = useState(initial.draft);
   const [layout, setLayout] = useState(initial.layout);
@@ -242,6 +249,17 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
       refresh();
     },
   });
+  const exportingBundle = useMutation({
+    mutationFn: (origin: 'draft' | 'published' | { revision: number }) => exportDungeonBundle(loaded.key, origin),
+    onSuccess: ({ blob, filename }) => {
+      downloadBlob(filename, blob);
+      setNotice(`Download started: ${filename}`);
+    },
+  });
+  const bundleRefusal =
+    isPortalApiError(exportingBundle.error) && Array.isArray((exportingBundle.error.details as { issues?: unknown } | undefined)?.issues)
+      ? (exportingBundle.error.details as { issues: { path: string; message: string }[] }).issues
+      : [];
   const busy = save.isPending || publish.isPending || rollback.isPending || reload.isPending;
   const report = validation?.signature === JSON.stringify(draft) ? validation.report : null;
   // A fight with no enemy chosen cannot be stored at all, so the editor says so
@@ -597,9 +615,14 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
           <Card className="space-y-3 p-4">
             <h2>Export</h2>
             <p>
-              Encounter and Rescue packages use v4. Packages containing managed Scene Sprite
-              placements are unavailable until sprite dependencies can be bundled safely; remove
-              placements from a copy to export it.
+              <strong>Dungeon JSON</strong> — the definition and its dependencies. Its artwork must
+              be deployed separately, and it cannot carry Scene Sprite placements. Encounter and
+              Rescue packages use v4.
+            </p>
+            <p>
+              <strong>Complete Dungeon Bundle (ZIP)</strong> — includes its artwork, enemies, Scene
+              Sprites and shared WaifuMon pools. WaifuMon species, items, equipment, currencies and
+              regions stay external prerequisites the importing server checks.
             </p>
             {dirty && <p>Save your draft changes before exporting the draft or rolling back.</p>}
             <div className="flex gap-2">
@@ -620,6 +643,43 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
                 </Button>
               )}
             </div>
+            {canExportBundle ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  variant="outline"
+                  disabled={exportingBundle.isPending || dirty}
+                  onClick={() => exportingBundle.mutate('draft')}
+                >
+                  Export draft as Complete Bundle (ZIP)
+                </Button>
+                {loaded.published && (
+                  <Button
+                    variant="outline"
+                    disabled={exportingBundle.isPending}
+                    onClick={() => exportingBundle.mutate('published')}
+                  >
+                    Export published revision as Complete Bundle (ZIP)
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <p className="text-sm text-ink-muted">Complete Dungeon Bundles also need enemies.read and artwork.read.</p>
+            )}
+            {exportingBundle.isPending && <p className="text-sm text-ink-muted">Packaging the dungeon and its artwork…</p>}
+            {exportingBundle.isError && (
+              <div role="alert" className="space-y-1">
+                <ErrorState variant="inline" title="Could not export the bundle" error={exportingBundle.error} />
+                {bundleRefusal.length > 0 && (
+                  <ul className="list-disc pl-5 text-sm text-danger" data-testid="bundle-export-refusal">
+                    {bundleRefusal.map((i, n) => (
+                      <li key={n}>
+                        <span className="font-medium">{i.path}</span>: {i.message}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
           </Card>
           <Card className="space-y-2 p-4">
             <h2>Published revisions</h2>
@@ -649,6 +709,15 @@ function Management({ initial }: { initial: api.DungeonDetail }) {
                 >
                   Export revision {r.number}
                 </Button>
+                {canExportBundle && (
+                  <Button
+                    variant="outline"
+                    disabled={exportingBundle.isPending}
+                    onClick={() => exportingBundle.mutate({ revision: r.number })}
+                  >
+                    Export revision {r.number} as Complete Bundle (ZIP)
+                  </Button>
+                )}
                 {canPublish && !r.current && (
                   <Button
                     disabled={busy || dirty || conflict}

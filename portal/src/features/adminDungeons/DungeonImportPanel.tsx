@@ -262,6 +262,11 @@ export function DungeonImportPanel({ onCancel }: { onCancel: () => void }) {
         Upload a JSON package, review its target dependencies, then apply it as a draft. Publication
         requires a separate action.
       </p>
+      <p className="text-sm text-ink-muted">
+        Dungeon JSON is the definition and its dependency evidence: its artwork, enemies’ artwork and
+        shared pools must already be deployed here, and it cannot carry Scene Sprites. To move a
+        dungeon with its artwork and dependencies, use Import Complete Dungeon Bundle (ZIP).
+      </p>
       <label className="block">
         Dungeon package file
         <input

@@ -304,6 +304,7 @@ export interface DungeonValidation {
   /** Odds of every event pool, worked out by the server's own draw rules. Absent from an older server. */
   eventPools?: DungeonEventPoolAnalysis[];
   speciesPools?: DungeonSpeciesPoolAnalysis[];
+  speciesAccessReview?: import('./dungeonSpeciesTypes').DungeonSpeciesAccessReview[];
   /** Every event's choices as a player in the scenario would meet them. */
   eventPreviews?: DungeonEventPreview[];
 }

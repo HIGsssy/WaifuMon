@@ -404,6 +404,35 @@ export function createSharedDungeonPoolService(db: Db) {
         }),
       );
     },
+    /**
+     * One pool from a complete dungeon bundle (CP-4B), in the bundle's
+     * transaction, with the same rules as {@link import}: a new key is created
+     * disabled; an existing one keeps its enabled state and is replaced only at
+     * the revision the editor reviewed; an identical body writes nothing.
+     */
+    async applyImported(
+      tx: DbOrTx,
+      incoming: SharedPoolDefinition,
+      expectedRevision: number | null,
+      actor: string | null,
+    ) {
+      await tx.execute(sql`select pg_advisory_xact_lock(74740001)`);
+      const [row] = await tx
+        .select()
+        .from(dungeonSpeciesPools)
+        .where(eq(dungeonSpeciesPools.poolKey, incoming.key))
+        .for("update");
+      const current = row ? SharedPoolDefinitionSchema.parse(row.definition) : null;
+      const definition = await validate(tx, { ...incoming, enabled: current?.enabled ?? false });
+      if (current && canonicalJson(current) === canonicalJson(definition))
+        return { ...(await get(incoming.key, tx)), written: false };
+      if ((row?.revision ?? null) !== expectedRevision)
+        poolInvalid(
+          `Shared WaifuMon pool "${incoming.key}" changed after review. Review the bundle again.`,
+          `sharedPools.${incoming.key}`,
+        );
+      return { ...(await write(tx, definition, row?.revision ?? null, actor, "imported")), written: true };
+    },
     // There is deliberately no delete operation: stable referenced identities are retained.
   };
 }

@@ -120,17 +120,23 @@ export function enemyPackageHash(manifest: EnemyPackageManifest, definitions: re
   return createHash('sha256').update(canonicalJson({ manifest, definitions })).digest('hex');
 }
 
-function jsonDepth(value: unknown, depth = 0): number {
+function jsonDepth(value: unknown, limit: number, depth = 0): number {
   if (value === null || typeof value !== 'object') return depth;
   let max = depth + 1;
   for (const child of Object.values(value as Record<string, unknown>)) {
-    max = Math.max(max, jsonDepth(child, depth + 1));
-    if (max > ENEMY_PACKAGE_LIMITS.maxJsonDepth) return max;
+    max = Math.max(max, jsonDepth(child, limit, depth + 1));
+    if (max > limit) return max;
   }
   return max;
 }
 
-function parseJsonFile(name: string, data: Buffer | undefined, issues: EnemyPackageIssue[]): unknown {
+/** A JSON member of a package: strict UTF-8, nesting bounded (dungeon bundles reuse this). */
+export function parsePackageJsonFile(
+  name: string,
+  data: Buffer | undefined,
+  issues: EnemyPackageIssue[],
+  maxDepth: number = ENEMY_PACKAGE_LIMITS.maxJsonDepth,
+): unknown {
   if (!data) {
     issues.push({ path: name, message: 'is missing from the package' });
     return undefined;
@@ -142,8 +148,8 @@ function parseJsonFile(name: string, data: Buffer | undefined, issues: EnemyPack
     issues.push({ path: name, message: 'is not valid UTF-8 JSON' });
     return undefined;
   }
-  if (jsonDepth(value) > ENEMY_PACKAGE_LIMITS.maxJsonDepth) {
-    issues.push({ path: name, message: `nests deeper than ${ENEMY_PACKAGE_LIMITS.maxJsonDepth} levels` });
+  if (jsonDepth(value, maxDepth) > maxDepth) {
+    issues.push({ path: name, message: `nests deeper than ${maxDepth} levels` });
     return undefined;
   }
   return value;
@@ -183,30 +189,59 @@ export async function parseEnemyPackage(archive: Buffer): Promise<EnemyPackage> 
   }
 
   const issues: EnemyPackageIssue[] = [];
-  const rawManifest = parseJsonFile(ENEMY_PACKAGE_MANIFEST_FILE, files.get(ENEMY_PACKAGE_MANIFEST_FILE), issues);
-  const rawEnemies = parseJsonFile(ENEMY_PACKAGE_ENEMIES_FILE, files.get(ENEMY_PACKAGE_ENEMIES_FILE), issues);
+  const rawManifest = parsePackageJsonFile(ENEMY_PACKAGE_MANIFEST_FILE, files.get(ENEMY_PACKAGE_MANIFEST_FILE), issues);
+  const rawEnemies = parsePackageJsonFile(ENEMY_PACKAGE_ENEMIES_FILE, files.get(ENEMY_PACKAGE_ENEMIES_FILE), issues);
   if (issues.length > 0) throw new EnemyPackageInvalidError(issues);
+  return readEnemyPackageDocuments(rawManifest, rawEnemies, files, { standalone: true });
+}
 
+/**
+ * Validate an enemy manifest and its definitions against the archive's files:
+ * bindings, asset entries and every image's bytes. A standalone package also
+ * declares every file in its archive; a dungeon bundle embeds these documents
+ * (with `paths` saying where they sit) and declares its own files itself.
+ *
+ * @throws {EnemyPackageInvalidError} listing every problem found.
+ */
+export async function readEnemyPackageDocuments(
+  rawManifest: unknown,
+  rawEnemies: unknown,
+  files: ReadonlyMap<string, Buffer>,
+  opts: {
+    standalone: boolean;
+    paths?: { manifest: string; enemies: string };
+    /** Assets the caller already verified (a dungeon bundle checks every image once). */
+    verified?: ReadonlyMap<string, { data: Buffer; image: InspectedImage }>;
+  },
+): Promise<EnemyPackage> {
+  const L = ENEMY_PACKAGE_LIMITS;
+  const MANIFEST = opts.paths?.manifest ?? ENEMY_PACKAGE_MANIFEST_FILE;
+  const ENEMIES = opts.paths?.enemies ?? ENEMY_PACKAGE_ENEMIES_FILE;
+  /** Issue paths into the manifest: `manifest.*` for a standalone package, as CP-3 always reported them. */
+  const IN_MANIFEST = opts.paths?.manifest ?? 'manifest';
+  const issues: EnemyPackageIssue[] = [];
   const manifestResult = ManifestSchema.safeParse(rawManifest);
-  if (!manifestResult.success) issues.push(...zodIssues(ENEMY_PACKAGE_MANIFEST_FILE, manifestResult.error));
+  if (!manifestResult.success) issues.push(...zodIssues(MANIFEST, manifestResult.error));
   const enemiesResult = CombatEnemyFileSchema.safeParse(rawEnemies);
-  if (!enemiesResult.success) issues.push(...zodIssues(ENEMY_PACKAGE_ENEMIES_FILE, enemiesResult.error));
+  if (!enemiesResult.success) issues.push(...zodIssues(ENEMIES, enemiesResult.error));
   if (!manifestResult.success || !enemiesResult.success) throw new EnemyPackageInvalidError(issues);
   const manifest = manifestResult.data;
   const definitions = enemiesResult.data.enemies;
 
-  if (definitions.length > L.maxEnemies) issues.push({ path: ENEMY_PACKAGE_ENEMIES_FILE, message: `holds more than ${L.maxEnemies} enemies` });
-  if (definitions.length === 0) issues.push({ path: ENEMY_PACKAGE_ENEMIES_FILE, message: 'holds no enemies' });
+  if (definitions.length > L.maxEnemies) issues.push({ path: ENEMIES, message: `holds more than ${L.maxEnemies} enemies` });
+  if (definitions.length === 0) issues.push({ path: ENEMIES, message: 'holds no enemies' });
   const keys = definitions.map((d) => d.key);
   if (manifest.enemies.map((e) => e.key).join('\n') !== keys.join('\n')) {
-    issues.push({ path: 'manifest.enemies', message: 'must list exactly the enemies in enemies.json, in the same order' });
+    issues.push({ path: `${IN_MANIFEST}.enemies`, message: `must list exactly the enemies in ${ENEMIES}, in the same order` });
   }
-  for (const message of bundleEntryIssues(manifest.assets)) issues.push({ path: 'manifest.assets', message });
+  for (const message of bundleEntryIssues(manifest.assets)) issues.push({ path: `${IN_MANIFEST}.assets`, message });
 
   // Every archive entry is declared; every declared file is present.
   const entries = new Map(manifest.assets.map((a) => [a.id, a]));
-  const declared = new Set([ENEMY_PACKAGE_MANIFEST_FILE, ENEMY_PACKAGE_ENEMIES_FILE, ...manifest.assets.map((a) => a.file)]);
-  for (const name of files.keys()) if (!declared.has(name)) issues.push({ path: name, message: 'is not declared in the manifest' });
+  if (opts.standalone) {
+    const declared = new Set([ENEMY_PACKAGE_MANIFEST_FILE, ENEMY_PACKAGE_ENEMIES_FILE, ...manifest.assets.map((a) => a.file)]);
+    for (const name of files.keys()) if (!declared.has(name)) issues.push({ path: name, message: 'is not declared in the manifest' });
+  }
 
   // Bindings agree with the definitions, and every entry is used.
   const used = new Set<string>();
@@ -232,12 +267,17 @@ export async function parseEnemyPackage(archive: Buffer): Promise<EnemyPackage> 
       }
     }
   });
-  for (const entry of manifest.assets) if (!used.has(entry.id)) issues.push({ path: 'manifest.assets', message: `asset "${entry.id}" is not used by any enemy` });
+  for (const entry of manifest.assets) if (!used.has(entry.id)) issues.push({ path: `${IN_MANIFEST}.assets`, message: `asset "${entry.id}" is not used by any enemy` });
   if (issues.length > 0) throw new EnemyPackageInvalidError(issues);
 
   // Last, the expensive part: every image's actual bytes.
   const assets: EnemyPackage['assets'] = new Map();
   for (const entry of manifest.assets) {
+    const known = opts.verified?.get(entry.id);
+    if (known) {
+      assets.set(entry.id, { entry, data: known.data, image: known.image });
+      continue;
+    }
     const data = files.get(entry.file);
     const verified = await verifyBundleAsset(entry, data);
     if ('issue' in verified) issues.push({ path: entry.file, message: verified.issue });

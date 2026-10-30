@@ -205,6 +205,17 @@ export interface BuildDungeonPackageInput {
   packageId?: string | undefined;
 }
 
+/**
+ * Scene Sprite placements are refused by the JSON package on its own: the file
+ * cannot carry the catalogue definitions or the artwork they draw. A complete
+ * dungeon bundle (`dungeons/bundle/`) carries both beside the package and is the
+ * only caller that passes `allowSceneSprites` — after it has verified that every
+ * placed sprite key is covered. The default keeps the gate for every JSON route.
+ */
+export interface DungeonPackageSpriteOptions {
+  allowSceneSprites?: boolean | undefined;
+}
+
 /** The dependency manifest of a definition, given what the environment knows of its enemies. */
 export function packageDependencies(
   definition: DungeonDefinition,
@@ -225,9 +236,9 @@ export function packageDependencies(
   };
 }
 
-export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPackage {
+export function buildDungeonPackage(input: BuildDungeonPackageInput, options: DungeonPackageSpriteOptions = {}): DungeonPackage {
   const definition = DungeonDefinitionSchema.parse(input.definition);
-  if (hasSceneSprites(definition)) throw new Error('Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely.');
+  if (hasSceneSprites(definition) && !options.allowSceneSprites) throw new Error('Packages with Scene Sprites are temporarily unavailable until sprite dependencies can be bundled safely.');
   const usesEncounters = hasDungeonEncounters(definition);
   const usesEvents = dungeonUsesEvents(definition);
   const deps = dungeonDependencies(definition);
@@ -281,7 +292,7 @@ export function buildDungeonPackage(input: BuildDungeonPackageInput): DungeonPac
   };
   const v4 = usesEncounters ? { ...envelope, dependenciesHash: portableHash(envelope.dependencies) } : null;
   const pkg = v4 ? DungeonPackageV4Schema.parse({ ...v4, integrityHash: dungeonPackageIntegrityHash(v4) }) : usesEvents ? DungeonPackageV3Schema.parse(envelope) : DungeonPackageV2Schema.parse(envelope);
-  const read = readDungeonPackage(pkg);
+  const read = readDungeonPackage(pkg, options);
   if (!read.ok) throw new Error(`Cannot export package: ${read.issues.filter((i) => i.severity === 'error').map((i) => `${i.path}: ${i.message}`).join('; ')}`);
   return pkg;
 }
@@ -371,7 +382,7 @@ function sameSet(a: readonly string[], b: readonly string[]): boolean {
  * Environment-independent by design — it never asks whether an enemy or a
  * table exists anywhere. That is the importer's plan step.
  */
-export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
+export function readDungeonPackage(raw: unknown, options: DungeonPackageSpriteOptions = {}): ReadDungeonPackageResult {
   const issues: DungeonPackageIssue[] = [];
   const fail = (code: DungeonPackageIssueCode, path: string, message: string): ReadDungeonPackageResult => {
     issues.push({ code, severity: 'error', path, message });
@@ -406,7 +417,7 @@ export function readDungeonPackage(raw: unknown): ReadDungeonPackageResult {
   const dungeon = validateDungeonDefinition(envelope.dungeon);
   for (const issue of dungeon.issues) issues.push({ ...issue, path: issue.path ? `dungeon.${issue.path}` : 'dungeon' });
   if (!dungeon.definition) return { package: null, issues, ok: false };
-  if (hasSceneSprites(dungeon.definition)) return fail('package_scene_sprites_unsupported', 'dungeon.rooms', 'Packages containing Scene Sprites are temporarily unavailable; this package cannot carry their frozen artwork dependencies safely.');
+  if (hasSceneSprites(dungeon.definition) && !options.allowSceneSprites) return fail('package_scene_sprites_unsupported', 'dungeon.rooms', 'Packages containing Scene Sprites are temporarily unavailable; this package cannot carry their frozen artwork dependencies safely.');
   if (envelope.schemaVersion !== 4 && hasDungeonEncounters(dungeon.definition)) return fail('package_schema_version', 'schemaVersion', 'Dungeon encounters require package v4; v1/v2/v3 cannot carry their dependencies.');
   // Whatever version the envelope claims, versions 1 and 2 never held events.
   if (envelope.schemaVersion < 3 && dungeonUsesEvents(dungeon.definition)) return fail('package_schema_version', 'dungeon', EVENTS_REQUIRE_V3);

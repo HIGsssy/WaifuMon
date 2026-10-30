@@ -4153,11 +4153,15 @@ export type CombatEnemyRow = typeof combatEnemies.$inferSelect;
  */
 export const ENEMY_PACKAGE_IMPORT_STATUSES = ['staged', 'applied', 'failed', 'abandoned'] as const;
 export type EnemyPackageImportStatus = (typeof ENEMY_PACKAGE_IMPORT_STATUSES)[number];
+export const IMPORT_JOURNAL_KINDS = ['enemy_package', 'dungeon_bundle'] as const;
+export type ImportJournalKind = (typeof IMPORT_JOURNAL_KINDS)[number];
 
 export const enemyPackageImports = pgTable(
   'enemy_package_imports',
   {
     id: bigint('id', { mode: 'number' }).generatedAlwaysAsIdentity().primaryKey(),
+    /** Which importer wrote the row (migration 0076): both share this journal and its recovery. */
+    kind: text('kind').$type<ImportJournalKind>().notNull().default('enemy_package'),
     requestId: uuid('request_id').notNull().unique(),
     requestHash: text('request_hash').notNull(),
     packageHash: text('package_hash').notNull(),
@@ -4173,6 +4177,7 @@ export const enemyPackageImports = pgTable(
   (t) => [
     check('enemy_package_imports_status_check', sql`${t.status} in ('staged','applied','failed','abandoned')`),
     check('enemy_package_imports_result_check', sql`(${t.status} = 'applied') = (${t.result} is not null)`),
+    check('enemy_package_imports_kind_check', sql`${t.kind} in ('enemy_package','dungeon_bundle')`),
   ],
 );
 export type EnemyPackageImportRow = typeof enemyPackageImports.$inferSelect;

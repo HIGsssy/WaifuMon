@@ -164,6 +164,29 @@ export function incompleteSpeciesIssues(d: DungeonDefinition, code: string): Dun
 // ── Species access: the dungeon's own terms, one entry per species ──────────
 
 export const DEFAULT_SPECIES_LIMIT = 1;
+export const SPECIES_POLICY_LIMIT = 200;
+/** Explicit bulk approval only appends new entries; existing terms are never replaced. */
+export function approveEncounterSpeciesAccess(
+  d: DungeonDefinition,
+  review: readonly import('@/api/dungeonSpeciesTypes').DungeonSpeciesAccessReview[],
+  selected: readonly string[],
+  perPlayerLimit: number,
+  approved: boolean,
+  allowDirectRescue = false,
+): DungeonDefinition {
+  if (!approved || !Number.isSafeInteger(perPlayerLimit) || perPlayerLimit < 1) return d;
+  const existing = new Set((d.speciesPolicies ?? []).map(p => p.species));
+  const chosen = new Set(selected);
+  const additions = review.flatMap(row => {
+    if (!row.canAdd || !chosen.has(row.species) || existing.has(row.species)) return [];
+    existing.add(row.species);
+    return [{ species: row.species, perPlayerLimit,
+      ...(allowDirectRescue && row.references.some(r => r.direct) ? { directRescue: true } : {}),
+    }];
+  });
+  if (!additions.length || (d.speciesPolicies?.length ?? 0) + additions.length > SPECIES_POLICY_LIMIT) return d;
+  return { ...d, speciesPolicies: [...(d.speciesPolicies ?? []), ...additions] };
+}
 const policiesOf = (d: DungeonDefinition) => d.speciesPolicies ?? [];
 export function speciesPolicyOf(d: DungeonDefinition, slug: string) {
   return policiesOf(d).find((p) => p.species === slug);

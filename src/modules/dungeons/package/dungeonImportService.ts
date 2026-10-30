@@ -1,4 +1,5 @@
-import { sharedPoolKeys } from '../sharedPools/sharedPoolDefinition';
+import { sharedPoolKeys, type SharedPoolCatalogue } from '../sharedPools/sharedPoolDefinition';
+import type { SceneSpriteCatalogue } from '../sceneSprites/sceneSpriteSnapshot';
 /**
  * Draft-only imports. Review is read-only; application re-plans under locks and records a receipt in the same transaction.
  * A new target is created disabled and unpublished. An existing target keeps its enabled flag and published revision:
@@ -33,7 +34,7 @@ import {
   DungeonLootImportDecisionsSchema, DungeonLootImportTablePlanSchema, planDungeonLootImport,
   type DungeonLootImportDecisions,
 } from './dungeonLootImport';
-import { dungeonDependencies, dungeonRequiredItems } from '../content/dungeonDefinition';
+import { dungeonDependencies, dungeonRequiredItems, type DungeonDefinition } from '../content/dungeonDefinition';
 import { pruneDungeonLayout } from '../content/dungeonLayout';
 import { validateDungeonDefinition, type DungeonValidationContext } from '../validation/dungeonValidation';
 import { dungeonContentHash, packagedEnemyHash, readDungeonPackage, type ReadDungeonPackageResult } from './dungeonPackage';
@@ -163,9 +164,44 @@ export interface DungeonImportEnemyPlan {
 }
 export type DungeonImportPlan = z.infer<typeof DungeonImportPlanSchema>;
 export type DungeonImportResult = z.infer<typeof DungeonImportResultSchema>;
+/**
+ * How a complete dungeon bundle (`dungeons/bundle/`) drives this importer. The
+ * JSON routes never pass it. The bundle carries the Scene Sprite definitions,
+ * enemies with artwork, shared pools and artwork bytes beside the package, so:
+ *
+ *   - the Scene Sprite gate is lifted for this one package (`allowSceneSprites`);
+ *   - `rewrite` applies the bundle's rebinding after any loot-table rewrite
+ *     (a shipped image this server lacks becomes its managed copy; a sprite
+ *     the editor chose to copy gets its new key);
+ *   - the catalogue members override what this server holds *now* with what it
+ *     will hold once the bundle's own dependencies are written, so preview
+ *     reviews the result and not the empty destination. Shared pools are
+ *     reviewed as if enabled: their content must suit the dungeon now, while
+ *     enabling them stays a separate step that publication still checks.
+ */
+export interface DungeonBundleImportContext {
+  allowSceneSprites: true;
+  rewrite?: ((definition: DungeonDefinition) => DungeonDefinition) | undefined;
+  enemies?: ReadonlyMap<string, { enabled: boolean }> | undefined;
+  /** Every shared pool the dungeon references, as reviewed. */
+  sharedPools?: SharedPoolCatalogue | undefined;
+  sceneSprites?: SceneSpriteCatalogue | undefined;
+  /** `<category>:<hash>` references the bundle's artwork makes usable here. */
+  managedArtwork?: ReadonlySet<string> | undefined;
+}
+
 export interface DungeonImportService {
-  planImport(raw: unknown, lootTables?: DungeonLootImportDecisions): Promise<DungeonImportPlan>;
+  planImport(raw: unknown, lootTables?: DungeonLootImportDecisions, bundle?: DungeonBundleImportContext): Promise<DungeonImportPlan>;
+  /** The read-only plan inside a caller's transaction (taking the apply locks when `lock`). */
+  planImportInTx(tx: DbOrTx, raw: unknown, options: { lock: boolean; lootTables?: DungeonLootImportDecisions | undefined; bundle: DungeonBundleImportContext }): Promise<DungeonImportPlan>;
   applyImport(input: DungeonImportApplyInput, actor: string | null): Promise<DungeonImportResult>;
+  /**
+   * Apply inside a complete-bundle import's transaction, after the bundle has
+   * written the dependencies it carries. The bundle compared its own plan hash
+   * under the same locks before writing, so the package plan hash — which now
+   * sees those writes — is not compared again; every content check still runs.
+   */
+  applyImportInTx(tx: DbOrTx, input: DungeonImportApplyInput, actor: string | null, bundle: DungeonBundleImportContext): Promise<DungeonImportResult>;
   importHistory(
     key: string,
     limit?: number,
@@ -208,13 +244,13 @@ export function importHash(value: unknown): string {
   return `sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
 }
 /** Bound nesting before recursive schema parsing; JSON routes already bound bytes. */
-export function readImportPackage(raw: unknown): ReadDungeonPackageResult {
+export function readImportPackage(raw: unknown, options: { allowSceneSprites?: boolean } = {}): ReadDungeonPackageResult {
   let value = raw;
   if (typeof raw === 'string') {
     try {
       value = JSON.parse(raw);
     } catch {
-      return readDungeonPackage(raw);
+      return readDungeonPackage(raw, options);
     }
   }
   const pending = [{ value, depth: 0 }];
@@ -237,7 +273,7 @@ export function readImportPackage(raw: unknown): ReadDungeonPackageResult {
     if (current.value && typeof current.value === 'object')
       for (const child of Object.values(current.value)) pending.push({ value: child, depth: current.depth + 1 });
   }
-  const read = readDungeonPackage(value);
+  const read = readDungeonPackage(value, options);
   // Explicit dispatch: v2+ use catalogue review; every version shares the draft-only lifecycle.
   if (!read.package) return read;
   switch (read.package.schemaVersion) {
@@ -266,11 +302,22 @@ function refused(
   throw new DungeonImportError(code, [{ code: code.toLowerCase(), severity: 'error', path, message }]);
 }
 const MISSING_DEPENDENCIES = new Set(['enemy_missing', 'reward_table_missing', 'region_missing', 'currency_missing']);
+const REPAIRABLE_REWARD_CODES = ['event_item_missing', 'event_item_disabled', 'reward_item_missing', 'reward_item_disabled', 'reward_item_capped', 'reward_equipment_empty', 'reward_table_archived', 'reward_table_invalid', 'reward_shards_unset'];
+/**
+ * The errors an explicitly accepted incomplete (repair) draft may keep:
+ * missing global dependencies only — never malformed content, integrity
+ * failures or the bundle's own artwork and dependency checks.
+ */
+export function isRepairableImportIssue(issue: { code: string }, schemaVersion: number): boolean {
+  return MISSING_DEPENDENCIES.has(issue.code) ||
+    (schemaVersion === 4 && (INCOMPLETE_ENCOUNTER_CODES as readonly string[]).includes(issue.code)) ||
+    (schemaVersion !== 1 && REPAIRABLE_REWARD_CODES.includes(issue.code));
+}
 
 export function createDungeonImportService(deps: DungeonImportDeps): DungeonImportService {
   const { db } = deps;
-  async function inspect(tx: DbOrTx, raw: unknown, lock = false, lootChoices: DungeonLootImportDecisions = {}) {
-    const read = readImportPackage(raw);
+  async function inspect(tx: DbOrTx, raw: unknown, lock = false, lootChoices: DungeonLootImportDecisions = {}, bundle?: DungeonBundleImportContext) {
+    const read = readImportPackage(raw, { allowSceneSprites: bundle?.allowSceneSprites === true });
     const pkg = read.package;
     const empty: DungeonImportPlan = {
       validPackage: read.ok,
@@ -322,13 +369,20 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         effectiveTables.set(table.key, { name: table.name, body: table.body, tier: table.tier, revision: 1, archivedAt: null });
       rewards = { ...rewards, lootTables: effectiveTables };
     }
-    const definition = loot?.definition ?? pkg.dungeon;
+    const definition = bundle?.rewrite ? bundle.rewrite(loot?.definition ?? pkg.dungeon) : (loot?.definition ?? pkg.dungeon);
+    // Artwork is read from the final definition: a bundle may have rebound a shipped image.
+    const artworkRefs = dungeonDependencies(definition).artwork;
     let encounter: ReturnType<typeof reviewEncounterDependencies> | undefined;
     let encounterCatalogue: EncounterImportCatalogue | undefined;
     if (pkg.schemaVersion === 4) {
       if (!deps.loadEncounterContext) refused('DUNGEON_IMPORT_INVALID', 'schemaVersion', 'Encounter catalogue validation is unavailable. Import refused.');
       if (lock) await tx.execute(sql`LOCK TABLE species IN SHARE MODE`);
       encounterCatalogue = await deps.loadEncounterContext(tx);
+      if (bundle?.sharedPools) {
+        const live = encounterCatalogue.source.sharedPools ?? new Map();
+        const sharedPools = new Map([...live, ...bundle.sharedPools]);
+        encounterCatalogue = { ...encounterCatalogue, source: { ...encounterCatalogue.source, sharedPools } };
+      }
       encounter = reviewEncounterDependencies(pkg, definition, encounterCatalogue);
     }
 
@@ -354,7 +408,7 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         ? await currencyQuery.for('share')
         : await currencyQuery
       : [];
-    const managedRefs = dependency.artwork.filter((a) => a.kind === 'managed');
+    const managedRefs = artworkRefs.filter((a) => a.kind === 'managed');
     // The asset each reference means here, by the lookup validation and runs share — an image
     // replaced since the package was exported included — so the plan reports what a player gets.
     const managedIds = await deps.resolveManagedArtwork(tx, managedRefs);
@@ -391,14 +445,15 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
     const context: DungeonValidationContext = {
       ...rewards,
       ...(encounterCatalogue ? { encounterSource: encounterCatalogue.source } : {}),
-      enemies: new Map(enemies.map((e) => [e.enemyKey, { enabled: e.enabled }])),
+      enemies: new Map([...enemies.map((e) => [e.enemyKey, { enabled: e.enabled }] as const), ...(bundle?.enemies ?? [])]),
       rewardTables: new Map(tables.map((t) => [t.tableId, { enabled: t.enabled }])),
       currencies: new Map(currencies.map((c) => [c.currencyKey, { enabled: c.enabled }])),
       regions: new Map(regions.map((r) => [r.id, { enabled: r.enabled }])),
       managedArtwork: new Set(
-        managedRefs.map(managedArtworkKey).filter((key) => managedState.some((a) => a.id === managedIds[key] && a.present)),
+        managedRefs.map(managedArtworkKey).filter((key) => managedState.some((a) => a.id === managedIds[key] && a.present) || bundle?.managedArtwork?.has(key)),
       ),
       shippedArtworkExists: ship,
+      ...(bundle?.sceneSprites ? { sceneSprites: bundle.sceneSprites } : {}),
     };
     // Gear selectors may name keys or whole pools. Lock the selector catalogue only when a table uses gear.
     const gearNeeded = pkg.schemaVersion !== 1 || tables.some((t) => (JSON.stringify(t.definition?.groups) ?? '').includes('"equipment"'));
@@ -562,8 +617,9 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       enabled: targetRow?.enabled ?? null,
       publishedRevision: published?.number ?? null,
     };
-    const shippedPaths = new Set(dependency.artwork.flatMap((a) => (a.kind === 'shipped' ? [a.path] : [])));
-    for (const enemy of pkg.bundled.enemies)
+    const shippedPaths = new Set(artworkRefs.flatMap((a) => (a.kind === 'shipped' ? [a.path] : [])));
+    // A bundle carries enemy artwork as bytes and binds it itself (CP-3), so only a bare package warns here.
+    if (!bundle) for (const enemy of pkg.bundled.enemies)
       for (const relative of [enemy.artworkPath, enemy.spriteArtworkPath])
         if (relative) {
           shippedPaths.add(relative);
@@ -618,6 +674,12 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
         revision: c.revision,
       })),
       regions,
+      ...(bundle ? { bundle: {
+        definition: dungeonContentHash(definition),
+        enemies: [...(bundle.enemies ?? [])].sort(([a], [b]) => (a < b ? -1 : 1)),
+        sceneSprites: [...(bundle.sceneSprites ?? [])].sort(([a], [b]) => (a < b ? -1 : 1)),
+        managedArtwork: [...(bundle.managedArtwork ?? [])].sort(),
+      } } : {}),
       managed: managedState,
       shipped: [...shippedPaths].sort().map((p) => ({ path: p, present: ship(p) })),
       gear,
@@ -646,277 +708,287 @@ export function createDungeonImportService(deps: DungeonImportDeps): DungeonImpo
       },
     };
   }
+  function parseApplyInput(rawInput: unknown, bundle?: DungeonBundleImportContext) {
+    const parsedInput = DungeonImportApplySchema.safeParse(rawInput);
+    if (!parsedInput.success)
+      throw new DungeonImportError(
+        'DUNGEON_IMPORT_INVALID',
+        parsedInput.error.issues.map((i) => ({
+          code: 'schema',
+          severity: 'error',
+          path: i.path.join('.'),
+          message: i.message,
+        })),
+      );
+    const input = parsedInput.data;
+    const read = readImportPackage(input.package, { allowSceneSprites: bundle?.allowSceneSprites === true });
+    if (!read.package || !read.ok) throw new DungeonImportError('DUNGEON_IMPORT_INVALID', read.issues);
+    return { input, pkg: read.package };
+  }
+  async function applyInTx(tx: DbOrTx, input: DungeonImportApplyInput, pkg: NonNullable<ReadDungeonPackageResult['package']>, actor: string | null, bundle?: DungeonBundleImportContext): Promise<DungeonImportResult> {
+    const requestHash = importHash({
+      packageHash: importHash(pkg),
+      expectedPlanHash: input.expectedPlanHash,
+      expectedRevision: input.expectedRevision,
+      decisions: input.decisions,
+      actor,
+    });
+    await tx.execute(
+      sql`select pg_advisory_xact_lock(hashtextextended(${`dungeon_import:request:${input.requestId}`}, 0))`,
+    );
+    const [receipt] = await tx
+      .select()
+      .from(dungeonImportHistory)
+      .where(eq(dungeonImportHistory.requestId, input.requestId));
+    if (receipt) {
+      if (receipt.requestHash !== requestHash)
+        refused(
+          'DUNGEON_IMPORT_REQUEST_CONFLICT',
+          'requestId',
+          'This request ID already belongs to a different package, decision, plan or administrator.',
+        );
+      return {
+        ...(receipt.result as unknown as DungeonImportResult),
+        importId: receipt.id,
+        replayed: true,
+      };
+    }
+    const { plan, context, dependencyIssues, definition = pkg.dungeon, loot } = await inspect(tx, pkg, true, input.decisions.lootTables, bundle);
+    if ((!bundle && plan.planHash !== input.expectedPlanHash) || plan.target?.expectedRevision !== input.expectedRevision)
+      refused(
+        'DUNGEON_IMPORT_STALE',
+        'expectedPlanHash',
+        'The target draft or a reviewed dependency changed; plan again.',
+      );
+    const target = plan.target!;
+    const requiredDecision =
+      target.status === 'new' ? 'create' : target.status === 'identical' ? 'unchanged' : 'replace';
+    if (input.decisions.dungeon !== requiredDecision)
+      refused(
+        'DUNGEON_IMPORT_INVALID',
+        'decisions.dungeon',
+        `This plan requires the explicit "${requiredDecision}" decision.`,
+      );
+    for (const key of Object.keys(input.decisions.enemies))
+      if (!plan.enemies.some((e) => e.key === key))
+        refused(
+          'DUNGEON_IMPORT_INVALID',
+          `decisions.enemies.${key}`,
+          'This enemy is not referenced by the package.',
+        );
+    const createdEnemies: string[] = [];
+    for (const enemy of plan.enemies) {
+      const decision = Object.prototype.hasOwnProperty.call(input.decisions.enemies, enemy.key)
+        ? input.decisions.enemies[enemy.key]
+        : undefined;
+      if (enemy.status === 'identical') {
+        if (decision && decision !== 'use_existing')
+          refused(
+            'DUNGEON_IMPORT_INVALID',
+            `decisions.enemies.${enemy.key}`,
+            'An existing enemy cannot be created or replaced by import.',
+          );
+      } else if (enemy.currentRevision !== null) {
+        if (decision !== 'use_existing')
+          refused(
+            'DUNGEON_IMPORT_INVALID',
+            `decisions.enemies.${enemy.key}`,
+            'Explicitly keep the differing target enemy or reconcile it separately before import.',
+          );
+      } else if (decision === 'create' && enemy.status === 'missing_bundled') {
+        const definition = pkg.bundled.enemies.find((e) => e.key === enemy.key)!;
+        const [{ position } = { position: 0 }] = await tx
+          .select({
+            position: sql<number>`coalesce(max(${combatEnemies.position}), -1) + 1`,
+          })
+          .from(combatEnemies);
+        const [inserted] = await tx
+          .insert(combatEnemies)
+          .values({
+            enemyKey: enemy.key,
+            ...enemyColumnsOf(definition),
+            contentHash: packagedEnemyHash(definition),
+            position: Number(position),
+            updatedBy: actor,
+          })
+          .onConflictDoNothing()
+          .returning();
+        if (!inserted)
+          refused(
+            'DUNGEON_IMPORT_STALE',
+            `dependencies.enemies.${enemy.key}`,
+            'An enemy was created after planning.',
+          );
+        createdEnemies.push(enemy.key);
+        (context.enemies as Map<string, { enabled: boolean }>).set(enemy.key, { enabled: definition.enabled });
+      } else if (!(decision === 'leave_missing' && input.decisions.allowMissingDependencies))
+        refused(
+          'DUNGEON_IMPORT_INVALID',
+          `decisions.enemies.${enemy.key}`,
+          'Explicitly create a bundled missing enemy, or accept an incomplete draft with leave_missing.',
+        );
+    }
+    const createdLootTables: string[] = [];
+    if (loot) {
+      const invalid = loot.issues.filter(i => i.severity === 'error');
+      if (invalid.length) throw new DungeonImportError('DUNGEON_IMPORT_INVALID', invalid);
+      for (const table of loot.tablePlans)
+        if (table.decision?.action === 'leave_missing' && !input.decisions.allowMissingDependencies)
+          refused('DUNGEON_IMPORT_INVALID', `decisions.lootTables.${table.key}`, 'Leaving a table missing requires accepting an incomplete draft.');
+      for (const table of loot.creations) {
+        const [inserted] = await tx.insert(dungeonLootTables).values({
+          tableKey: table.key, name: table.name, description: table.description, tier: table.tier,
+          body: table.body, contentHash: table.contentHash, origin: 'import', createdBy: actor, updatedBy: actor,
+        }).onConflictDoNothing().returning();
+        if (!inserted) refused('DUNGEON_IMPORT_STALE', `lootTables.${table.key}`, 'This table key was taken after review. Plan again.');
+        await tx.insert(dungeonLootTableEvents).values({ tableKey: table.key, action: 'imported', actor,
+          revision: inserted.revision, origin: 'import', previousContentHash: null, newContentHash: table.contentHash,
+          details: { packageId: pkg.packageId, packageHash: importHash(pkg), dungeonKey: pkg.dungeon.key,
+            sourceEnvironment: pkg.source.environment, source: pkg.source, sourceTableKey: table.sourceKey, sourceRevision: table.sourceRevision,
+            sourceOrigin: pkg.schemaVersion !== 1 ? pkg.bundled.dungeonLootTables.find(t => t.key === table.sourceKey)!.origin : null,
+            rewardSnapshotHash: pkg.schemaVersion !== 1 ? pkg.rewardSnapshot?.hash ?? null : null },
+        });
+        createdLootTables.push(table.key);
+      }
+    }
+    const issues: DungeonIssueDetail[] = [
+      ...new Map(
+        [
+          ...plan.issues.filter((i) => i.severity === 'warning'),
+          ...dependencyIssues,
+          ...plan.issues.filter(i => i.path.startsWith('dependencies.requiredItems.')),
+          ...plan.issues.filter(i => i.path.startsWith('dependencies.requiredSpecies.') || i.path.startsWith('dependencies.captureItems.')),
+          ...validateDungeonDefinition(definition, context).issues.map((i) => ({
+            ...i,
+            path: `dungeon.${i.path}`,
+          })),
+        ].map((i) => [`${i.code}:${i.path}:${i.message}`, i]),
+      ).values(),
+    ];
+    const fatal = [
+      ...plan.issues.filter(
+        (i) => i.code === 'reserved_dungeon_key' || i.code === 'package_dependencies_mismatch' || i.code.startsWith('loot_table_') && i.severity === 'error',
+      ),
+      ...issues.filter(
+        (i) =>
+          i.severity === 'error' &&
+          !(input.decisions.allowMissingDependencies && isRepairableImportIssue(i, pkg.schemaVersion)),
+      ),
+    ];
+    if (fatal.length) throw new DungeonImportError('DUNGEON_IMPORT_INVALID', fatal);
+    const layout = pruneDungeonLayout(
+      pkg.editor.layout,
+      pkg.dungeon.rooms.map((r) => r.id),
+    );
+    const result =
+      requiredDecision === 'create' ? 'created' : requiredDecision === 'replace' ? 'replaced' : 'unchanged';
+    let draftRevision = target.expectedRevision ?? 1;
+    if (result === 'created') {
+      const [{ position } = { position: 0 }] = await tx
+        .select({
+          position: sql<number>`coalesce(max(${dungeonDefinitions.position}), -1) + 1`,
+        })
+        .from(dungeonDefinitions);
+      await tx.insert(dungeonDefinitions).values({
+        dungeonKey: pkg.dungeon.key,
+        enabled: false,
+        draft: definition as unknown as Record<string, unknown>,
+        layout: layout as unknown as Record<string, unknown>,
+        draftHash: dungeonContentHash(definition),
+        position: Number(position),
+        updatedBy: actor,
+      });
+    } else if (result === 'replaced') {
+      draftRevision++;
+      await tx
+        .update(dungeonDefinitions)
+        .set({
+          draft: definition as unknown as Record<string, unknown>,
+          layout: layout as unknown as Record<string, unknown>,
+          draftHash: dungeonContentHash(definition),
+          draftRevision,
+          updatedAt: new Date(),
+          updatedBy: actor,
+        })
+        .where(eq(dungeonDefinitions.dungeonKey, pkg.dungeon.key));
+    }
+    const out: Omit<DungeonImportResult, 'importId'> = {
+      dungeonKey: pkg.dungeon.key,
+      result,
+      draftRevision,
+      createdEnemies,
+      issues,
+      publishable: !issues.some((i) => i.severity === 'error'),
+      replayed: false,
+      enabled: target.enabled ?? false,
+      publishedRevision: target.publishedRevision,
+      ...(pkg.schemaVersion !== 1 && loot ? {
+        contentHash: dungeonContentHash(definition), createdLootTables,
+        reusedLootTables: loot.tablePlans.filter(t => t.decision?.action === 'use_existing').map(t => t.targetKey),
+        tableKeyChanges: Object.fromEntries(loot.rewrites), sourceSchemaVersion: pkg.schemaVersion,
+        rewardSnapshotHash: pkg.rewardSnapshot?.hash ?? null,
+      } : {}),
+    };
+    const [history] = await tx
+      .insert(dungeonImportHistory)
+      .values({
+        requestId: input.requestId,
+        requestHash,
+        packageId: pkg.packageId,
+        packageHash: importHash(pkg),
+        sourceEnvironment: pkg.source.environment,
+        dungeonKey: pkg.dungeon.key,
+        actor,
+        decisions: input.decisions,
+        result: out,
+      })
+      .returning({ id: dungeonImportHistory.id });
+    await tx.insert(dungeonContentEvents).values({
+      dungeonKey: pkg.dungeon.key,
+      action: 'imported',
+      actor,
+      details: {
+        importId: history!.id,
+        packageId: pkg.packageId,
+        packageHash: importHash(pkg),
+        result,
+        draftRevision,
+        createdEnemies,
+        enabled: out.enabled,
+        publishedRevision: out.publishedRevision,
+        ...(pkg.schemaVersion !== 1 ? { sourceSchemaVersion: pkg.schemaVersion, source: pkg.source, sourceContentHash: pkg.contentHash,
+          contentHash: dungeonContentHash(definition), rewardSnapshotHash: pkg.rewardSnapshot?.hash ?? null,
+          createdLootTables, tableKeyChanges: loot ? Object.fromEntries(loot.rewrites) : {} } : {}),
+        decisions: input.decisions,
+      },
+    });
+    return { ...out, importId: history!.id };
+  }
   return {
-    async planImport(raw, choices) {
+    async planImport(raw, choices, bundle) {
       const decisions = DungeonLootImportDecisionsSchema.parse(choices ?? {});
-      return db.transaction(async (tx) => (await inspect(tx, raw, false, decisions)).plan, {
+      return db.transaction(async (tx) => (await inspect(tx, raw, false, decisions, bundle)).plan, {
         isolationLevel: 'repeatable read',
         accessMode: 'read only',
       });
     },
+    async planImportInTx(tx, raw, options) {
+      const decisions = DungeonLootImportDecisionsSchema.parse(options.lootTables ?? {});
+      return (await inspect(tx, raw, options.lock, decisions, options.bundle)).plan;
+    },
     async applyImport(rawInput, actor) {
-      const parsedInput = DungeonImportApplySchema.safeParse(rawInput);
-      if (!parsedInput.success)
-        throw new DungeonImportError(
-          'DUNGEON_IMPORT_INVALID',
-          parsedInput.error.issues.map((i) => ({
-            code: 'schema',
-            severity: 'error',
-            path: i.path.join('.'),
-            message: i.message,
-          })),
-        );
-      const input = parsedInput.data;
-      const read = readImportPackage(input.package);
-      if (!read.package || !read.ok) throw new DungeonImportError('DUNGEON_IMPORT_INVALID', read.issues);
-      const pkg = read.package;
-      const requestHash = importHash({
-        packageHash: importHash(pkg),
-        expectedPlanHash: input.expectedPlanHash,
-        expectedRevision: input.expectedRevision,
-        decisions: input.decisions,
-        actor,
-      });
+      const { input, pkg } = parseApplyInput(rawInput);
       try {
-        return await db.transaction(async (tx) => {
-          await tx.execute(
-            sql`select pg_advisory_xact_lock(hashtextextended(${`dungeon_import:request:${input.requestId}`}, 0))`,
-          );
-          const [receipt] = await tx
-            .select()
-            .from(dungeonImportHistory)
-            .where(eq(dungeonImportHistory.requestId, input.requestId));
-          if (receipt) {
-            if (receipt.requestHash !== requestHash)
-              refused(
-                'DUNGEON_IMPORT_REQUEST_CONFLICT',
-                'requestId',
-                'This request ID already belongs to a different package, decision, plan or administrator.',
-              );
-            return {
-              ...(receipt.result as unknown as DungeonImportResult),
-              importId: receipt.id,
-              replayed: true,
-            };
-          }
-          const { plan, context, dependencyIssues, definition = pkg.dungeon, loot } = await inspect(tx, pkg, true, input.decisions.lootTables);
-          if (plan.planHash !== input.expectedPlanHash || plan.target?.expectedRevision !== input.expectedRevision)
-            refused(
-              'DUNGEON_IMPORT_STALE',
-              'expectedPlanHash',
-              'The target draft or a reviewed dependency changed; plan again.',
-            );
-          const target = plan.target!;
-          const requiredDecision =
-            target.status === 'new' ? 'create' : target.status === 'identical' ? 'unchanged' : 'replace';
-          if (input.decisions.dungeon !== requiredDecision)
-            refused(
-              'DUNGEON_IMPORT_INVALID',
-              'decisions.dungeon',
-              `This plan requires the explicit "${requiredDecision}" decision.`,
-            );
-          for (const key of Object.keys(input.decisions.enemies))
-            if (!plan.enemies.some((e) => e.key === key))
-              refused(
-                'DUNGEON_IMPORT_INVALID',
-                `decisions.enemies.${key}`,
-                'This enemy is not referenced by the package.',
-              );
-          const createdEnemies: string[] = [];
-          for (const enemy of plan.enemies) {
-            const decision = Object.prototype.hasOwnProperty.call(input.decisions.enemies, enemy.key)
-              ? input.decisions.enemies[enemy.key]
-              : undefined;
-            if (enemy.status === 'identical') {
-              if (decision && decision !== 'use_existing')
-                refused(
-                  'DUNGEON_IMPORT_INVALID',
-                  `decisions.enemies.${enemy.key}`,
-                  'An existing enemy cannot be created or replaced by import.',
-                );
-            } else if (enemy.currentRevision !== null) {
-              if (decision !== 'use_existing')
-                refused(
-                  'DUNGEON_IMPORT_INVALID',
-                  `decisions.enemies.${enemy.key}`,
-                  'Explicitly keep the differing target enemy or reconcile it separately before import.',
-                );
-            } else if (decision === 'create' && enemy.status === 'missing_bundled') {
-              const definition = pkg.bundled.enemies.find((e) => e.key === enemy.key)!;
-              const [{ position } = { position: 0 }] = await tx
-                .select({
-                  position: sql<number>`coalesce(max(${combatEnemies.position}), -1) + 1`,
-                })
-                .from(combatEnemies);
-              const [inserted] = await tx
-                .insert(combatEnemies)
-                .values({
-                  enemyKey: enemy.key,
-                  ...enemyColumnsOf(definition),
-                  contentHash: packagedEnemyHash(definition),
-                  position: Number(position),
-                  updatedBy: actor,
-                })
-                .onConflictDoNothing()
-                .returning();
-              if (!inserted)
-                refused(
-                  'DUNGEON_IMPORT_STALE',
-                  `dependencies.enemies.${enemy.key}`,
-                  'An enemy was created after planning.',
-                );
-              createdEnemies.push(enemy.key);
-              (context.enemies as Map<string, { enabled: boolean }>).set(enemy.key, { enabled: definition.enabled });
-            } else if (!(decision === 'leave_missing' && input.decisions.allowMissingDependencies))
-              refused(
-                'DUNGEON_IMPORT_INVALID',
-                `decisions.enemies.${enemy.key}`,
-                'Explicitly create a bundled missing enemy, or accept an incomplete draft with leave_missing.',
-              );
-          }
-          const createdLootTables: string[] = [];
-          if (loot) {
-            const invalid = loot.issues.filter(i => i.severity === 'error');
-            if (invalid.length) throw new DungeonImportError('DUNGEON_IMPORT_INVALID', invalid);
-            for (const table of loot.tablePlans)
-              if (table.decision?.action === 'leave_missing' && !input.decisions.allowMissingDependencies)
-                refused('DUNGEON_IMPORT_INVALID', `decisions.lootTables.${table.key}`, 'Leaving a table missing requires accepting an incomplete draft.');
-            for (const table of loot.creations) {
-              const [inserted] = await tx.insert(dungeonLootTables).values({
-                tableKey: table.key, name: table.name, description: table.description, tier: table.tier,
-                body: table.body, contentHash: table.contentHash, origin: 'import', createdBy: actor, updatedBy: actor,
-              }).onConflictDoNothing().returning();
-              if (!inserted) refused('DUNGEON_IMPORT_STALE', `lootTables.${table.key}`, 'This table key was taken after review. Plan again.');
-              await tx.insert(dungeonLootTableEvents).values({ tableKey: table.key, action: 'imported', actor,
-                revision: inserted.revision, origin: 'import', previousContentHash: null, newContentHash: table.contentHash,
-                details: { packageId: pkg.packageId, packageHash: importHash(pkg), dungeonKey: pkg.dungeon.key,
-                  sourceEnvironment: pkg.source.environment, source: pkg.source, sourceTableKey: table.sourceKey, sourceRevision: table.sourceRevision,
-                  sourceOrigin: pkg.schemaVersion !== 1 ? pkg.bundled.dungeonLootTables.find(t => t.key === table.sourceKey)!.origin : null,
-                  rewardSnapshotHash: pkg.schemaVersion !== 1 ? pkg.rewardSnapshot?.hash ?? null : null },
-              });
-              createdLootTables.push(table.key);
-            }
-          }
-          const issues: DungeonIssueDetail[] = [
-            ...new Map(
-              [
-                ...plan.issues.filter((i) => i.severity === 'warning'),
-                ...dependencyIssues,
-                ...plan.issues.filter(i => i.path.startsWith('dependencies.requiredItems.')),
-                ...plan.issues.filter(i => i.path.startsWith('dependencies.requiredSpecies.') || i.path.startsWith('dependencies.captureItems.')),
-                ...validateDungeonDefinition(definition, context).issues.map((i) => ({
-                  ...i,
-                  path: `dungeon.${i.path}`,
-                })),
-              ].map((i) => [`${i.code}:${i.path}:${i.message}`, i]),
-            ).values(),
-          ];
-          const fatal = [
-            ...plan.issues.filter(
-              (i) => i.code === 'reserved_dungeon_key' || i.code === 'package_dependencies_mismatch' || i.code.startsWith('loot_table_') && i.severity === 'error',
-            ),
-            ...issues.filter(
-              (i) =>
-                i.severity === 'error' &&
-                !(input.decisions.allowMissingDependencies && (MISSING_DEPENDENCIES.has(i.code) ||
-                  pkg.schemaVersion === 4 && (INCOMPLETE_ENCOUNTER_CODES as readonly string[]).includes(i.code) ||
-                  pkg.schemaVersion !== 1 && ['event_item_missing', 'event_item_disabled', 'reward_item_missing', 'reward_item_disabled', 'reward_item_capped', 'reward_equipment_empty', 'reward_table_archived', 'reward_table_invalid', 'reward_shards_unset'].includes(i.code))),
-            ),
-          ];
-          if (fatal.length) throw new DungeonImportError('DUNGEON_IMPORT_INVALID', fatal);
-          const layout = pruneDungeonLayout(
-            pkg.editor.layout,
-            pkg.dungeon.rooms.map((r) => r.id),
-          );
-          const result =
-            requiredDecision === 'create' ? 'created' : requiredDecision === 'replace' ? 'replaced' : 'unchanged';
-          let draftRevision = target.expectedRevision ?? 1;
-          if (result === 'created') {
-            const [{ position } = { position: 0 }] = await tx
-              .select({
-                position: sql<number>`coalesce(max(${dungeonDefinitions.position}), -1) + 1`,
-              })
-              .from(dungeonDefinitions);
-            await tx.insert(dungeonDefinitions).values({
-              dungeonKey: pkg.dungeon.key,
-              enabled: false,
-              draft: definition as unknown as Record<string, unknown>,
-              layout: layout as unknown as Record<string, unknown>,
-              draftHash: dungeonContentHash(definition),
-              position: Number(position),
-              updatedBy: actor,
-            });
-          } else if (result === 'replaced') {
-            draftRevision++;
-            await tx
-              .update(dungeonDefinitions)
-              .set({
-                draft: definition as unknown as Record<string, unknown>,
-                layout: layout as unknown as Record<string, unknown>,
-                draftHash: dungeonContentHash(definition),
-                draftRevision,
-                updatedAt: new Date(),
-                updatedBy: actor,
-              })
-              .where(eq(dungeonDefinitions.dungeonKey, pkg.dungeon.key));
-          }
-          const out: Omit<DungeonImportResult, 'importId'> = {
-            dungeonKey: pkg.dungeon.key,
-            result,
-            draftRevision,
-            createdEnemies,
-            issues,
-            publishable: !issues.some((i) => i.severity === 'error'),
-            replayed: false,
-            enabled: target.enabled ?? false,
-            publishedRevision: target.publishedRevision,
-            ...(pkg.schemaVersion !== 1 && loot ? {
-              contentHash: dungeonContentHash(definition), createdLootTables,
-              reusedLootTables: loot.tablePlans.filter(t => t.decision?.action === 'use_existing').map(t => t.targetKey),
-              tableKeyChanges: Object.fromEntries(loot.rewrites), sourceSchemaVersion: pkg.schemaVersion,
-              rewardSnapshotHash: pkg.rewardSnapshot?.hash ?? null,
-            } : {}),
-          };
-          const [history] = await tx
-            .insert(dungeonImportHistory)
-            .values({
-              requestId: input.requestId,
-              requestHash,
-              packageId: pkg.packageId,
-              packageHash: importHash(pkg),
-              sourceEnvironment: pkg.source.environment,
-              dungeonKey: pkg.dungeon.key,
-              actor,
-              decisions: input.decisions,
-              result: out,
-            })
-            .returning({ id: dungeonImportHistory.id });
-          await tx.insert(dungeonContentEvents).values({
-            dungeonKey: pkg.dungeon.key,
-            action: 'imported',
-            actor,
-            details: {
-              importId: history!.id,
-              packageId: pkg.packageId,
-              packageHash: importHash(pkg),
-              result,
-              draftRevision,
-              createdEnemies,
-              enabled: out.enabled,
-              publishedRevision: out.publishedRevision,
-              ...(pkg.schemaVersion !== 1 ? { sourceSchemaVersion: pkg.schemaVersion, source: pkg.source, sourceContentHash: pkg.contentHash,
-                contentHash: dungeonContentHash(definition), rewardSnapshotHash: pkg.rewardSnapshot?.hash ?? null,
-                createdLootTables, tableKeyChanges: loot ? Object.fromEntries(loot.rewrites) : {} } : {}),
-              decisions: input.decisions,
-            },
-          });
-          return { ...out, importId: history!.id };
-        });
+        return await db.transaction(async (tx) => applyInTx(tx, input, pkg, actor));
       } catch (err) {
         if (uniqueViolationConstraint(err))
           refused('DUNGEON_IMPORT_STALE', 'package', 'An import target was created concurrently. Review a new plan.');
         throw err;
       }
+    },
+    async applyImportInTx(tx, rawInput, actor, bundle) {
+      const { input, pkg } = parseApplyInput(rawInput, bundle);
+      return applyInTx(tx, input, pkg, actor, bundle);
     },
     async importHistory(key, limit = 100) {
       return db

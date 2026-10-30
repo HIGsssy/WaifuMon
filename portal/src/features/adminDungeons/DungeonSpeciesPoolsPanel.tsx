@@ -40,7 +40,7 @@ export function DungeonSpeciesPoolsPanel({
             {(definition.speciesPolicies ?? []).length
               ? `${definition.speciesPolicies!.length} species with this dungeon’s own terms.`
               : 'No species terms yet.'}{' '}
-            Dungeon-exclusive WaifuMon need an entry here before they can be offered.
+            Dungeon-exclusive WaifuMon need central authorization or this dungeon’s own terms.
           </p>
         </div>
         <Button
@@ -52,6 +52,10 @@ export function DungeonSpeciesPoolsPanel({
           {disabled ? 'View' : 'Edit'} Species access
         </Button>
       </div>
+      <Button variant="outline" size="sm" disabled={!host}
+        onClick={() => host?.open({ kind: 'speciesAccess', id: '' })}>
+        Review Species Access from Encounters
+      </Button>
       {!pools.length && <p className="text-sm text-ink-muted">No WaifuMon pools yet.</p>}
       <ul aria-label="WaifuMon pools in this dungeon" className="space-y-2">
         {pools.map((p) => (

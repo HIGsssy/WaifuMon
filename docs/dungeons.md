@@ -599,6 +599,34 @@ the draft.** Like v1, v3 and v4, replacement keeps the enabled flag, the current
 publication, historical revisions and active runs. Publish explicitly to put the
 imported draft live; publication revalidates it here.
 
+### Complete Dungeon Bundles (ZIP)
+
+A **Complete Dungeon Bundle** (`waifumon-dungeon-bundle` v1, Content Portability
+CP-4B) wraps the unchanged JSON package so that a dungeon moves between
+environments with what the JSON cannot carry:
+
+| Member | Content |
+| --- | --- |
+| `manifest.json` | Source, the wrapped package's version and hashes, one artwork binding per artwork reference, Scene Sprite definitions, asset entries `(category, sha256, bytes, type, size)` |
+| `dungeon.json` | Exactly the Dungeon JSON package (v1–v4) |
+| `enemies/manifest.json`, `enemies/enemies.json` | The CP-3 enemy documents for every enemy any wave can field |
+| `pools.json` | The portable definition of every referenced shared WaifuMon pool |
+| `artwork/asset-NNN.*` | Image bytes, one per distinct `(category, sha256)` |
+
+No asset id, storage key, URL or host path from the source appears. The JSON
+reader keeps refusing Scene Sprites; only the bundle reader lifts that gate, after
+checking that every placed sprite is defined. Species, items, equipment,
+currencies, regions and legacy reward tables remain external prerequisites.
+
+Import reviews the dungeon through the same importer as JSON, against what this
+server will hold once the bundle's own dependencies are written; writes the
+artwork, enemies (CP-3 rules), Scene Sprites, shared pools and the draft in one
+transaction; and follows CP-4A's draft-only lifecycle. Routes:
+`POST /admin/dungeons/definitions/:key/export/bundle`,
+`POST /admin/dungeons/import/bundle/preview` and `/apply`. Format, limits,
+conflict policy, recovery and the staging-to-production checklist are in
+[the CP-4B completion report](content-portability-cp4b-completion.md).
+
 ## Admin API
 
 All under `/api/v1/admin/dungeons`.

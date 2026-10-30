@@ -1547,6 +1547,45 @@ describe('the zone routes of the old prototype', () => {
 
 
 describe('P4C2A species pool authoring API', () => {
+  it('reviews all eight shared-pool permissions read-only and saves explicit approvals to the draft alone', async () => {
+    const slugs = ['recovery_wing_valkyrie', 'ridge_wolf_girl', 'showroom_demo_unit', 'yukata_attendant', 'glint_moth', 'skyline_gondolier', 'trailhead_marshal', 'vent_diver'];
+    const shared = createSharedDungeonPoolService(w.t.db);
+    await shared.create({ key: 'master_dungeon_pool_n_r', name: 'master dungeon pool N R', description: '', enabled: true,
+      entries: slugs.map((species, n) => ({ id: `e${n}`, species, weight: n + 1, oncePerRun: true })),
+    }, 'review-test');
+    const definition = singleRoomDungeon([], d => { d.key = 'shared_access_review'; });
+    const initial = data<Detail>(await call('POST', '/admin/dungeons/definitions', { definition }));
+    const published = data<Json>(await call('POST', `${base(definition.key)}/publish`, { expectedRevision: initial.draftRevision }));
+    const draft = structuredClone(definition);
+    draft.speciesPools = [{ id: 'master', name: 'Master reference', sharedPoolKey: 'master_dungeon_pool_n_r', entries: [] }];
+    draft.rooms[0]!.actions = [{ id: 'meet', type: 'wild_encounter', source: { kind: 'pool', poolId: 'master' }, intro: '', capture: {}, outcomes: {} } as never];
+    const saved = data<Detail>(await call('PUT', `${base(definition.key)}/draft`, { expectedRevision: initial.draftRevision, definition: draft }));
+    const before = await w.t.db.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, definition.key));
+    const regionalBefore = await w.t.db.select().from(regionEncounterPools);
+    const response = await as(READER_TOKEN, 'POST', '/admin/dungeons/validate', { definition: draft });
+    expect(response.statusCode).toBe(200);
+    const report = data<Json>(response);
+    expect(report.issues.filter((i: Json) => i.code === 'species_not_permitted')).toHaveLength(8);
+    expect(report.speciesAccessReview).toHaveLength(8);
+    expect(report.speciesAccessReview.every((r: Json) => r.authorization === 'none' && r.canAdd && r.captureReason === 'not_permitted')).toBe(true);
+    expect(report.speciesAccessReview[0].references[0]).toMatchObject({ poolId: 'master', sharedPoolKey: 'master_dungeon_pool_n_r', actionId: 'meet' });
+    expect(await w.t.db.select().from(dungeonDefinitions).where(eq(dungeonDefinitions.dungeonKey, definition.key))).toEqual(before);
+    expect((await call('POST', `${base(definition.key)}/publish`, { expectedRevision: saved.draftRevision })).statusCode).toBe(400);
+    const approved = { ...draft, speciesPolicies: slugs.map(species => ({ species, perPlayerLimit: 2 })) };
+    const approvedResponse = await call('PUT', `${base(definition.key)}/draft`, { expectedRevision: saved.draftRevision, definition: approved });
+    expect(approvedResponse.statusCode).toBe(200);
+    const reloaded = data<Detail>(await call('GET', base(definition.key)));
+    expect(reloaded.draft.speciesPolicies).toEqual(approved.speciesPolicies);
+    expect(reloaded.draft.speciesPools).toEqual(draft.speciesPools);
+    expect(reloaded.published).toEqual(published.dungeon.published);
+    expect((await shared.get('master_dungeon_pool_n_r'))!.definition.entries.map(e => e.weight)).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+    expect(await w.t.db.select().from(regionEncounterPools)).toEqual(regionalBefore);
+    const checked = data<Json>(await call('POST', '/admin/dungeons/validate', { definition: approved }));
+    expect(checked.issues.filter((i: Json) => i.code === 'species_not_permitted')).toEqual([]);
+    expect(checked.speciesAccessReview.every((r: Json) => r.authorization === 'dungeon' && r.perPlayerLimit === 2 && !r.canAdd)).toBe(true);
+    expect((await call('POST', `${base(definition.key)}/publish`, { expectedRevision: reloaded.draftRevision })).statusCode).toBe(200);
+  });
+
   it('catalogue is read-only, permission-gated, reports central policy and scoped limits', async () => {
     const slug = w.app.content.species.find((s) => s.enabled)?.slug!;
     w.speciesAccess.set(slug, [{ dungeon: 'pool_authoring', perPlayerLimit: 2, directRescue: true }, { dungeon: 'other', perPlayerLimit: 'unlimited' }]);

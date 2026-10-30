@@ -510,6 +510,15 @@ export function DungeonGraphView({
               </ul>
             </OutlineSection>
             <OutlineSection title="To do" count={friendly.length} request={problemsRequest}>
+              {friendly.some(f => ['species_not_permitted', 'rescue_direct_not_permitted', 'rescue_direct_limit_missing'].includes(f.issue.code)) && (
+                <div className="space-y-1 px-2 pb-2 text-xs">
+                  <p>Encounter species need acquisition permission. Review them together in Species access.</p>
+                  <Button variant="link" size="sm" className="h-auto whitespace-normal px-0 text-left"
+                    onClick={() => eventHost.open({ kind: 'speciesAccess', id: '' })}>
+                    Review Species Access from Encounters
+                  </Button>
+                </div>
+              )}
               {friendly.length === 0 && (
                 <p className="px-2 text-xs text-ink-muted">Nothing left to do.</p>
               )}

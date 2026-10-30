@@ -37,9 +37,9 @@ Validation checks instance uniqueness, counts, placement bounds/scale/layer, cat
 
 ## Packages
 
-Package v1/v2/v3 meanings are unchanged. Sprite-free and event-free exports follow their existing paths. Dungeons containing room/activity placements are explicitly gated at service export, pure package construction, inspection and import (`package_scene_sprites_unsupported`). No incomplete package is produced or applied, and destination catalogues are never overwritten. Ordinary draft saves and publication are supported locally.
+Dungeon JSON package meanings (v1–v4) are unchanged, and Dungeon JSON still refuses room/activity placements at service export, pure package construction, inspection and import (`package_scene_sprites_unsupported`). No incomplete package is produced or applied.
 
-Follow-up portability work needs an explicit new package version with a frozen sprite-definition/artwork manifest, destination missing/conflict decisions, explicit permission for any replacement, and the existing disabled/unpublished import lifecycle. Until that workflow is designed, exports with placements remain blocked. This release does not introduce a new package version.
+Dungeons with placements move as a **Complete Dungeon Bundle (ZIP)** (Content Portability CP-4B; see [the authoring reference §6.2.1](dungeon-authoring-reference.md) and [the completion report](../content-portability-cp4b-completion.md)). The bundle carries each placed sprite's definition and artwork bytes beside the unchanged JSON — the current catalogue for a draft export, the frozen revision visuals for a revision export — and is the only reader that lifts the gate. On import, a missing sprite is created, an identical one reused, and a differing one needs an explicit **Keep**, **Copy** (a new key for this dungeon only) or **Update**. An import never replaces artwork in place, and every published revision keeps its own frozen visuals.
 
 ## Migration and staging verification
 

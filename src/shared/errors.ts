@@ -2423,6 +2423,101 @@ export class EnemyImportRequestConflictError extends AppError {
   }
 }
 
+// ── Complete Dungeon Bundles (Content Portability CP-4B) ────────────────────
+
+/** One problem with a dungeon bundle, an export or an import. `path` names where. */
+export interface DungeonBundleIssue {
+  path: string;
+  message: string;
+}
+
+const dungeonBundleIssues = (issues: unknown): DungeonBundleIssue[] =>
+  Array.isArray(issues) ? issues.filter((i): i is DungeonBundleIssue => i !== null && typeof i === 'object') : [];
+
+/** An uploaded bundle is malformed, unsafe or inconsistent. Nothing was read into this server. */
+export class DungeonBundleInvalidError extends AppError {
+  readonly issues: DungeonBundleIssue[];
+  constructor(issues: readonly DungeonBundleIssue[]) {
+    const list = dungeonBundleIssues(issues);
+    const summary = list.slice(0, 20).map((i) => (i.path ? `${i.path}: ${i.message}` : i.message)).join('; ');
+    super('DUNGEON_BUNDLE_INVALID', `Invalid dungeon bundle: ${summary || 'unknown problem'}`, summary || 'That dungeon bundle is not valid.');
+    this.issues = list;
+  }
+}
+
+/**
+ * Why a complete bundle export was refused rather than written:
+ *  - `too_large` — more content or bytes than an import accepts;
+ *  - `artwork_unavailable` — artwork the dungeon needs cannot be read here;
+ *  - `unsupported_artwork` — artwork it needs is in a format managed artwork does not accept;
+ *  - `dependency_unavailable` — an enemy, Scene Sprite or shared pool it needs is missing or unreadable here;
+ *  - `invalid` — the dungeon itself cannot be exported (the JSON export's own checks).
+ */
+export type DungeonBundleExportRefusal = 'too_large' | 'artwork_unavailable' | 'unsupported_artwork' | 'dependency_unavailable' | 'invalid';
+
+export class DungeonBundleExportRefusedError extends AppError {
+  readonly reason: DungeonBundleExportRefusal;
+  readonly issues: DungeonBundleIssue[];
+  constructor(reason: DungeonBundleExportRefusal, userMessage: string, issues: readonly DungeonBundleIssue[] = []) {
+    const message = String(userMessage);
+    super('DUNGEON_BUNDLE_EXPORT_REFUSED', `Dungeon bundle export refused (${String(reason)}): ${message}`, message);
+    this.reason = reason;
+    this.issues = dungeonBundleIssues(issues);
+  }
+}
+
+/** The reviewed import has blocking problems on this server; nothing was applied. */
+export class DungeonBundleRejectedError extends AppError {
+  readonly issues: DungeonBundleIssue[];
+  constructor(issues: readonly DungeonBundleIssue[]) {
+    const list = dungeonBundleIssues(issues);
+    const summary = list.slice(0, 20).map((i) => `${i.path}: ${i.message}`).join('; ');
+    super('DUNGEON_BUNDLE_REJECTED', `Dungeon bundle refused: ${summary}`, summary || 'That dungeon bundle cannot be imported here.');
+    this.issues = list;
+  }
+}
+
+/** Something the review relied on changed since the preview; nothing was applied. */
+export class DungeonBundleStaleError extends AppError {
+  constructor() {
+    super(
+      'DUNGEON_BUNDLE_STALE',
+      'The destination changed since this dungeon bundle was previewed',
+      'Something this import depends on changed since you reviewed it. Nothing was imported — review the bundle again.',
+    );
+  }
+}
+
+/** A conflict has no explicit decision; nothing was applied. `keys` name them as `<kind>:<key>`. */
+export class DungeonBundleDecisionsRequiredError extends AppError {
+  readonly keys: string[];
+  constructor(keys: readonly string[]) {
+    const list = Array.isArray(keys) ? keys.map(String) : [];
+    super(
+      'DUNGEON_BUNDLE_DECISIONS_REQUIRED',
+      `Dungeon bundle import needs a decision for: ${list.join(', ')}`,
+      'Choose what to do with each enemy, Scene Sprite and shared pool that differs here.',
+    );
+    this.keys = list;
+  }
+}
+
+/** A bundle request id was reused for a different request, or that request is still running. */
+export class DungeonBundleRequestConflictError extends AppError {
+  readonly inProgress: boolean;
+  constructor(inProgress: boolean) {
+    const running = inProgress === true;
+    super(
+      'DUNGEON_BUNDLE_REQUEST_CONFLICT',
+      running ? 'That dungeon bundle import is still running' : 'That dungeon bundle request id belongs to a different request',
+      running
+        ? 'This import is already running. Wait a moment, then try again to see its result.'
+        : 'This import request does not match the one first sent with that id. Review the bundle again.',
+    );
+    this.inProgress = running;
+  }
+}
+
 // ── Boss Management (Portal Admin) ───────────────────────────────────────────
 
 /** One problem with a boss definition. `path` is the field, e.g. `schedule.weekly[0].windows`. */

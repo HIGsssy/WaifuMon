@@ -48,6 +48,22 @@ export interface SceneSpriteService {
   update(key: string, sprite: unknown, expectedRevision: number, actor: string | null): Promise<SceneSpriteDetail>;
   archive(key: string, archived: boolean, expectedRevision: number, actor: string | null): Promise<SceneSpriteDetail>;
   delete(key: string, expectedRevision: number, actor: string | null): Promise<void>;
+  /**
+   * A sprite from a complete dungeon bundle (CP-4B), in the bundle's
+   * transaction: created (`expectedRevision` null) or updated at the revision
+   * the editor reviewed. The asset may have been inserted by that same
+   * transaction, so it is checked there; the bundle has already verified its
+   * file (a reused asset's is present, a new one's was staged). Revisions
+   * that froze the old visuals keep them: their pinned assets stay protected.
+   */
+  applyImported(
+    tx: DbOrTx,
+    key: string,
+    sprite: SceneSpriteInput,
+    expectedRevision: number | null,
+    actor: string | null,
+    details: Record<string, unknown>,
+  ): Promise<{ key: string; revision: number }>;
 }
 
 export function createSceneSpriteService(deps: {
@@ -275,6 +291,34 @@ export function createSceneSpriteService(deps: {
         });
         return detail(tx, row!);
       });
+    },
+    async applyImported(tx, key, input, expectedRevision, actor, details) {
+      await lock(tx);
+      const parsedKey = SceneSpriteKeySchema.safeParse(key);
+      const parsed = SceneSpriteInputSchema.safeParse(input);
+      if (!parsedKey.success || !parsed.success)
+        throw new SceneSpriteError('SCENE_SPRITE_INVALID', 'Check the sprite properties.', { issues: [{ path: key, message: 'The bundled sprite is not a valid scene sprite.' }] });
+      const sprite = parsed.data;
+      const [asset] = await tx.select().from(artworkAssets).where(eq(artworkAssets.id, sprite.assetId)).for('share');
+      if (!asset || asset.status !== 'active')
+        throw new SceneSpriteError('SCENE_SPRITE_INVALID', 'Choose active artwork for this sprite.', { issues: [{ path: 'assetId', message: 'Choose active artwork for this sprite.' }] });
+      if (expectedRevision === null) {
+        const [existing] = await tx.select().from(dungeonSceneSprites).where(eq(dungeonSceneSprites.spriteKey, key));
+        if (existing) throw new SceneSpriteError('SCENE_SPRITE_STALE', 'A sprite with this identifier was created after review.', { currentRevision: existing.revision });
+        const [row] = await tx.insert(dungeonSceneSprites).values({ spriteKey: key, definition: sprite, assetId: sprite.assetId, updatedBy: actor }).returning();
+        await audit(tx, key, 'created', actor, { revision: 1, sprite, ...details });
+        await deps.assets.recordReferenceChanges(tx, { entity: `dungeon_scene_sprite:${key}`, before: [], after: slots(row) }, actor);
+        return { key, revision: row!.revision };
+      }
+      const old = await rowOf(tx, key, expectedRevision);
+      const [row] = await tx
+        .update(dungeonSceneSprites)
+        .set({ definition: sprite, assetId: sprite.assetId, revision: old.revision + 1, updatedAt: new Date(), updatedBy: actor })
+        .where(eq(dungeonSceneSprites.spriteKey, key))
+        .returning();
+      await audit(tx, key, 'updated', actor, { revision: row!.revision, before: old.definition, sprite, ...details });
+      await deps.assets.recordReferenceChanges(tx, { entity: `dungeon_scene_sprite:${key}`, before: slots(old), after: slots(row) }, actor);
+      return { key, revision: row!.revision };
     },
     async delete(key, expectedRevision, actor) {
       await db.transaction(async (tx) => {

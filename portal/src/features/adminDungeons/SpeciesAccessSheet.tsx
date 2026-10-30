@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { getDungeonSpecies, type DungeonDefinition } from '@/api/adminDungeons';
+import { getDungeonSpecies, validateDungeon, type DungeonDefinition } from '@/api/adminDungeons';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Sheet, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/sheet';
 import { SpeciesAvailability, SpeciesThumb } from './DungeonSpeciesPicker';
+import { SpeciesAccessReview } from './SpeciesAccessReview';
 import {
   DEFAULT_SPECIES_LIMIT,
   directRescueSlugs,
@@ -62,6 +63,11 @@ export function SpeciesAccessSheet({
     queryKey: ['dungeon-species', definition.key],
     queryFn: ({ signal }) => getDungeonSpecies(definition.key, signal),
   });
+  const signature = JSON.stringify(definition);
+  const review = useQuery({
+    queryKey: ['dungeon-species-access-review', signature],
+    queryFn: ({ signal }) => validateDungeon(definition, signal),
+  });
   useEffect(() => {
     if (!focus?.id) return;
     const timer = window.setTimeout(() => {
@@ -73,9 +79,10 @@ export function SpeciesAccessSheet({
   }, [focus]);
   const bySlug = new Map((catalogue.data?.species ?? []).map((s) => [s.slug, s]));
   const slugs = [
-    ...new Set([...dungeonSpeciesSlugs(definition), ...(definition.speciesPolicies ?? []).map((p) => p.species)]),
+    ...new Set([...dungeonSpeciesSlugs(definition), ...(review.data?.speciesAccessReview ?? []).map(r => r.species), ...(definition.speciesPolicies ?? []).map((p) => p.species)]),
   ];
   const direct = directRescueSlugs(definition);
+  review.data?.speciesAccessReview?.forEach(row => { if (row.references.some(r => r.direct)) direct.add(row.species); });
   return (
     <Sheet open onOpenChange={(open) => !open && onClose()}>
       <SheetContent
@@ -91,6 +98,15 @@ export function SpeciesAccessSheet({
             these terms decide whether she can be acquired here. They take effect when the dungeon
             is published.
           </SheetDescription>
+          {review.isPending && <p role="status">Reviewing encounter Species Access…</p>}
+          {review.isError && <p role="alert">Encounter access review could not be loaded. <Button variant="link" onClick={() => void review.refetch()}>Retry access review</Button></p>}
+          {review.data && !review.data.definition && <p role="alert">Finish the draft’s incomplete fields before reviewing encounter access.</p>}
+          {review.data?.definition && !review.data.speciesAccessReview && <p role="alert">Encounter access review is unavailable on this server.</p>}
+          {review.data?.definition && review.data.speciesAccessReview && (
+            <SpeciesAccessReview key={JSON.stringify([signature, review.data.speciesAccessReview])}
+              definition={definition} rows={review.data.speciesAccessReview} catalogue={bySlug}
+              disabled={disabled || review.isFetching} onChange={onChange} />
+          )}
           <ul className={`${hint} list-disc space-y-1 pl-5`}>
             <li>
               <strong>Encounter weight</strong> and <strong>At most once per run</strong> are set on
@@ -139,7 +155,8 @@ export function SpeciesAccessSheet({
                 const limited = typeof entry?.perPlayerLimit === 'number';
                 const invalidLimit =
                   limited && (!Number.isSafeInteger(entry!.perPlayerLimit) || (entry!.perPlayerLimit as number) < 1);
-                const used = usageOf(definition, slug);
+                const references = review.data?.speciesAccessReview?.find(r => r.species === slug)?.references;
+                const used = references?.length ? references.map(r => `${r.roomName} — ${r.actionName}${r.poolId ? ` · Pool “${r.poolName}”${r.sharedPoolKey ? ` (shared: ${r.sharedPoolKey})` : ''}` : ''}`) : usageOf(definition, slug);
                 return (
                   <li
                     key={slug}

@@ -101,6 +101,7 @@ import { mirrorsPlayerBuddy } from '../../../../modules/artworkAssets/scenePlace
 import { DungeonEngineContentError } from '../../../../modules/dungeons/engine/combat';
 import { EVENT_SP_NEUTRAL } from '../../../../modules/dungeons/engine/eventChecks';
 import { describeSpeciesAuthoring } from '../../../../modules/dungeons/engine/speciesAuthoring';
+import { describeDungeonSpeciesAccess } from '../../../../modules/dungeons/validation/dungeonSpeciesAccessReview';
 import { createEncounterAuthoringFacts, authoringCaptureRng } from '../../../../modules/dungeons/dungeonEncounterAuthoring';
 import { buildEncounterAuthoringPreview } from '../../../../discord/dungeonEncounterPreview';
 import { dungeonRunSceneArtwork, speciesArtwork } from '../../../../discord/dungeonArtwork';
@@ -390,6 +391,15 @@ const validationSchema = z.object({
   eventPools: z.array(z.object({ poolId: z.string(), base: eventPoolAnalysisSchema, scenario: eventPoolAnalysisSchema })),
   /** Species selection odds with separate availability annotations; empty for legacy or unreadable definitions. */
   speciesPools: z.array(z.object({ poolId: z.string(), base: speciesOddsSchema, scenario: speciesOddsSchema })),
+  speciesAccessReview: z.array(z.object({
+    species: z.string(), authorization: z.enum(['content', 'dungeon', 'both', 'unrestricted', 'none']),
+    perPlayerLimit: z.union([z.number().int().positive(), z.literal('unlimited')]).nullable(),
+    captureReason: speciesReasonSchema, directReason: speciesReasonSchema, canAdd: z.boolean(),
+    references: z.array(z.object({
+      roomId: z.string(), roomName: z.string(), actionId: z.string(), actionName: z.string(), direct: z.boolean(),
+      poolId: z.string().optional(), poolName: z.string().optional(), sharedPoolKey: z.string().optional(),
+    })),
+  })),
   /** Each event's choices as a player in the scenario would meet them, hidden ones included and marked. */
   eventPreviews: z.array(z.object({ eventId: z.string(), choices: z.array(eventChoicePreviewSchema) })),
 });
@@ -1264,10 +1274,12 @@ export const adminDungeonRoutes =
         const events = report.definition
           ? describeEventAuthoring(report.definition, req.body.eventScenario)
           : { eventPools: [], eventPreviews: [] };
+        const source = report.definition ? (await dungeons.validationContext()).encounterSource : undefined;
         const species = report.definition?.speciesPools?.length
-          ? describeSpeciesAuthoring(resolveSharedPools(report.definition, (await dungeons.validationContext()).encounterSource?.sharedPools ?? new Map()), await dungeons.speciesCatalogue(report.definition.key), req.body.speciesScenario)
+          ? describeSpeciesAuthoring(resolveSharedPools(report.definition, source?.sharedPools ?? new Map()), await dungeons.speciesCatalogue(report.definition.key), req.body.speciesScenario)
           : { speciesPools: [] };
-        return ok(req, { ...report, ...events, ...species, definition: report.definition as unknown as Record<string, unknown> | null });
+        const speciesAccessReview = report.definition && source ? describeDungeonSpeciesAccess(report.definition, source, report.issues) : [];
+        return ok(req, { ...report, ...events, ...species, speciesAccessReview, definition: report.definition as unknown as Record<string, unknown> | null });
       },
     );
 
