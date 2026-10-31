@@ -123,7 +123,7 @@ Existing assets are never written, re-categorised, disabled or deleted by an imp
 | Outcome | Meaning | Applied? |
 |---|---|---|
 | `create` | The key does not exist here | Yes, **disabled**, whatever the package says |
-| `update` | Exists here and differs (definition fields or artwork binding) | Only with an explicit **Update** decision; **Keep current** skips it |
+| `update` | Exists here and differs (definition fields or artwork binding) | Only with an explicit **Update** decision; **Keep Existing** skips it |
 | `conflict` | Like `update`, but this server's dungeons or Combat Trials already use the enemy; the preview lists where | Only with an explicit **Update** decision |
 | `unchanged` | Same definition (with this server's enabled state) and the intended artwork already bound | Nothing is written |
 | `invalid` | For example a reserved key on create, or duplicate tags | The whole package is refused |
@@ -176,12 +176,12 @@ Session callers get CSRF through the existing global hook. The actor is recorded
 - The new **Import enemies** page (`/admin/enemies/import`, `enemies.write`) works like this:
   1. Choose a `.zip`; it is checked immediately.
   2. The page shows counts, then each enemy's outcome in plain words, changed fields, activation note, and where each image comes from ("new image added" / "uses an image this server already has" / "already on this server"). Shipped-substitution and fallback notes, and conflict uses ("Used here by The Hall…"), are shown too.
-  3. Each changed enemy needs an Update or Keep current choice.
-  4. The editor confirms and imports.
-  5. The page shows the result, with links to each imported enemy.
+  3. Each changed enemy needs an Update or Keep Existing choice.
+  4. **Apply Import** stays on screen throughout the review and says what still blocks it. Once every decision is made it opens a confirmation, then imports. A review with nothing to write still applies, so the decisions are recorded.
+  5. The page shows the result, with links to each imported enemy, what was kept, and a link back to the Enemy Catalogue.
   6. If the preview went stale, the page offers **Check again**.
 
-  Hashes and IDs are only under "Technical details". `requestId` is generated once per preview, so retrying never applies twice.
+  Hashes and IDs are only under "Technical details". `requestId` is generated per preview and set of decisions, so retrying the same import never applies twice.
 - A new `postDownload` helper in `portal/src/api/client.ts` handles binary downloads whose refusals arrive as JSON. Direct `apiClient` writes are allowed only in `client.ts`, per the architecture test.
 
 ## 8. Migrations

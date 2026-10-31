@@ -348,7 +348,7 @@ export function previewEnemyPackage(file: Blob): Promise<EnemyImportPreview> {
 
 /**
  * Apply exactly the previewed plan. `decisions` is one `u` (update) or `s`
- * (keep current) per `decisionKeys` entry. Reusing `requestId` for a retry
+ * (keep existing) per `decisionKeys` entry. Reusing `requestId` for a retry
  * returns the first attempt's result instead of importing twice.
  */
 export function applyEnemyPackage(

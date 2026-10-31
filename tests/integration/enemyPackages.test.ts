@@ -467,6 +467,20 @@ describe('updating existing enemies in B', () => {
     expect((await enemyRow(B, key))!.hp).toBe(999);
   });
 
+  it('applying with every changed enemy kept writes nothing and still answers a receipt', async () => {
+    await edit(A, key, { hp: 1234 });
+    const zip = (await exportOver(A, { scope: 'selected', keys: [key] })).zip;
+    const before = { row: await enemyRow(B, key), assets: await assetCount(B), files: managedFiles(B) };
+    const p = await preview(B, zip);
+    expect(p.decisionKeys).toEqual([key]);
+    const kept = await upload(B, applyUrl(p, 's'), zip);
+    expect(kept.status, JSON.stringify(kept.json)).toBe(200);
+    expect(kept.json.data).toMatchObject({ replayed: false, created: [], updated: [], skipped: [key], assets: { created: [], reused: [] } });
+    expect({ row: await enemyRow(B, key), assets: await assetCount(B), files: managedFiles(B) }).toEqual(before);
+    const [receipt] = await B.w.t.db.select().from(enemyPackageImports).where(eq(enemyPackageImports.id, kept.json.data.importId));
+    expect(receipt!.status).toBe('applied');
+  });
+
   it('an active run keeps the enemy and images it started with; a new run gets the import', async () => {
     const { playerId } = await B.w.player();
     const started = await B.w.runs.start(playerId, 'cp3_hall');
