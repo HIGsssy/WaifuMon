@@ -126,7 +126,7 @@ describe('WaifumonCard', () => {
     renderCard();
     const link = screen.getByRole('link');
     expect(link).toHaveAttribute('href', '/collection/101');
-    expect(link).toHaveAccessibleName('Nyx, Ultra Rare, level 22');
+    expect(link).toHaveAccessibleName('Nyx, Ultra Rare, level 22, SP 236');
   });
 
   it.each([
@@ -139,7 +139,7 @@ describe('WaifumonCard', () => {
       entry: { ...entry, species: { ...entry.species, tags: ['expansion', tag] } },
     });
     expect(screen.getByTitle(label)).toHaveTextContent(label);
-    expect(screen.getByRole('link')).toHaveAccessibleName(`Nyx, Ultra Rare, level 22, ${label}`);
+    expect(screen.getByRole('link')).toHaveAccessibleName(`Nyx, Ultra Rare, level 22, SP 236, ${label}`);
     expect(screen.queryByText(tag)).toBeNull();
   });
 
@@ -148,7 +148,7 @@ describe('WaifumonCard', () => {
       entry: { ...entry, species: { ...entry.species, tags: ['expansion', 'region_exclusive'] } },
     });
     const link = screen.getByRole('link');
-    expect(link).toHaveAccessibleName('Nyx, Ultra Rare, level 22');
+    expect(link).toHaveAccessibleName('Nyx, Ultra Rare, level 22, SP 236');
     expect(link).not.toHaveTextContent(/region_exclusive|expansion/);
   });
 

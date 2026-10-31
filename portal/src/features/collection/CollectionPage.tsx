@@ -62,7 +62,13 @@ import { ErrorState } from '@/components/layout/ErrorState';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Button } from '@/components/ui/button';
 import { WaifumonCard, WaifumonCardSkeleton } from '@/components/waifumon/WaifumonCard';
-import { distinctValues, filterEntries, sortEntries } from '@/content/species';
+import {
+  distinctValues,
+  filterEntries,
+  PUBLIC_SORT_OPTIONS,
+  SORT_OPTIONS,
+  sortEntries,
+} from '@/content/species';
 import { formatNumber } from '@/lib/format';
 import { CollectionToolbar } from './CollectionToolbar';
 import { useCollectionParams } from './useCollectionParams';
@@ -89,7 +95,7 @@ export function CollectionPage({
   const session = useCurrentSession();
   const { session: rawSession } = useSession();
   const isPublic = mode === 'public';
-  const api = useCollectionParams();
+  const api = useCollectionParams(mode);
   const { params, setPage } = api;
 
   const capabilities = usePlatformCapabilities();
@@ -210,6 +216,7 @@ export function CollectionPage({
         {...(isPublic && ownerName ? { ownerName } : {})}
         races={races}
         affinities={affinities}
+        sortOptions={isPublic ? PUBLIC_SORT_OPTIONS : SORT_OPTIONS}
         refreshing={refreshing}
         {...(cardsAvailable ? { view: tileView, onViewChange: setView } : {})}
       />

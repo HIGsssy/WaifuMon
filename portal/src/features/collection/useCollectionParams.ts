@@ -16,7 +16,13 @@ import { useSearchParams } from 'react-router';
 import type { Race, Rarity } from '@/api/types';
 import { RARITY_ORDER } from '@/lib/rarity';
 import { isZoneTag } from '@/lib/zone';
-import type { Exclusivity, SortKey } from '@/content/species';
+import type { CollectionMode } from '@/components/waifumon/WaifumonCard';
+import {
+  PUBLIC_SORT_OPTIONS,
+  SORT_OPTIONS,
+  type Exclusivity,
+  type SortKey,
+} from '@/content/species';
 
 export type Ownership = 'all' | 'favorites' | 'buddy';
 
@@ -34,7 +40,8 @@ export interface CollectionParams {
   sort: SortKey;
 }
 
-const SORT_KEYS: readonly SortKey[] = ['rarity', 'name', 'level', 'caught'];
+const SORT_KEYS: readonly SortKey[] = SORT_OPTIONS.map((option) => option.value);
+const PUBLIC_SORT_KEYS: readonly SortKey[] = PUBLIC_SORT_OPTIONS.map((option) => option.value);
 const OWNERSHIPS: readonly Ownership[] = ['all', 'favorites', 'buddy'];
 const EXCLUSIVITIES: readonly Exclusivity[] = ['dungeon'];
 const RACES: readonly Race[] = [
@@ -62,7 +69,7 @@ export interface CollectionParamsApi {
   hasFilters: boolean;
 }
 
-export function useCollectionParams(): CollectionParamsApi {
+export function useCollectionParams(mode: CollectionMode = 'self'): CollectionParamsApi {
   const [searchParams, setSearchParams] = useSearchParams();
 
   const params = useMemo<CollectionParams>(() => {
@@ -81,9 +88,14 @@ export function useCollectionParams(): CollectionParamsApi {
       ownership: readEnum(searchParams.get('ownership'), OWNERSHIPS, 'all'),
       zone: isZoneTag(zone) ? zone : null,
       exclusive: readNullableEnum(searchParams.get('exclusive'), EXCLUSIVITIES),
-      sort: readEnum(searchParams.get('sort'), SORT_KEYS, 'rarity'),
+      // A shared `?sort=sp_desc` link reads as the default on a public collection.
+      sort: readEnum(
+        searchParams.get('sort'),
+        mode === 'public' ? PUBLIC_SORT_KEYS : SORT_KEYS,
+        'rarity',
+      ),
     };
-  }, [searchParams]);
+  }, [mode, searchParams]);
 
   /** Writes a value, or removes the key when it is empty or the default. */
   const write = useCallback(

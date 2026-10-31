@@ -177,6 +177,7 @@ function viewerCollection(): OwnedEntry[] {
           isUnlocked: true,
           isSelected: true,
         },
+        seductivePower: { base: 100, current: 115, formulaVersion: 1 },
         caughtAt: '2026-07-02T18:30:00.000Z',
         releasedAt: null,
       },

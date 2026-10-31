@@ -181,6 +181,33 @@ test.describe('responsive layout', () => {
     });
   }
 
+  for (const { name, width, height } of BREAKPOINTS) {
+    test(`collection SP labels stay whole inside their tiles at ${name}`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await stubApi(page);
+      await page.goto('/collection?sort=sp_desc');
+
+      const tiles = page.getByRole('link', { name: /SP \d+/ });
+      await expect(tiles.first()).toBeVisible();
+
+      for (const tile of await tiles.all()) {
+        const zone = tile.getByText('Flaccid Foothills');
+        await expect(zone).toBeVisible();
+        expect(await zone.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+        const label = tile.getByText(/^SP \d+$/);
+        await expect(label).toBeVisible();
+        const [tileBox, labelBox] = [await tile.boundingBox(), await label.boundingBox()];
+        expect(labelBox!.x + labelBox!.width).toBeLessThanOrEqual(tileBox!.x + tileBox!.width);
+        expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      }
+
+      const sort = page.getByRole('combobox', { name: 'Sort' });
+      await expect(sort).toContainText('SP: Highest First');
+      expect(await sort.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
+      expect(await horizontalOverflow(page)).toBe(0);
+    });
+  }
+
   test('the collection grid gains columns as the viewport widens', async ({ page }) => {
     await stubApi(page);
 

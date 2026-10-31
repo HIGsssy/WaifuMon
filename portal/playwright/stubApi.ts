@@ -115,10 +115,16 @@ const owned = (
       isUnlocked: true,
       isSelected: true,
     },
+    seductivePower: {
+      base: 100 + speciesIndex * 25,
+      current: 100 + speciesIndex * 25 + level * 3,
+      formulaVersion: 1,
+    },
     caughtAt: '2026-07-02T18:30:00.000Z',
     releasedAt: null,
   },
-  species: SPECIES[speciesIndex]!,
+  // The longest zone name, so layout checks see the tile's fullest metadata row.
+  species: { ...SPECIES[speciesIndex]!, tags: ['e2e', 'flaccid_foothills'] },
   progress: { level, xp: level * 100, xpIntoLevel: 40, xpToNext: 60, atMaxLevel: false },
 });
 

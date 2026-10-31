@@ -14,10 +14,10 @@ import { zoneFor } from '@/lib/zone';
 /**
  * These helpers are typed against {@link CollectionEntryView} rather than
  * `OwnedEntry` so the self and public Collection views share one
- * implementation. Both entry shapes are assignable to it, and nothing here
- * reads a field the public payload withholds — which is why widening the
- * signature was enough to make the whole grid work in public mode, with no
- * second copy of the filter and sort rules to keep in step.
+ * implementation. Both entry shapes are assignable to it. The one field here
+ * the public payload withholds is `seductivePower`, so the SP sorts are offered
+ * in self mode only — see {@link PUBLIC_SORT_OPTIONS}. Everything else is shared,
+ * with no second copy of the filter and sort rules to keep in step.
  */
 
 /** How a copy is titled: its nickname if it has one, else the species name. */
@@ -30,14 +30,29 @@ export function subtitleFor(entry: CollectionEntryView): string | null {
   return entry.waifu.nickname?.trim() ? entry.species.name : null;
 }
 
-export type SortKey = 'rarity' | 'name' | 'level' | 'caught';
+/** This copy's Current SP as the API served it; null where the payload withholds it. */
+export function currentSpOf(entry: CollectionEntryView): number | null {
+  return entry.waifu.seductivePower?.current ?? null;
+}
+
+export type SortKey = 'rarity' | 'name' | 'level' | 'caught' | 'sp_desc' | 'sp_asc';
 
 export const SORT_OPTIONS: ReadonlyArray<{ value: SortKey; label: string }> = [
   { value: 'rarity', label: 'Rarest first' },
   { value: 'name', label: 'Name (A–Z)' },
   { value: 'level', label: 'Highest level' },
   { value: 'caught', label: 'Recently caught' },
+  { value: 'sp_desc', label: 'SP: Highest First' },
+  { value: 'sp_asc', label: 'SP: Lowest First' },
 ];
+
+/**
+ * The sorts a guild-mate's collection may use. SP is withheld from the public
+ * payload, and ordering by it would disclose the same statistic.
+ */
+export const PUBLIC_SORT_OPTIONS = SORT_OPTIONS.filter(
+  ({ value }) => value !== 'sp_desc' && value !== 'sp_asc',
+);
 
 /**
  * Orders one page of owned copies. The API already returns rarest-first, so
@@ -65,6 +80,18 @@ export function sortEntries<T extends CollectionEntryView>(entries: T[], sort: S
       // the truncated date would replace a correct order with a guess.
       return sorted.sort(
         (a, b) => new Date(b.waifu.caughtAt).getTime() - new Date(a.waifu.caughtAt).getTime(),
+      );
+    case 'sp_desc':
+      return sorted.sort(
+        (a, b) =>
+          (currentSpOf(b) ?? 0) - (currentSpOf(a) ?? 0) ||
+          displayName(a).localeCompare(displayName(b)),
+      );
+    case 'sp_asc':
+      return sorted.sort(
+        (a, b) =>
+          (currentSpOf(a) ?? 0) - (currentSpOf(b) ?? 0) ||
+          displayName(a).localeCompare(displayName(b)),
       );
     case 'rarity':
     default:

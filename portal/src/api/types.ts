@@ -385,6 +385,18 @@ export interface PlayerLookup {
 
 // ── Collection ───────────────────────────────────────────────────────────────
 
+/**
+ * Seductive Power for one owned copy, derived by the API's one domain function.
+ * The Portal displays and compares these values and never recalculates them.
+ */
+export interface SeductivePower {
+  /** The permanent Level 1 roll, fixed at capture. */
+  base: number;
+  /** Base scaled to the copy's current level. Equipment never changes it. */
+  current: number;
+  formulaVersion: number;
+}
+
 export interface OwnedWaifu {
   id: number;
   playerId: number;
@@ -402,6 +414,7 @@ export interface OwnedWaifu {
   cosmetics: string[];
   /** The look she is currently wearing, resolved. Never null. */
   selectedAppearance: Appearance;
+  seductivePower: SeductivePower;
   caughtAt: string;
   /** Always null on read endpoints — released copies are filtered out. */
   releasedAt: string | null;
@@ -469,9 +482,10 @@ export interface PublicOwnedEntry {
  * public modes instead of a second page that drifts. `progress` is optional
  * because it is the XP curve — present for your own copies, absent for
  * everybody else's, and every consumer must therefore handle its absence.
+ * `seductivePower` is optional for the same reason: the public payload withholds it.
  */
 export interface CollectionEntryView {
-  waifu: PublicOwnedWaifu;
+  waifu: PublicOwnedWaifu & { seductivePower?: SeductivePower | undefined };
   species: Species;
   progress?: WaifuProgress | undefined;
   isBuddy?: boolean | undefined;

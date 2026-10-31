@@ -37,7 +37,7 @@ import { CopyArtwork } from '@/components/media/CopyArtwork';
 import { RarityBadge } from '@/components/waifumon/RarityBadge';
 import { RarityGlowRing } from '@/components/waifumon/RarityGlowRing';
 import { useCopyKnowledge } from '@/components/waifumon/useCopyKnowledge';
-import { viewerDisplayName, viewerSubtitle } from '@/content/species';
+import { currentSpOf, viewerDisplayName, viewerSubtitle } from '@/content/species';
 import { ownedCardAsset } from '@/images/assets';
 import { rarityStyle } from '@/lib/rarity';
 import { zoneFor } from '@/lib/zone';
@@ -109,6 +109,8 @@ export function WaifumonCard({
   const rarity = rarityStyle(species.rarity);
   // Null for a species with no recognised zone tag: the tile simply omits it.
   const zone = zoneFor(species);
+  // Null on a guild-mate's copy: the public payload does not carry SP.
+  const currentSp = currentSpOf(entry);
 
   // Per-tile, and never reset by a mode switch: a card that 404s once will 404
   // again, so re-requesting it on every toggle would be a guaranteed-failing
@@ -126,7 +128,7 @@ export function WaifumonCard({
       // browser supports it; a no-op everywhere else (§14).
       viewTransition
       className={cn('lift group block rounded-2xl', className)}
-      aria-label={`${title}, ${rarity.label}, level ${waifu.level}${zone ? `, ${zone.label}` : ''}`}
+      aria-label={`${title}, ${rarity.label}, level ${waifu.level}${currentSp !== null ? `, SP ${currentSp}` : ''}${zone ? `, ${zone.label}` : ''}`}
     >
       <RarityGlowRing rarity={species.rarity} className="h-full">
         <div className="flex h-full flex-col">
@@ -210,12 +212,25 @@ export function WaifumonCard({
                 </p>
               )}
             </div>
-            {/* Zone shares the rarity row, so it costs no height. */}
-            <div className="mt-auto flex min-w-0 items-center gap-2">
+            {/*
+              SP sits here rather than on the art because Card mode must show it
+              too. The row wraps by content, not breakpoint, because tile width
+              does not track the viewport: a zone that does not fit beside the
+              rarity and SP takes its own line instead of truncating to nothing.
+            */}
+            <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <RarityBadge rarity={species.rarity} />
+              {currentSp !== null && (
+                <span
+                  className="tabular shrink-0 text-xs font-medium whitespace-nowrap text-ink"
+                  title="Seductive Power"
+                >
+                  SP {currentSp}
+                </span>
+              )}
               {zone && (
                 <span
-                  className="inline-flex min-w-0 items-center gap-1 text-xs text-ink-subtle"
+                  className="inline-flex max-w-full min-w-0 items-center gap-1 text-xs text-ink-subtle"
                   title={zone.label}
                 >
                   <MapPin className="size-3 shrink-0" aria-hidden="true" />

@@ -209,6 +209,23 @@ export function WaifumonDetail({
                 </span>
               )}
             </div>
+            {/* Self-only, like XP: the public payload does not contain it. */}
+            {waifu.seductivePower && (
+              <div>
+                <div className="flex items-baseline justify-between gap-3 text-sm">
+                  <span className="text-ink-muted">Seductive Power</span>
+                  <span className="tabular text-right font-medium text-ink">
+                    {waifu.seductivePower.current} SP{' '}
+                    <span className="font-normal text-ink-subtle">
+                      {waifu.level > 1 ? `· base ${waifu.seductivePower.base}` : '· base roll'}
+                    </span>
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-ink-subtle">
+                  From this copy&rsquo;s capture roll and level. Equipment bonuses are not included.
+                </p>
+              </div>
+            )}
             {progress && <XpBar progress={progress} />}
             {'affection' in waifu && (
               <AffectionMeter affection={(waifu as OwnedEntry['waifu']).affection} />

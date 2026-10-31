@@ -14,7 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { EXCLUSIVITY_LABEL, SORT_OPTIONS, type SortKey } from '@/content/species';
+import { EXCLUSIVITY_LABEL, type SORT_OPTIONS, type SortKey } from '@/content/species';
 import { titleCase } from '@/lib/format';
 import { RARITY_ORDER, rarityStyle } from '@/lib/rarity';
 import { ZONES, zoneLabel } from '@/lib/zone';
@@ -33,6 +33,8 @@ export interface CollectionToolbarProps {
   ownerName?: string | undefined;
   races: Race[];
   affinities: string[];
+  /** The sorts this view may use; SP sorts are withheld from public collections. */
+  sortOptions: typeof SORT_OPTIONS;
   /** Shows the quiet inline indicator while a background refetch runs (§14). */
   refreshing: boolean;
   view?: CardView | undefined;
@@ -44,6 +46,7 @@ export function CollectionToolbar({
   ownerName,
   races,
   affinities,
+  sortOptions,
   refreshing,
   view,
   onViewChange,
@@ -244,7 +247,7 @@ export function CollectionToolbar({
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {SORT_OPTIONS.map((option) => (
+              {sortOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>
