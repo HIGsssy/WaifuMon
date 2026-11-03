@@ -4321,3 +4321,51 @@ export const dungeonSpeciesPoolEvents = pgTable('dungeon_species_pool_events', {
   definition: jsonb('definition').$type<Record<string, unknown>>().notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Announcement ledger (migration 0077): which Discord message announced which
+ * WaifuMon event, so a read-only integration can ask about a message it saw
+ * without anyone parsing display names or embed text.
+ *
+ * Written *after* Discord confirms the send, outside every gameplay
+ * transaction, best-effort (a failed insert costs one message its context,
+ * never a capture). `payload` holds only what the announcement itself already
+ * made public — the immutable `announced` block of the commentary contract.
+ * Boss messages are not recorded here: `boss_encounters.message_id` /
+ * `results_message_id` already are that record. Pruned after 30 days.
+ */
+export const ANNOUNCEMENT_LEDGER_KINDS = [
+  'rare_capture',
+  'appearance_unlock',
+  'level_up',
+  'collection_completed',
+] as const;
+export type AnnouncementLedgerKind = (typeof ANNOUNCEMENT_LEDGER_KINDS)[number];
+
+export const announcementLedger = pgTable(
+  'announcement_ledger',
+  {
+    /** Discord snowflake returned by `send()`. The lookup key. */
+    messageId: text('message_id').primaryKey(),
+    guildId: bigint('guild_id', { mode: 'number' })
+      .notNull()
+      .references(() => guilds.id, { onDelete: 'cascade' }),
+    channelId: text('channel_id').notNull(),
+    kind: text('kind').$type<AnnouncementLedgerKind>().notNull(),
+    /** `GameEvent.eventId`, or minted at send time for the rare-capture embed. */
+    eventId: uuid('event_id').notNull(),
+    playerId: bigint('player_id', { mode: 'number' }).references(() => players.id, { onDelete: 'set null' }),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull(),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    check(
+      'announcement_ledger_kind_check',
+      sql`${t.kind} in ('rare_capture','appearance_unlock','level_up','collection_completed')`,
+    ),
+    index('announcement_ledger_created_idx').on(t.createdAt),
+  ],
+);
+
+export type AnnouncementLedgerRow = typeof announcementLedger.$inferSelect;

@@ -1,0 +1,35 @@
+# Private network to read-only integrations (docs/peanut-gallery-integration.md).
+#
+# Opt-in overlay, not part of docker-compose.yml, because the network is
+# `external`: Compose refuses to start a project whose external network does
+# not exist, and a host that runs no integration should not need one. Enable it
+# per host in .env, after creating the network once:
+#
+#   docker network create --internal waifumon-integrations
+#   COMPOSE_FILE=docker-compose.yml:docker-compose.integrations.yml
+#
+# (Append any host-specific overlay you already use, e.g. a stage file.)
+#
+# What this changes, and what it deliberately does not:
+#   - waifumon-bot joins `waifumon-integrations` with the alias `waifumon-api`,
+#     so an integration container on the same network calls
+#     http://waifumon-api:3120. Container-to-container only: no port is
+#     published and PLATFORM_API_PUBLISH_HOST is untouched.
+#   - `default` is listed explicitly. Naming any network on a service replaces
+#     the implicit default, and the default network is how the bot reaches
+#     postgres and how the Portal reaches the bot.
+#   - postgres and waifumon-portal are NOT attached, so nothing on the
+#     integration network can resolve or reach them.
+#   - `--internal` gives the network no route off the host; each container keeps
+#     its own internet access (Discord) through its own default network.
+services:
+  waifumon-bot:
+    networks:
+      default: {}
+      waifumon-integrations:
+        aliases:
+          - waifumon-api
+
+networks:
+  waifumon-integrations:
+    external: true

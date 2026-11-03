@@ -40,6 +40,50 @@ export class MetricsBearerRequiredError extends AppError {
   }
 }
 
+/**
+ * A valid integration credential used outside what integrations may do: a
+ * method other than GET/HEAD, or a route that has not opted in with
+ * `integrationRoute`. Raised by the auth hook before routing reaches a handler.
+ */
+export class IntegrationForbiddenError extends AppError {
+  constructor() {
+    super(
+      'INTEGRATION_FORBIDDEN',
+      'Integration credentials may only GET integration routes',
+      'You do not have permission to do that.',
+    );
+  }
+}
+
+/** An integration-only route reached with the bearer token or a Portal session. */
+export class IntegrationCredentialRequiredError extends AppError {
+  constructor() {
+    super(
+      'INTEGRATION_REQUIRED',
+      'This route accepts only an integration credential',
+      'You do not have permission to do that.',
+    );
+  }
+}
+
+/** An integration key spent its request budget. */
+export class IntegrationRateLimitedError extends AppError {
+  constructor() {
+    super('RATE_LIMITED', 'Integration request budget exhausted', 'Too many requests. Try again shortly.');
+  }
+}
+
+/**
+ * The message is not a recorded WaifuMon announcement in the configured guild.
+ * One answer for unknown, other-guild and unrecorded-kind alike, so a probe
+ * learns nothing from the difference.
+ */
+export class AnnouncementNotFoundError extends AppError {
+  constructor() {
+    super('ANNOUNCEMENT_NOT_FOUND', 'No recorded announcement for that message', 'Not found.');
+  }
+}
+
 /** No route (or no resource) at the requested path. */
 export class ApiNotFoundError extends AppError {
   constructor(detail: string) {
@@ -181,6 +225,14 @@ const STATUS_BY_CODE: Readonly<Record<string, number>> = {
   PORTAL_PERMISSION_DENIED: 403,
   /** `/metrics` reached with a Portal session rather than the bearer token. */
   METRICS_FORBIDDEN: 403,
+  /** Integration credential outside GET on an integration route. */
+  INTEGRATION_FORBIDDEN: 403,
+  /** Integration route reached with the bearer token or a Portal session. */
+  INTEGRATION_REQUIRED: 403,
+  /** Integration key over its request budget. */
+  RATE_LIMITED: 429,
+  /** Unknown, other-guild or unrecorded announcement message. */
+  ANNOUNCEMENT_NOT_FOUND: 404,
   /** Load testing: a run is already active, or none is when a stop was asked for. */
   LOAD_TEST_CONFLICT: 409,
   // Staging Test Controls reached on a deployment that does not allow them.

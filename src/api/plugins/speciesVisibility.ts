@@ -30,7 +30,8 @@ import { ApiSpeciesNotDiscoveredError } from '../errors';
 
 /** The slice of the request this check reads — kept structural for testability. */
 export interface SpeciesVisibilityRequest {
-  apiAuth?: 'bearer' | 'portal' | undefined;
+  /** `integration` is not trusted here: it has no dex and falls through to refusal. */
+  apiAuth?: 'bearer' | 'portal' | 'integration' | undefined;
   portalSession?: { playerId: number | null } | undefined;
 }
 

@@ -78,6 +78,19 @@ const EnvSchema = z.object({
     .default('false')
     .transform((v) => v === 'true' || v === '1'),
   /**
+   * Read-only integration credentials (`Authorization: Integration
+   * <keyId>.<secret>`), as `<keyId>:<sha256-hex-of-secret>` entries separated
+   * by commas. Only hashes live here — the secret itself stays with the
+   * integration. More than one entry exists for rotation. Unset means no
+   * integration can authenticate. See `src/api/integrationAuth.ts`.
+   */
+  PLATFORM_API_INTEGRATION_KEYS: z.string().optional(),
+  /**
+   * The one Discord guild integrations may read. Required together with
+   * `PLATFORM_API_INTEGRATION_KEYS`.
+   */
+  PLATFORM_API_INTEGRATION_GUILD_ID: z.string().optional(),
+  /**
    * Runtime metrics (`GET /metrics`, `POST /metrics/reset`).
    *
    * Defaults to **on**, unlike the other opt-in surfaces here, because the
@@ -375,6 +388,75 @@ export interface PlatformApiConfig {
   cardWarmOnCollection?: boolean | undefined;
 }
 
+/** One accepted integration credential. The secret itself is never held. */
+export interface IntegrationKeyConfig {
+  /** Operator label, sent in the clear before the `.` of the credential. */
+  keyId: string;
+  /** Lowercase hex SHA-256 of the secret. */
+  secretSha256: string;
+}
+
+/**
+ * Read-only integration access (`/api/v1/integrations/…`). Absent means no
+ * integration credential is accepted at all.
+ */
+export interface IntegrationApiConfig {
+  keys: readonly IntegrationKeyConfig[];
+  /** The single Discord guild snowflake integrations may read. */
+  guildId: string;
+}
+
+const INTEGRATION_KEY_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+const SHA256_HEX = /^[0-9a-fA-F]{64}$/;
+const SNOWFLAKE = /^\d{17,20}$/;
+
+/**
+ * Parses `PLATFORM_API_INTEGRATION_KEYS` + `PLATFORM_API_INTEGRATION_GUILD_ID`.
+ *
+ * All-or-nothing: both unset is "no integrations"; anything malformed, half
+ * set, or set while the Platform API is off refuses to start, so a credential
+ * an operator believes is live can never be silently ignored. Error messages
+ * name the offending key id, never a hash.
+ */
+export function parseIntegrationConfig(
+  rawKeys: string | undefined,
+  rawGuildId: string | undefined,
+  platformApiEnabled: boolean,
+): IntegrationApiConfig | undefined {
+  const keysText = (rawKeys ?? '').trim();
+  const guildId = (rawGuildId ?? '').trim();
+  if (keysText.length === 0 && guildId.length === 0) return undefined;
+
+  const fail = (detail: string): never => {
+    throw new ConfigError(`Invalid environment configuration — ${detail}`);
+  };
+  if (!platformApiEnabled) {
+    fail('PLATFORM_API_INTEGRATION_KEYS / PLATFORM_API_INTEGRATION_GUILD_ID require PLATFORM_API_ENABLED=true');
+  }
+  if (keysText.length === 0) fail('PLATFORM_API_INTEGRATION_GUILD_ID is set but PLATFORM_API_INTEGRATION_KEYS is empty');
+  if (guildId.length === 0) fail('PLATFORM_API_INTEGRATION_KEYS is set but PLATFORM_API_INTEGRATION_GUILD_ID is empty');
+  if (!SNOWFLAKE.test(guildId)) fail('PLATFORM_API_INTEGRATION_GUILD_ID must be a Discord guild snowflake');
+
+  const keys: IntegrationKeyConfig[] = [];
+  const seen = new Set<string>();
+  for (const [index, entry] of keysText.split(',').entries()) {
+    const trimmed = entry.trim();
+    const colon = trimmed.indexOf(':');
+    const keyId = colon === -1 ? '' : trimmed.slice(0, colon).trim();
+    const hash = colon === -1 ? '' : trimmed.slice(colon + 1).trim();
+    if (!INTEGRATION_KEY_ID.test(keyId)) {
+      fail(`PLATFORM_API_INTEGRATION_KEYS entry ${index + 1} needs a key id (letters, digits, _ or -) before ':'`);
+    }
+    if (!SHA256_HEX.test(hash)) {
+      fail(`PLATFORM_API_INTEGRATION_KEYS entry '${keyId}' must be <keyId>:<64 hex characters of sha256(secret)>`);
+    }
+    if (seen.has(keyId)) fail(`PLATFORM_API_INTEGRATION_KEYS lists key id '${keyId}' more than once`);
+    seen.add(keyId);
+    keys.push({ keyId, secretSha256: hash.toLowerCase() });
+  }
+  return { keys, guildId };
+}
+
 export interface PortalAuthConfig {
   enabled: boolean;
   publicUrl: string;
@@ -437,6 +519,8 @@ export interface AppConfig {
   logLevel: string;
   adminWeb: AdminWebConfig;
   platformApi: PlatformApiConfig;
+  /** Read-only integration credentials; absent when none are configured. */
+  integrations?: IntegrationApiConfig | undefined;
   portalAuth?: PortalAuthConfig | undefined;
   /** Optional so hand-built configs (tests, tools) read as disabled. */
   loadTesting?: LoadTestingConfig | undefined;
@@ -472,6 +556,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       'Invalid environment configuration — PLATFORM_API_TOKEN is required when PLATFORM_API_ENABLED=true',
     );
   }
+  const integrations = parseIntegrationConfig(
+    e.PLATFORM_API_INTEGRATION_KEYS,
+    e.PLATFORM_API_INTEGRATION_GUILD_ID,
+    e.PLATFORM_API_ENABLED,
+  );
   const portalPublicUrl = e.PORTAL_PUBLIC_URL ?? '';
   const discordClientSecret = (e.DISCORD_CLIENT_SECRET ?? '').trim();
   const portalSessionSecret = (e.PORTAL_SESSION_SECRET ?? '').trim();
@@ -532,6 +621,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
       cardWarmConcurrency: e.CARD_WARM_CONCURRENCY,
       cardWarmOnCollection: e.CARD_WARM_ON_COLLECTION,
     },
+    ...(integrations === undefined ? {} : { integrations }),
     portalAuth: {
       enabled: portalAuthEnabled,
       publicUrl: portalPublicUrl,

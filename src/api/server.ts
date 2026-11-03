@@ -26,7 +26,8 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
 import { jsonSchemaTransform, hasZodFastifySchemaValidationErrors } from 'fastify-type-provider-zod';
-import { resolvePublicUrl, type PlatformApiConfig } from '../config/config';
+import { resolvePublicUrl, type IntegrationApiConfig, type PlatformApiConfig } from '../config/config';
+import type { IntegrationRateLimiter } from './integrationAuth';
 import { AppError } from '../shared/errors';
 import type { Logger } from '../shared/logger';
 import { registerAuth } from './auth';
@@ -70,6 +71,13 @@ export interface PlatformApiDeps {
         authorization?: PortalAuthorizationService | undefined;
       }
     | undefined;
+  /**
+   * Read-only integration credentials (`PLATFORM_API_INTEGRATION_KEYS`). Absent
+   * means the `Integration` scheme always answers 401.
+   */
+  integration?: IntegrationApiConfig | undefined;
+  /** Per-key budget override, for tests. */
+  integrationRateLimiter?: IntegrationRateLimiter | undefined;
   logger: Logger;
   probes: ReadinessProbes;
   /** Services + content snapshot the v1 routes adapt. */
@@ -164,7 +172,12 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
   // Auth before every route registration below: Fastify hooks apply to routes
   // registered after them in the same encapsulation context. Public paths
   // (health, ready, docs, spec) are allow-listed inside the hook.
-  registerAuth(app, { token: deps.config.token, portalSessions: deps.portalAuth?.sessions });
+  registerAuth(app, {
+    token: deps.config.token,
+    portalSessions: deps.portalAuth?.sessions,
+    integration: deps.integration,
+    integrationRateLimiter: deps.integrationRateLimiter,
+  });
 
   await app.register(swagger, {
     openapi: {
@@ -217,6 +230,12 @@ export async function createPlatformApiServer(deps: PlatformApiDeps): Promise<Zo
         { name: 'Sessions', description: 'Per-channel tallies and Trainer Profile pointers.' },
         { name: 'Content', description: 'Authored species, items, tuning tables and quest pool.' },
         { name: 'Guilds', description: 'Guild configuration (read-only in v1).' },
+        {
+          name: 'Integrations',
+          description:
+            'Read-only surface for external integrations. Integration credential only; ' +
+            'not reachable through the public Portal.',
+        },
         {
           name: 'Cards',
           description:

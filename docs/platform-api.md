@@ -68,6 +68,18 @@ The trust boundary is stated once, in
 `src/api/plugins/portalPermissions.ts`, and tested over HTTP in
 `tests/unit/api/adminEncounterAuth.test.ts`.
 
+### Integration credentials are a third, narrower credential
+
+`Authorization: Integration <keyId>.<secret>` authenticates a read-only
+external integration. Keys are configured as hashes in
+`PLATFORM_API_INTEGRATION_KEYS`, scoped to the one guild in
+`PLATFORM_API_INTEGRATION_GUILD_ID`, rate-limited per key, and admitted only to
+`GET`/`HEAD` on routes that opt in with `config: { integrationRoute: true }`
+under `/api/v1/integrations/`. Everything else is `403 INTEGRATION_FORBIDDEN`,
+and the integration routes in turn refuse the bearer token and Portal sessions.
+The public Portal edge returns 404 for the whole prefix. Contract, deployment
+and staging checks: [peanut-gallery-integration.md](peanut-gallery-integration.md).
+
 ---
 
 ## Networking: three different concepts

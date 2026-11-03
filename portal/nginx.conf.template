@@ -123,6 +123,22 @@ server {
     return 404;
   }
 
+  # Read-only integration endpoints are never published to the internet.
+  #
+  # They answer only to an `Integration` credential, which the API itself
+  # enforces; this rule is the second layer, so the endpoint is unreachable
+  # through the public Portal host even if a credential leaked. Integrations
+  # reach the API container directly over the private `waifumon-integrations`
+  # Docker network (docs/peanut-gallery-integration.md).
+  #
+  # No trailing slash on purpose, like /metrics: it covers the bare prefix and
+  # any future sibling, and shadows no Portal route (none begins with
+  # "integrations"). A longer prefix than `^~ /api`, so it wins.
+  location ^~ /api/v1/integrations {
+    include /etc/nginx/security-headers.conf;
+    return 404;
+  }
+
   location ^~ /auth/ {
     include /etc/nginx/security-headers.conf;
     proxy_hide_header X-Content-Type-Options;

@@ -59,6 +59,12 @@ export interface ActivityPostRequest {
   text: string;
   visibility: EventVisibility;
   richEmbed?: ActivityRichEmbed;
+  /**
+   * The event being narrated. Not rendered: the poster hands it to the
+   * announcement ledger together with the message id Discord returns, so the
+   * post can later be resolved to its player without parsing the text.
+   */
+  event?: GameEvent;
 }
 
 /**
@@ -312,7 +318,7 @@ export function createActivityFeedService(deps: ActivityFeedDeps): ActivityFeedS
       // deliberately do NOT fall back to the play channel: the play channel
       // is reserved for Trainer Profiles.
       if (!channelId) return;
-      const request: ActivityPostRequest = { text: line.text, visibility: line.visibility };
+      const request: ActivityPostRequest = { text: line.text, visibility: line.visibility, event };
       const richEmbed = alternateAppearanceEmbed(event);
       if (richEmbed) request.richEmbed = richEmbed;
       await post(channelId, request);

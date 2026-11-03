@@ -57,7 +57,10 @@ export function registerPlayerScope(app: FastifyInstance, ctx: ApiContext): void
     const player = await ctx.services.players.getById(playerId);
     if (!player) throw new ApiPlayerNotFoundError(playerId);
 
-    if (req.apiAuth === 'portal' && req.portalSession?.playerId !== player.id) {
+    // Only the bearer token is trusted across players. Anything else — a
+    // Portal session, or an integration credential that somehow reached a
+    // player route past the auth hook's allowlist — is held to the self rule.
+    if (req.apiAuth !== 'bearer' && req.portalSession?.playerId !== player.id) {
       // The one widening: a public guild profile may name somebody else, but
       // only inside the guild the session has selected. Everything else — a
       // player from another guild, a session with no selection at all, any

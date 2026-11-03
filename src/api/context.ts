@@ -21,6 +21,7 @@ import type { MetricsSources } from './routes/metrics';
 import type { LoadTestController } from '../modules/loadTest/controller';
 import type { StagingTestControlsService } from '../modules/testControls/stagingTestControlsService';
 import type { BossScheduler } from '../modules/bosses/bossScheduler';
+import type { CommentaryContextService } from '../modules/commentary/commentaryContextService';
 
 export interface ApiContext {
   services: AppServices;
@@ -115,4 +116,15 @@ export interface ApiContext {
    * spawn or end. Absent, or with no `scheduler`, when this process runs none.
    */
   bossRuntime?: { scheduler?: BossScheduler | undefined } | undefined;
+  /**
+   * Read-only integrations. Both present registers `/integrations/…`; either
+   * absent leaves those routes unregistered (a 404 for everyone).
+   */
+  integration?:
+    | {
+        /** The single Discord guild snowflake integrations may read. */
+        guildId: string;
+        commentary: CommentaryContextService;
+      }
+    | undefined;
 }

@@ -75,6 +75,7 @@ import type { DungeonLootTableService } from '../modules/dungeons/dungeonLootTab
 import type { DungeonContentService } from '../modules/dungeons/dungeonContentService';
 import type { DungeonRunService } from '../modules/dungeons/dungeonRunService';
 import type { DungeonAllowanceService } from '../modules/dungeons/dungeonAllowanceService';
+import type { AnnouncementLedger } from '../modules/announcements/announcementLedger';
 import type { ProgressionCurrencyService } from '../modules/progressionCurrency/progressionCurrencyService';
 
 export interface AppServices {
@@ -145,6 +146,12 @@ export interface AppServices {
    * switched off behind a flag the handlers have to keep checking.
    */
   bosses?: BossEncounterService | undefined;
+  /**
+   * Which Discord message announced which event, for read-only integrations.
+   * Optional: absent, posters simply record nothing. Written only after a send
+   * succeeds and never able to fail one (see `announcementLedger.ts`).
+   */
+  announcementLedger?: AnnouncementLedger | undefined;
   /**
    * Locations & Travel. Always wired — the feature's own gate is
    * `tables.travel.enabled`, which the service reads from the live content

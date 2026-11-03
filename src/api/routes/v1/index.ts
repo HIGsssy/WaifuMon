@@ -37,6 +37,7 @@ import { achievementRoutes } from './achievements';
 import { leaderboardRoutes } from './leaderboards';
 import { playerRoutes } from './players';
 import { playerDirectoryRoutes } from './playerDirectory';
+import { commentaryRoutes } from './integrations/commentary';
 import { questRoutes } from './quests';
 import { sessionRoutes } from './session';
 import { shopRoutes } from './shop';
@@ -92,6 +93,9 @@ export const v1Routes =
     // static-vs-parametric match, and after `registerPlayerScope` so
     // `/players/:playerId/public` inherits the (widened) scope check.
     await app.register(playerDirectoryRoutes(ctx));
+    // Read-only integration surface. Registers nothing unless an integration
+    // guild and the commentary service are wired (PLATFORM_API_INTEGRATION_*).
+    await app.register(commentaryRoutes(ctx));
     await app.register(collectionRoutes(ctx));
     await app.register(currencyRoutes(ctx));
     await app.register(inventoryRoutes(ctx));

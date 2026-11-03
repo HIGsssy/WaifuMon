@@ -195,6 +195,26 @@ describe('the API documentation surface is not exposed at the public edge', () =
   });
 });
 
+describe('read-only integration endpoints are not exposed at the public edge', () => {
+  const integrations = blocks.find((b) => b.selector === '^~ /api/v1/integrations');
+
+  it('blocks the whole integration prefix and never proxies it', () => {
+    expect(integrations).toBeDefined();
+    expect(integrations!.body).toContain('return 404;');
+    expect(integrations!.body).not.toContain('proxy_pass');
+    expect(integrations!.body).toContain('include /etc/nginx/security-headers.conf;');
+  });
+
+  it('outranks the catch-all /api proxy and covers the bare prefix', () => {
+    expect(integrations!.selector.length).toBeGreaterThan('^~ /api'.length);
+    // No trailing slash: `/api/v1/integrations` itself is closed too.
+    expect(integrations!.selector.endsWith('/')).toBe(false);
+    expect(template.indexOf('location ^~ /api/v1/integrations')).toBeLessThan(
+      template.indexOf('location ^~ /api {'),
+    );
+  });
+});
+
 describe('/ready is not exposed at the public edge', () => {
   const ready = blocks.find((b) => b.selector === '= /ready');
 

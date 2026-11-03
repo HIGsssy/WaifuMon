@@ -5,6 +5,10 @@
  * `Authorization: Bearer <token>`. No cookies, therefore no CSRF surface —
  * a browser cannot be tricked into attaching an Authorization header.
  *
+ * Beside it: Portal session cookies (CSRF-checked below), and read-only
+ * integration keys (`Authorization: Integration <keyId>.<secret>`), which are
+ * admitted only to opted-in GET routes — see `integrationAuth.ts`.
+ *
  * Two deliberate choices:
  *
  *  - **`onRequest`, not `preHandler`.** The plan sketches this as a
@@ -22,9 +26,24 @@
  * The token is never logged and never echoed.
  */
 import { timingSafeEqual } from 'node:crypto';
-import type { FastifyInstance } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { IntegrationApiConfig } from '../config/config';
 import { AppError } from '../shared/errors';
-import { UnauthorizedError, mapAppErrorToStatus, toErrorBody } from './errors';
+import {
+  IntegrationForbiddenError,
+  IntegrationRateLimitedError,
+  UnauthorizedError,
+  mapAppErrorToStatus,
+  toErrorBody,
+} from './errors';
+import {
+  INTEGRATION_PATH_PREFIX,
+  INTEGRATION_SCHEME,
+  createIntegrationVerifier,
+  createIntegrationRateLimiter,
+  parseIntegrationCredential,
+  type IntegrationRateLimiter,
+} from './integrationAuth';
 import {
   PORTAL_CSRF_COOKIE,
   PORTAL_CSRF_HEADER,
@@ -69,21 +88,72 @@ export function constantTimeEquals(a: string, b: string): boolean {
 export interface ApiAuthDeps {
   token: string;
   portalSessions?: PortalSessionService | undefined;
+  /** Read-only integration keys; absent means the `Integration` scheme is always 401. */
+  integration?: IntegrationApiConfig | undefined;
+  /** Per-key budget; defaults to `createIntegrationRateLimiter()`. */
+  integrationRateLimiter?: IntegrationRateLimiter | undefined;
 }
 
 declare module 'fastify' {
   interface FastifyRequest {
     portalSession?: PortalSession;
-    apiAuth?: 'bearer' | 'portal';
+    apiAuth?: 'bearer' | 'portal' | 'integration';
   }
 }
 
 export function registerAuth(app: FastifyInstance, deps: ApiAuthDeps): void {
+  const verifyIntegration = createIntegrationVerifier(deps.integration);
+  const rateLimiter = deps.integrationRateLimiter ?? createIntegrationRateLimiter();
+
+  async function refuse(req: FastifyRequest, reply: FastifyReply, err: AppError): Promise<void> {
+    const status = mapAppErrorToStatus(err);
+    await reply.code(status).send(toErrorBody(err, status, String(req.id)));
+  }
+
   app.addHook('onRequest', async (req, reply) => {
     const pathname = req.url.split('?')[0] ?? '';
     if (isPublicPath(pathname)) return;
 
     const header = String(req.headers.authorization ?? '');
+
+    // Integration credentials never fall back to a cookie or the bearer
+    // token: a request that says `Integration` is judged as one, and a bad
+    // one is a 401 even if the same browser also carries a Portal session.
+    if (header.startsWith(INTEGRATION_SCHEME)) {
+      const credential = parseIntegrationCredential(header.slice(INTEGRATION_SCHEME.length).trim());
+      if (!deps.integration || !credential || !verifyIntegration(credential)) {
+        // Path and method only — never the header, nor the presented key id,
+        // which is attacker-controlled text.
+        req.log.warn({ path: pathname, method: req.method }, 'platform api integration credential rejected');
+        await refuse(req, reply, new UnauthorizedError());
+        return;
+      }
+      req.apiAuth = 'integration';
+      req.integrationKeyId = credential.keyId;
+
+      const retryAfter = rateLimiter.take(credential.keyId);
+      if (retryAfter !== null) {
+        req.log.info({ keyId: credential.keyId, path: pathname }, 'platform api integration rate limited');
+        void reply.header('retry-after', String(retryAfter));
+        await refuse(req, reply, new IntegrationRateLimitedError());
+        return;
+      }
+
+      // The allowlist: a read method, on a matched route that opted in, under
+      // the integration prefix. The route flag is what actually decides — the
+      // prefix test is a second, independent reading of the same intent.
+      const readMethod = req.method === 'GET' || req.method === 'HEAD';
+      const optedIn = req.routeOptions.config?.integrationRoute === true;
+      if (!readMethod || !optedIn || !pathname.startsWith(INTEGRATION_PATH_PREFIX)) {
+        req.log.warn(
+          { keyId: credential.keyId, path: pathname, method: req.method },
+          'platform api integration request outside its allowlist',
+        );
+        await refuse(req, reply, new IntegrationForbiddenError());
+      }
+      return;
+    }
+
     if (header.startsWith('Bearer ') && constantTimeEquals(header.slice(7).trim(), deps.token)) {
       req.apiAuth = 'bearer';
       return;

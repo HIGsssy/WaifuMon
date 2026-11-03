@@ -103,6 +103,10 @@ import {
 import { renderResultScreen } from '../resultScreenRenderer';
 import type { ResolvedResultPresentation } from '../../modules/resultPresentation/resolver';
 import { resolvePresentationFor as resolvePresentation } from '../resultScreenRenderer';
+import {
+  newAnnouncementEventId,
+  type CaptureSource,
+} from '../../modules/announcements/announcementLedger';
 
 
 /**
@@ -676,6 +680,16 @@ export async function handleHuntReturn(
 
 // ─────────────────────────────── capture flow ───────────────────────────────
 
+/**
+ * Who the rare announcement is about, for the announcement ledger. Not shown
+ * anywhere: the embed itself is unchanged.
+ */
+export interface RareAnnouncementSource {
+  playerId: number;
+  /** `hunt` for any wild-encounter capture, `delve_recruit` for Delve. */
+  source: CaptureSource;
+}
+
 export async function sendRareAnnouncement(
   ctx: AppContext,
   interaction: ButtonInteraction,
@@ -683,6 +697,7 @@ export async function sendRareAnnouncement(
   userMention: string,
   isDuplicate: boolean,
   newWaifu: CaptureAttemptResult['newWaifu'],
+  origin: RareAnnouncementSource,
 ): Promise<'skipped' | 'sent' | 'failed'> {
   const config = ctx.content.tables.capture;
   const rarity = species.rarity as Rarity;
@@ -715,8 +730,10 @@ export async function sendRareAnnouncement(
 
   // Announce channel: guild-configured if set, otherwise the capture channel.
   let target: GuildTextBasedChannel | null = null;
+  let guildDbId: number | null = null;
   if (interaction.guildId) {
     const guild = await ctx.services.guilds.getByDiscordId(interaction.guildId);
+    guildDbId = guild?.id ?? null;
     const channelId = guild?.announceChannelId ?? interaction.channelId;
     if (channelId) {
       try {
@@ -729,18 +746,39 @@ export async function sendRareAnnouncement(
   }
   if (!target) return 'failed';
 
+  let sent: { id: string; channelId: string };
   try {
-    await target.send({
+    sent = await target.send({
       ...(mentionHere ? { content: '@here' } : {}),
       embeds: [embed],
       files,
       allowedMentions: mentionHere ? { parse: ['everyone'] } : { parse: [] },
     });
-    return 'sent';
   } catch (err) {
     ctx.logger.warn({ err, rarity, speciesSlug: species.slug }, 'rare announcement failed');
     return 'failed';
   }
+
+  // Only after Discord confirmed the post, and never able to undo it: the
+  // ledger swallows its own failures.
+  if (guildDbId !== null) {
+    await ctx.services.announcementLedger?.record({
+      kind: 'rare_capture',
+      payload: {
+        species: { slug: species.slug, name: species.name, rarity },
+        source: origin.source,
+        isDuplicate,
+        waifuId: newWaifu?.id ?? null,
+      },
+      messageId: sent.id,
+      channelId: sent.channelId,
+      guildDbId,
+      eventId: newAnnouncementEventId(),
+      playerId: origin.playerId,
+      occurredAt: new Date(),
+    });
+  }
+  return 'sent';
 }
 
 /**
@@ -1028,6 +1066,7 @@ export async function handleEncounterCapture(
       `<@${interaction.user.id}>`,
       result.isDuplicate,
       result.newWaifu,
+      { playerId: prov.playerId, source: 'hunt' },
     );
   }
 

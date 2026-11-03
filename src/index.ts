@@ -165,6 +165,11 @@ import { createHuntSessionTracker } from './modules/hunt/huntSession';
 import { createCollectionFilterTracker } from './discord/collectionFilterTracker';
 import { createEphemeralRegistry } from './discord/ephemeralCleanup';
 import { createActivityFeedService } from './modules/activity/activityFeedService';
+import {
+  createAnnouncementLedger,
+  startLedgerRetention,
+} from './modules/announcements/announcementLedger';
+import { createCommentaryContextService } from './modules/commentary/commentaryContextService';
 import { resolveAppearanceAsset } from './modules/appearance/assetResolver';
 import { artworkAttachmentFilename } from './modules/assets/artworkPath';
 import { AttachmentBuilder, EmbedBuilder } from 'discord.js';
@@ -887,6 +892,11 @@ async function main(): Promise<void> {
     pickFilteredSpecies,
   });
 
+  // Which Discord message announced which event, for read-only integrations.
+  // Written by the posters after a send succeeds; pruned after 30 days.
+  const announcementLedger = createAnnouncementLedger({ db, logger });
+  const stopLedgerRetention = startLedgerRetention(announcementLedger, logger);
+
   const ctx: AppContext = {
     config,
     logger,
@@ -929,6 +939,7 @@ async function main(): Promise<void> {
       collection,
       achievements,
       leaderboards,
+      announcementLedger,
       appearance,
       quests,
       effects,
@@ -1205,7 +1216,7 @@ async function main(): Promise<void> {
           .setColor(0xffb6d1)
           .setImage(`attachment://${request.richEmbed.image.filename}`);
         if (request.richEmbed.footer) embed.setFooter({ text: request.richEmbed.footer });
-        await channel.send({
+        const sent = await channel.send({
           embeds: [embed],
           files: [
             new AttachmentBuilder(request.richEmbed.image.absolutePath, {
@@ -1214,9 +1225,12 @@ async function main(): Promise<void> {
           ],
           allowedMentions: { parse: [] },
         });
+        if (request.event) await announcementLedger.recordEvent(request.event, sent);
         return;
       }
-      await channel.send({ content: request.text, allowedMentions: { parse: [] } });
+      const sent = await channel.send({ content: request.text, allowedMentions: { parse: [] } });
+      // After Discord confirmed the post; the ledger never throws.
+      if (request.event) await announcementLedger.recordEvent(request.event, sent);
     },
   });
   activityFeed.subscribe(gameEventBus);
@@ -1616,6 +1630,9 @@ async function main(): Promise<void> {
   const platformApi = await startPlatformApi({
     ...(metrics === undefined ? {} : { metrics }),
     config: config.platformApi,
+    // Read-only integration keys. Absent leaves the Integration scheme a 401
+    // and the /integrations routes unregistered.
+    integration: config.integrations,
     ...(config.portalAuth?.enabled && portalSessions !== undefined
       ? {
           portalAuth: {
@@ -1633,6 +1650,20 @@ async function main(): Promise<void> {
       // credential unless an operator has deliberately made it administrative.
       adminBearerAllowed: config.platformApi.adminBearer,
       bossRuntime,
+      ...(config.integrations === undefined
+        ? {}
+        : {
+            integration: {
+              guildId: config.integrations.guildId,
+              commentary: createCommentaryContextService({
+                db,
+                ledger: announcementLedger,
+                collection: ctx.services.collection,
+                leaderboards: ctx.services.leaderboards,
+                logger,
+              }),
+            },
+          }),
       ...(loadTesting === undefined
         ? {}
         : { loadTesting, loadTestingOperatorIds: config.loadTesting?.operatorDiscordIds ?? [] }),
@@ -1684,6 +1715,7 @@ async function main(): Promise<void> {
     logger.info({ signal }, 'shutting down');
     // First, so no new pass can start posting into a client that is closing.
     bossScheduler?.stop();
+    stopLedgerRetention();
     // Before the API closes: the generator's requests target it, and the run's
     // cleanup (synthetic sessions, cold-render cards) needs the database.
     await loadTesting?.shutdown();

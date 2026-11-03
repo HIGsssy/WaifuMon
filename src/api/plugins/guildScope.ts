@@ -72,6 +72,11 @@ export async function resolveGuildScope(
     };
   }
 
+  // Only the bearer token may name a guild. An integration credential has its
+  // own guild check on its own routes and is never in scope here.
+  if (req.apiAuth !== 'bearer') {
+    throw new ApiGuildScopeForbiddenError(`Guild scope refused for ${req.apiAuth ?? 'unauthenticated'} caller`);
+  }
   // Bearer: no selection exists, so the guild must be named explicitly.
   if (requested === undefined) {
     throw new ApiGuildScopeRequiredError('Bearer requests must supply discordGuildId');

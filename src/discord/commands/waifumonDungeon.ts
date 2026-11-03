@@ -464,7 +464,7 @@ async function afterEncounter(ctx: AppContext, interaction: DungeonInteraction, 
       }
       if (receipt.type === 'capture_attempt' && receipt.success && receipt.acquired && interaction.isButton()) {
         const entry = await ctx.services.collection.getOwned(prov.playerId, receipt.acquired.waifuId);
-        await sendRareAnnouncement(ctx, interaction, entry.species, `<@${interaction.user.id}>`, receipt.acquired.isDuplicate, entry.waifu);
+        await sendRareAnnouncement(ctx, interaction, entry.species, `<@${interaction.user.id}>`, receipt.acquired.isDuplicate, entry.waifu, { playerId: prov.playerId, source: 'delve_recruit' });
       }
       await emitEvents(ctx, interaction, prov, await dungeonEncounterDescriptors(ctx, prov, receipt));
       if (receipt.acquired && receipt.newAppearances?.length) {
