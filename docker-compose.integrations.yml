@@ -2,19 +2,33 @@
 #
 # Opt-in overlay, not part of docker-compose.yml, because the network is
 # `external`: Compose refuses to start a project whose external network does
-# not exist, and a host that runs no integration should not need one. Enable it
-# per host in .env, after creating the network once:
+# not exist, and a host that runs no integration should not need one.
 #
-#   docker network create --internal waifumon-integrations
+# Per-environment names. Staging and production share one Docker host as
+# separate Compose projects, so each must join its OWN network:
+#
+#   WAIFUMON_INTEGRATION_NETWORK  Docker network name   (default waifumon-integrations)
+#   WAIFUMON_INTEGRATION_ALIAS    the bot's DNS name on it (default waifumon-api)
+#
+#   staging:     waifumon-integrations-staging / waifumon-api-staging
+#   production:  waifumon-integrations-prod    / waifumon-api-prod
+#
+# These are COMPOSE interpolation variables, read when Compose parses this file
+# — from the shell, or from the `.env` file in the project directory. They are
+# not application settings; the bot never reads them. On a shared host set them
+# explicitly in each checkout's `.env`: left unset, both environments would
+# fall back to the same default network.
+#
+# One-time setup per environment, then enable the overlay in that `.env`:
+#
+#   docker network create --internal waifumon-integrations-staging
 #   COMPOSE_FILE=docker-compose.yml:docker-compose.integrations.yml
 #
-# (Append any host-specific overlay you already use, e.g. a stage file.)
-#
 # What this changes, and what it deliberately does not:
-#   - waifumon-bot joins `waifumon-integrations` with the alias `waifumon-api`,
-#     so an integration container on the same network calls
-#     http://waifumon-api:3120. Container-to-container only: no port is
-#     published and PLATFORM_API_PUBLISH_HOST is untouched.
+#   - waifumon-bot joins the integration network under the alias above, so an
+#     integration container on that same network calls http://<alias>:3120.
+#     Container-to-container only: no port is published and
+#     PLATFORM_API_PUBLISH_HOST is untouched.
 #   - `default` is listed explicitly. Naming any network on a service replaces
 #     the implicit default, and the default network is how the bot reaches
 #     postgres and how the Portal reaches the bot.
@@ -22,14 +36,17 @@
 #     integration network can resolve or reach them.
 #   - `--internal` gives the network no route off the host; each container keeps
 #     its own internet access (Discord) through its own default network.
+#   - `integrations` below is only this file's key for the network; the real
+#     Docker network is the `name:` it resolves to.
 services:
   waifumon-bot:
     networks:
       default: {}
-      waifumon-integrations:
+      integrations:
         aliases:
-          - waifumon-api
+          - ${WAIFUMON_INTEGRATION_ALIAS:-waifumon-api}
 
 networks:
-  waifumon-integrations:
+  integrations:
     external: true
+    name: ${WAIFUMON_INTEGRATION_NETWORK:-waifumon-integrations}

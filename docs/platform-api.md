@@ -77,8 +77,12 @@ external integration. Keys are configured as hashes in
 `GET`/`HEAD` on routes that opt in with `config: { integrationRoute: true }`
 under `/api/v1/integrations/`. Everything else is `403 INTEGRATION_FORBIDDEN`,
 and the integration routes in turn refuse the bearer token and Portal sessions.
-The public Portal edge returns 404 for the whole prefix. Contract, deployment
-and staging checks: [peanut-gallery-integration.md](peanut-gallery-integration.md).
+The public Portal edge returns 404 for the whole prefix. Integrations reach the
+API over a private internal Docker network that is separate per environment
+(`WAIFUMON_INTEGRATION_NETWORK` / `WAIFUMON_INTEGRATION_ALIAS`, read by Compose
+from the optional `docker-compose.integrations.yml` override, not by the app).
+Contract, deployment, staging checks and the shared-host isolation checklist:
+[peanut-gallery-integration.md](peanut-gallery-integration.md).
 
 ---
 

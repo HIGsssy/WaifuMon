@@ -209,9 +209,12 @@ anything else orphans the production database**: Compose would look for
 
 ### `COMPOSE_FILE` and `docker-compose.stage.yml`
 
-This repository ships a single `docker-compose.yml` and no override files.
-There is no `docker-compose.stage.yml` in the working tree, on any branch, or
-anywhere in git history. A `.env` containing
+This repository ships `docker-compose.yml` and exactly one optional override,
+`docker-compose.integrations.yml`, which a checkout enables only to run a
+read-only integration (see [peanut-gallery-integration.md](peanut-gallery-integration.md);
+its network and alias are per environment). There is no
+`docker-compose.stage.yml` in the working tree, on any branch, or anywhere in
+git history. A `.env` containing
 
 ```
 COMPOSE_FILE=docker-compose.yml:docker-compose.stage.yml
@@ -219,7 +222,8 @@ COMPOSE_FILE=docker-compose.yml:docker-compose.stage.yml
 
 therefore names a file that does not exist, and every `docker compose` command
 in that checkout fails to load. Remove the `COMPOSE_FILE` line rather than
-creating the missing file — nothing in the staging setup needs an override.
+creating the missing file — nothing in the staging setup needs an override
+(the integration override is the one exception, and only where enabled).
 Every difference between the environments is expressible as `.env` values,
 which is what the table above does.
 

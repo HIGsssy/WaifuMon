@@ -6,10 +6,10 @@ The integration consumer (CherryBot) sends WaifuMon the ID of a WaifuMon announc
 
 | Layer | State |
 | --- | --- |
-| Code | Implemented on branch `PeanutGallery`, uncommitted, not reviewed. |
+| Code | Implemented on branch `PeanutGallery`. Not yet reviewed. |
 | Automated tests | Pass locally against real PostgreSQL 16. See [Verification](#verification). |
 | nginx rule | `nginx -t` passes, and a live nginx 1.27 container answers 404 for the integration paths. |
-| Docker network overlay | Static test only. Compose is not available on the development machine. **Not deployed.** |
+| Docker network override | Per-environment network and alias. Checked statically, including how default, staging and production values resolve. Compose is not available on the development machine, so `docker compose config` has not been run. **Not deployed.** |
 | Staging | **Not deployed and not exercised.** Treat the endpoint as not operational until the [staging procedure](#staging-validation) passes. |
 | Production | Not deployed. |
 
@@ -21,7 +21,7 @@ HEAD (same URL, same rules)
 Authorization: Integration <keyId>.<secret>
 ```
 
-Internal base URL: `http://waifumon-api:3120/api/v1`. This name resolves only for containers on the `waifumon-integrations` Docker network. The public Portal host answers 404 for anything under `/api/v1/integrations`.
+Internal base URL: `http://<alias>:3120/api/v1`, where the alias is per environment: `waifumon-api-staging` on staging and `waifumon-api-prod` on production (see [Network](#network)). The name resolves only for containers on that environment's integration network. The public Portal host answers 404 for anything under `/api/v1/integrations`.
 
 | Query parameter | Rule |
 | --- | --- |
@@ -319,59 +319,129 @@ Branch on `error.code`. The `message` field is user-facing wording and may chang
 
 ## Network
 
+Staging and production run on **one Docker host** as separate Compose projects. Each environment therefore gets its own integration network and its own API alias, and nothing is shared between them.
+
+| Item | Staging | Production | Default (single-environment host) |
+| --- | --- | --- | --- |
+| `WAIFUMON_INTEGRATION_NETWORK` | `waifumon-integrations-staging` | `waifumon-integrations-prod` | `waifumon-integrations` |
+| `WAIFUMON_INTEGRATION_ALIAS` | `waifumon-api-staging` | `waifumon-api-prod` | `waifumon-api` |
+| API base URL for the integration | `http://waifumon-api-staging:3120/api/v1` | `http://waifumon-api-prod:3120/api/v1` | `http://waifumon-api:3120/api/v1` |
+
+Common to every environment:
+
 | Item | Value |
 | --- | --- |
-| Network | `waifumon-integrations`, external, created with `--internal` (no route off the host) |
-| Members | `waifumon-bot` (alias `waifumon-api`) and the CherryBot container. **Not** `postgres` or `waifumon-portal`. |
+| Network type | External, created by the operator with `--internal` (no route off the host). Compose never creates it. |
+| Members | That environment's `waifumon-bot` and that environment's CherryBot container. **Not** `postgres` or `waifumon-portal`, and never the other environment's containers. |
 | Port | 3120, container to container. No host port is added; `PLATFORM_API_PUBLISH_HOST` is unchanged. |
 | Public edge | Portal nginx: `location ^~ /api/v1/integrations { return 404; }` |
 
-WaifuMon side: the opt-in overlay `docker-compose.integrations.yml`. It is not part of the base file because Compose refuses to start a project whose external network does not exist. The overlay keeps the bot on its `default` network, which is how it reaches Postgres, and adds the integration network.
+On the WaifuMon side this is the opt-in override `docker-compose.integrations.yml`. It is not part of the base file because Compose refuses to start a project whose external network does not exist. The override keeps the bot on its `default` network, which is how it reaches Postgres and how the Portal reaches it, and adds the environment's integration network.
 
-CherryBot's own compose file (not in this repository) needs:
+### Two kinds of variable
+
+| Variable | Read by | When |
+| --- | --- | --- |
+| `COMPOSE_FILE`, `WAIFUMON_INTEGRATION_NETWORK`, `WAIFUMON_INTEGRATION_ALIAS` | **Docker Compose**, while parsing the files | Every `docker compose` command. Taken from the shell environment if set there, otherwise from the `.env` file in the project directory. |
+| `PLATFORM_API_INTEGRATION_KEYS`, `PLATFORM_API_INTEGRATION_GUILD_ID` | **The WaifuMon application**, at bot startup | Passed into the container through `env_file: .env`. |
+
+Both groups usually live in the same per-environment `.env`. That works only when `docker compose` is run from that environment's checkout directory, or with `--project-directory` pointing at it. A shell `export` overrides `.env`, so an exported staging value would leak into a production command run from the same shell. Prefer `.env`, and check with `docker compose config` before every `up`. The application ignores the two Compose variables.
+
+If `WAIFUMON_INTEGRATION_*` is unset or empty, both environments fall back to the same default network. On the shared host, always set them explicitly.
+
+### CherryBot's side (not in this repository)
+
+Each CherryBot environment joins only the matching WaifuMon network and calls the matching alias:
 
 ```yaml
 services:
   cherrybot:            # its real service name
-    networks: [default, waifumon-integrations]
+    networks: [default, waifumon]   # keep its own default network for Discord
 networks:
-  waifumon-integrations:
+  waifumon:
     external: true
+    name: waifumon-integrations-staging   # -prod for production
 ```
 
-The CherryBot container can reach the whole Platform API on port 3120, and the legacy admin panel on 3111 if that is ever enabled. Every route still requires a credential, and the integration key can reach only its own prefix. **The credential is the authorization boundary.** The network keeps the traffic private and keeps Postgres out of reach.
+Staging CherryBot uses `http://waifumon-api-staging:3120/api/v1`. Production CherryBot uses `http://waifumon-api-prod:3120/api/v1`.
+
+The CherryBot container can reach the whole Platform API on port 3120, and the legacy admin panel on 3111 if that is ever enabled. Every route still requires a credential, and the integration key can reach only its own prefix. **The credential is the authorization boundary.** The network keeps the traffic private, keeps Postgres out of reach, and keeps staging and production apart.
 
 ## Deployment prerequisites
 
-1. `PLATFORM_API_ENABLED=true` and a `PLATFORM_API_TOKEN` are already set on the host. If not, enabling the Platform API is its own change and needs its own review.
+Do these per environment, in that environment's checkout (staging first). Examples use staging; use the `-prod` values for production.
+
+1. `PLATFORM_API_ENABLED=true` and a `PLATFORM_API_TOKEN` are already set in that `.env`. If not, enabling the Platform API is its own change and needs its own review.
 2. Migration `0077_announcement_ledger` runs automatically at bot startup. It is additive. To roll back, leave the table in place.
-3. Create the network once: `docker network create --internal waifumon-integrations`.
-4. Add the overlay to the host's `.env`: `COMPOSE_FILE=docker-compose.yml:docker-compose.integrations.yml`. Keep any host overlay you already use, for example `…:docker-compose.stage.yml`.
-5. Set `PLATFORM_API_INTEGRATION_KEYS` and `PLATFORM_API_INTEGRATION_GUILD_ID`.
-6. Rebuild and recreate the bot: `docker compose up -d --build waifumon-bot`. Rebuild the Portal for the nginx rule: `docker compose --profile portal up -d --build waifumon-portal`.
+3. Create that environment's network once. This is an operator action; nothing in WaifuMon creates or changes networks.
+
+   ```bash
+   docker network create --internal waifumon-integrations-staging   # staging
+   docker network create --internal waifumon-integrations-prod      # production, later
+   ```
+
+4. In that environment's `.env`, set:
+
+   ```dotenv
+   COMPOSE_FILE=docker-compose.yml:docker-compose.integrations.yml
+   WAIFUMON_INTEGRATION_NETWORK=waifumon-integrations-staging
+   WAIFUMON_INTEGRATION_ALIAS=waifumon-api-staging
+   PLATFORM_API_INTEGRATION_KEYS=<keyId>:<hash>
+   PLATFORM_API_INTEGRATION_GUILD_ID=<the guild id>
+   ```
+
+   Use a different key for each environment. The equivalent one-off shell form is `export COMPOSE_FILE=docker-compose.yml:docker-compose.integrations.yml`, but see the warning above about exported variables.
+5. **Before `up`, confirm the resolved configuration names this environment and only this environment:**
+
+   ```bash
+   docker compose config | grep -nE 'waifumon-integrations|waifumon-api'
+   #   expect only the -staging names; no -prod line and no bare default name
+   docker compose config | sed -n '/^  waifumon-bot:/,/^  [a-z]/p' | grep -A6 '^    networks:'
+   #   expect both `default` and `integrations` (with the -staging alias)
+   docker compose config | sed -n '/^networks:/,$p'
+   #   expect `integrations:` with `external: true` and `name: waifumon-integrations-staging`
+   ```
+
+6. Rebuild and recreate:
+
+   ```bash
+   docker compose config >/dev/null   # fails here if a file in COMPOSE_FILE is missing
+   docker compose up -d --build waifumon-bot
+   docker compose --profile portal up -d --build waifumon-portal   # for the nginx rule
+   ```
+
+   Use `up -d`, not `restart`: `restart` keeps the old environment and the old network attachments.
 
 ## Staging validation
 
-Run these on the staging host after the prerequisites. Record each result. Do not mark the endpoint operational until every step passes.
+Run these on the shared host from the **staging** checkout, after the prerequisites. Record each result. Do not mark the endpoint operational until every step passes. Container names are looked up through Compose, never assumed.
 
 ```sh
-# 1. Merged Compose config: bot on both networks, postgres and portal on default only.
-docker compose config | grep -A6 'waifumon-bot:' ; docker compose config | grep -B2 -A4 'waifumon-integrations'
-docker network inspect waifumon-integrations --format '{{.Internal}} {{range .Containers}}{{.Name}} {{end}}'
-#    expect: true waifumon-...-waifumon-bot-1  (plus CherryBot once attached)
+NET=waifumon-integrations-staging
+ALIAS=waifumon-api-staging
+BOT=$(docker compose ps -q waifumon-bot)
+nets() { docker inspect "$1" --format '{{range $n, $c := .NetworkSettings.Networks}}{{$n}} aliases={{$c.Aliases}}{{"\n"}}{{end}}'; }
+
+# 1. Network attachments.
+docker network inspect "$NET" --format 'internal={{.Internal}} members={{range .Containers}}{{.Name}} {{end}}'
+#    expect internal=true and only this environment's bot (plus its CherryBot once attached)
+nets "$BOT"
+#    expect two lines: <project>_default, and $NET with aliases including $ALIAS
+nets "$(docker compose ps -q postgres)"          # expect only <project>_default
+nets "$(docker compose ps -q waifumon-portal)"   # expect only <project>_default
 
 # 2. A throwaway container on the integration network reaches the API and NOT Postgres.
-docker run --rm --network waifumon-integrations curlimages/curl:8.10.1 -s -o /dev/null -w '%{http_code}\n' http://waifumon-api:3120/health   # 200
-docker run --rm --network waifumon-integrations busybox:1.36 nslookup postgres                                                               # must fail
+docker run --rm --network "$NET" curlimages/curl:8.10.1 -s -o /dev/null -w '%{http_code}\n' "http://$ALIAS:3120/health"   # 200
+docker run --rm --network "$NET" busybox:1.36 nslookup postgres                                                         # must fail
 
 # 3. Auth boundary over the private network.
-K="Authorization: Integration peanut-gallery-2026a.$SECRET"
-U=http://waifumon-api:3120/api/v1/integrations/commentary/context
-C="docker run --rm --network waifumon-integrations curlimages/curl:8.10.1 -s -o /dev/null -w %{http_code}\n"
+K="Authorization: Integration <keyId>.$SECRET"
+U="http://$ALIAS:3120/api/v1/integrations/commentary/context"
+C="docker run --rm --network $NET curlimages/curl:8.10.1 -s -o /dev/null -w %{http_code}\n"
 $C -H "$K" "$U?discordGuildId=$GUILD&messageId=1"                       # 404 ANNOUNCEMENT_NOT_FOUND
-$C -H "Authorization: Integration peanut-gallery-2026a.wrong" "$U?discordGuildId=$GUILD&messageId=1"   # 401
+$C -H "Authorization: Integration <keyId>.wrong" "$U?discordGuildId=$GUILD&messageId=1"   # 401
 $C -X POST -H "$K" "$U?discordGuildId=$GUILD&messageId=1"              # 403
-$C -H "$K" http://waifumon-api:3120/api/v1/players/1                   # 403
+$C -H "$K" "http://$ALIAS:3120/api/v1/players/1"                       # 403
 $C -H "Authorization: Bearer $PLATFORM_API_TOKEN" "$U?discordGuildId=$GUILD&messageId=1"   # 403
 
 # 4. Public edge refuses it.
@@ -388,6 +458,20 @@ $C -H "$K" "$U?discordGuildId=$GUILD&messageId=<that id>"              # 200
 docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
   "select kind, count(*), max(created_at) from announcement_ledger group by kind;"
 ```
+
+### Shared-host isolation checklist
+
+Tick each item and record the command output. Items marked *production* apply once production enables the integration; until then, confirm production is untouched.
+
+- [ ] **1. Staging bot joins `waifumon-integrations-staging`.** Run `nets "$BOT"` from the staging checkout. The staging network appears.
+- [ ] **2. Production bot does not join the staging network.** From the production checkout, run `nets "$(docker compose ps -q waifumon-bot)"`. No `-staging` network appears. Also run `docker network inspect waifumon-integrations-staging`: none of its members belong to the production project.
+- [ ] **3. Staging bot stays on its default Compose network.** `nets "$BOT"` still shows `<staging project>_default`. The bot logs show no database connection errors after the recreate.
+- [ ] **4. Postgres and the Portal are absent from the integration network.** `nets` for both shows only `<project>_default`, and `nslookup postgres` from the integration network fails.
+- [ ] **5. Staging alias is `waifumon-api-staging`.** It appears in `nets "$BOT"`, and step 2 above reaches `/health` through it.
+- [ ] **6. *Production:* alias is `waifumon-api-prod`.** Same checks from the production checkout, against `waifumon-integrations-prod`.
+- [ ] **7. Application-to-database connectivity still works.** `curl -s http://127.0.0.1:$PLATFORM_API_PORT/ready` on the host (3220 for staging per `.env.example`) reports the database as ok, and `/waifumon` works in the staging guild.
+- [ ] **8. No additional host ports.** `docker compose ps` shows the same published ports as before the change: loopback 3211/3220/3230 for staging, 3111/3120/3130 for production.
+- [ ] **9. The public Portal still denies integration access.** Step 4 above returns 404 on the staging Portal host, and later on the production Portal host.
 
 ## Known limitations
 
@@ -417,7 +501,7 @@ docker compose exec postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c \
 4. Call the endpoint with the 2 s timeout, handling each status as in the [Errors](#errors) table.
 5. Deduplicate on `eventId`.
 6. Use only `verified` facts. Never mention an `unavailable` one, and never phrase it as zero.
-7. After the WaifuMon staging procedure passes, join CherryBot to `waifumon-integrations` on staging and repeat step 5 of that procedure from the CherryBot container.
+7. After the WaifuMon staging procedure passes, join staging CherryBot to `waifumon-integrations-staging` and repeat step 5 of that procedure from the CherryBot container, against `http://waifumon-api-staging:3120`. Production CherryBot later joins only `waifumon-integrations-prod` and calls `waifumon-api-prod`.
 
 ## Verification
 
@@ -428,7 +512,7 @@ Results from the development machine, on PostgreSQL 16 run in podman. See the im
 | `tests/unit/api/integrationAuth.test.ts` (credentials, rotation, revocation, allowlist sweep over every documented route, path tricks, rate limit, config) | 29/29 |
 | `tests/integration/api/commentaryContext.test.ts` (correlation through the real `sendRareAnnouncement`, same-name trainers, guild 404s, privacy keys, verified zero vs unavailable, released copies, boss semantics, concurrency, cache, degraded facts, 503, retention) | 33/33 |
 | `tests/unit/announcementLedgerFeed.test.ts` (the feed passes its event, wording unchanged, v1 kind mapping) | 3/3 |
-| `tests/unit/composeIntegrationNetwork.test.ts` (static overlay checks) | 6/6 |
+| `tests/unit/composeIntegrationNetwork.test.ts` (static checks: Compose's `${VAR:-default}` rule resolved for default, empty, staging and production values; staging and production never share a network or alias; the bot keeps `default`; only the bot is attached; external network; no ports; base file untouched) | 13/13. A deliberately broken override (no `default`, hardcoded name) fails 7. |
 | `portal/src/__tests__/nginxHeaders.test.ts` (including the new rule) | 48/48 |
 | nginx 1.27 `nginx -t` on the rendered template, plus live requests | Syntax OK. `/api/v1/integrations`, `/api/v1/integrations/…`, `%69ntegrations`, `//`, and `x/../` variants all return 404. A normal `/api/…` request still proxies. |
 | Full root suite | 9418 tests, 166 failing, against 9347 tests and 166 failing on untouched HEAD `87c475d6`. The failure lists are identical apart from one swapped `bossScheduler` timing flake, which passes 2/2 in isolation. The 71 additional tests are the new ones, and all pass. |
